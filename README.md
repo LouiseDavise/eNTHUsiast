@@ -1,17 +1,9 @@
-# enthusiast
+File Structure = https://www.geeksforgeeks.org/flutter/flutter-file-structure/
+Prototype URL = https://enthusiast2.netlify.app/
 
-A new Flutter project.
-
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Color:
+Purple = rgb(114,46,133) #722e85
+Black = rgb(26,26,26) #1a1a1a
+Background White = rgb(249,249,248) #f9f9f8
+Text Color(grey) = rgb(118,121,147) #767993
+Small Text(light grey) = rgb(209,213,220) #d1d5dc
