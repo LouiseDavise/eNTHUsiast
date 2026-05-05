@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'screens/main_screen.dart';
+import 'routes/app_routes.dart'; // Import your routes
+import 'theme/app_theme.dart'; // Import the theme we just fixed
 
 void main() {
   runApp(const MyApp());
@@ -11,12 +12,15 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'App Navigation',
+      title: 'eNTHUsiast App',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        scaffoldBackgroundColor: Colors.white,
-      ),
-      home: const MainScreen(),
+      
+      theme: AppTheme.lightTheme, 
+      darkTheme: AppTheme.darkTheme,
+      
+      initialRoute: AppRoutes.mainScreen, 
+      
+      routes: AppRoutes.routes, 
     );
   }
 }
