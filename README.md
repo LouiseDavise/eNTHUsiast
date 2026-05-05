@@ -33,3 +33,9 @@ Todo:
     ii. Event Priority
 
 
+Note:
+1. Sebelum kerjain task, infokan dulu di grup.
+2. Pas kerjain task, kalau bs pake branch.
+3. Kalau mau akses ke Database(Firebase), bole chat louise
+4. Feel free to discuss and modify
+
