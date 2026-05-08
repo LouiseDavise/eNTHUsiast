@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'home_screen.dart';
 import 'social_screen.dart';
-import 'courses_screen.dart';
+import 'courses/courses_screen.dart';
 import 'account_screen.dart';
 
 class MainScreen extends StatefulWidget {
