@@ -2,13 +2,13 @@ class GraduationCourseRecord {
   final String title;
   final int credits;
   final String grade;
-  final bool passed;
+  final String status;
 
   const GraduationCourseRecord({
     required this.title,
     required this.credits,
     required this.grade,
-    required this.passed,
+    required this.status,
   });
 }
 
