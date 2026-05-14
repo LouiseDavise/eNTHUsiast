@@ -1,8 +1,17 @@
 import 'package:flutter/material.dart';
-import 'routes/app_routes.dart'; // Import your routes
-import 'theme/app_theme.dart'; // Import the theme we just fixed
+import 'package:firebase_core/firebase_core.dart';
 
-void main() {
+import 'firebase_options.dart';
+import 'routes/app_routes.dart';
+import 'theme/app_theme.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   runApp(const MyApp());
 }
 
@@ -14,13 +23,13 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'eNTHUsiast App',
       debugShowCheckedModeBanner: false,
-      
-      theme: AppTheme.lightTheme, 
+
+      theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      
-      initialRoute: AppRoutes.mainScreen, 
-      
-      routes: AppRoutes.routes, 
+
+      initialRoute: AppRoutes.mainScreen,
+
+      routes: AppRoutes.routes,
     );
   }
 }

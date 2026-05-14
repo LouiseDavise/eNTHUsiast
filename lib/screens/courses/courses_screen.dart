@@ -6,6 +6,7 @@ import './widgets/menu_square_button.dart';
 import './widgets/menu_wide_button.dart';
 import './courses_material_screen.dart';
 import './graduation_verification_screen.dart';
+import './courses_planner_screen.dart';
 
 /// Main courses screen.
 /// Displays the "115 Spring" timetable using [TimetableGrid].
@@ -89,7 +90,12 @@ class CoursesScreen extends StatelessWidget {
                       inactiveBgColor: const Color(0xFFEFF6FF),
                       inactiveIconColor: const Color(0xFF2563EB),
                       onTap: () {
-                        // TODO: navigate to Course Planner screen later
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const CoursePlannerScreen(),
+                          ),
+                        );
                       },
                     ),
                   ),
