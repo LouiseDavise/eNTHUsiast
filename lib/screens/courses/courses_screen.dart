@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-
+import 'dart:convert';
+import 'package:flutter/services.dart';
+import '../../../models/courses_model.dart';
 import 'utilities/schedule_data.dart';
 import './widgets/timetable_grid.dart';
 import './widgets/menu_square_button.dart';
@@ -12,6 +14,26 @@ import './courses_planner_screen.dart';
 /// Displays the "115 Spring" timetable using [TimetableGrid].
 class CoursesScreen extends StatelessWidget {
   const CoursesScreen({super.key});
+
+  Future<List<CourseItem>> _fetchSchedule() async {
+    // Load the JSON string from assets
+    final String response = await rootBundle.loadString('assets/schedule.json');
+    final List<dynamic> data = json.decode(response);
+
+    return data.map((item) {
+      return CourseItem(
+        title: item['title'],
+        code: item['code'],
+        day: item['day'],
+        startSlot: item['startSlot'],
+        duration: item['duration'],
+        // Parse the "0xFF..." string into a real Flutter Color
+        bg: Color(int.parse(item['bg'])),
+        border: Color(int.parse(item['border'])),
+        text: Color(int.parse(item['text'])),
+      );
+    }).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +50,8 @@ class CoursesScreen extends StatelessWidget {
                 '115 Spring',
                 style: TextStyle(
                   fontSize: 28,
-                  fontWeight: FontWeight.w800, // Reduced from w900, removed italic
+                  fontWeight:
+                      FontWeight.w800, // Reduced from w900, removed italic
                   color: Color(0xFF111827),
                   letterSpacing: -0.5,
                 ),
@@ -53,7 +76,24 @@ class CoursesScreen extends StatelessWidget {
                   ],
                 ),
                 padding: const EdgeInsets.all(12),
-                child: TimetableGrid(schedule: dummySchedule),
+                child: FutureBuilder<List<CourseItem>>(
+                  future: _fetchSchedule(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const SizedBox(
+                        height: 400,
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    } else if (snapshot.hasError) {
+                      return Center(child: Text("Error: ${snapshot.error}"));
+                    } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      return const Center(child: Text("No courses found."));
+                    }
+
+                    // Pass the parsed JSON data directly to your TimetableGrid
+                    return TimetableGrid(schedule: snapshot.data!);
+                  },
+                ),
               ),
 
               const SizedBox(height: 20),

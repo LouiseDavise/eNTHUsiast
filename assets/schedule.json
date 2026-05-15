@@ -1,0 +1,152 @@
+[
+    {
+        "title": "Mandarin Intermediate I",
+        "code": "CLC 200103",
+        "day": 1,
+        "startSlot": 0,
+        "duration": 2,
+        "bg": "0xFFFFF7ED",
+        "border": "0xFFFED7AA",
+        "text": "0xFFC2410C"
+    },
+    {
+        "title": "Software Studio",
+        "code": "CS  241001",
+        "day": 1,
+        "startSlot": 0,
+        "duration": 2,
+        "bg": "0xFFECFDF5",
+        "border": "0xFFA7F3D0",
+        "text": "0xFF065F46"
+    },
+    {
+        "title": "Operating Systems",
+        "code": "CS  342300",
+        "day": 1,
+        "startSlot": 0,
+        "duration": 2,
+        "bg": "0xFFECFDF5",
+        "border": "0xFFA7F3D0",
+        "text": "0xFF065F46"
+    },
+    {
+        "title": "Introduction  to Computer Networks",
+        "code": "EECS302001",
+        "day": 1,
+        "startSlot": 0,
+        "duration": 2,
+        "bg": "0xFFF5F3FF",
+        "border": "0xFFDDD6FE",
+        "text": "0xFF6D28D9"
+    },
+    {
+        "title": "Algorithms",
+        "code": "EECS402000",
+        "day": 1,
+        "startSlot": 0,
+        "duration": 2,
+        "bg": "0xFFF5F3FF",
+        "border": "0xFFDDD6FE",
+        "text": "0xFF6D28D9"
+    },
+    {
+        "title": "Weight Training",
+        "code": "PE  206051",
+        "day": 1,
+        "startSlot": 0,
+        "duration": 2,
+        "bg": "0xFFF8FAFC",
+        "border": "0xFFCBD5E1",
+        "text": "0xFF475569"
+    },
+    {
+        "title": "General Physics (I)",
+        "code": "PHYS115000",
+        "day": 1,
+        "startSlot": 0,
+        "duration": 2,
+        "bg": "0xFFFFF1F2",
+        "border": "0xFFFECACA",
+        "text": "0xFFB91C1C"
+    },
+    {
+        "title": "Mandarin Basic Ⅲ",
+        "code": "CLC 100302",
+        "day": 1,
+        "startSlot": 0,
+        "duration": 2,
+        "bg": "0xFFFFF7ED",
+        "border": "0xFFFED7AA",
+        "text": "0xFFC2410C"
+    },
+    {
+        "title": "Linear Algebra",
+        "code": "CS  233401",
+        "day": 1,
+        "startSlot": 0,
+        "duration": 2,
+        "bg": "0xFFECFDF5",
+        "border": "0xFFA7F3D0",
+        "text": "0xFF065F46"
+    },
+    {
+        "title": "Data Structures",
+        "code": "CS  235102",
+        "day": 1,
+        "startSlot": 0,
+        "duration": 2,
+        "bg": "0xFFECFDF5",
+        "border": "0xFFA7F3D0",
+        "text": "0xFF065F46"
+    },
+    {
+        "title": "Introduction to Programming in Python",
+        "code": "EECS121000",
+        "day": 1,
+        "startSlot": 0,
+        "duration": 2,
+        "bg": "0xFFF5F3FF",
+        "border": "0xFFDDD6FE",
+        "text": "0xFF6D28D9"
+    },
+    {
+        "title": "College Life Planning and Design",
+        "code": "IBP 102802",
+        "day": 1,
+        "startSlot": 0,
+        "duration": 2,
+        "bg": "0xFFEFF6FF",
+        "border": "0xFFBFDBFE",
+        "text": "0xFF1D4ED8"
+    },
+    {
+        "title": "Tai Chi",
+        "code": "PE  205046",
+        "day": 1,
+        "startSlot": 0,
+        "duration": 2,
+        "bg": "0xFFF8FAFC",
+        "border": "0xFFCBD5E1",
+        "text": "0xFF475569"
+    },
+    {
+        "title": "General Physics (II)",
+        "code": "PHYS116000",
+        "day": 1,
+        "startSlot": 0,
+        "duration": 2,
+        "bg": "0xFFFFF1F2",
+        "border": "0xFFFECACA",
+        "text": "0xFFB91C1C"
+    },
+    {
+        "title": "Conduct",
+        "code": "ZZ  000000",
+        "day": 1,
+        "startSlot": 0,
+        "duration": 2,
+        "bg": "0xFFEFF6FF",
+        "border": "0xFFBFDBFE",
+        "text": "0xFF1D4ED8"
+    }
+]

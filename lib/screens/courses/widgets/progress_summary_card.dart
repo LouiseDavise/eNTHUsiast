@@ -112,7 +112,7 @@ class ProgressSummaryCard extends StatelessWidget {
               _SmallInfo(
                 label: 'SEMESTER',
                 value: semesterCredits,
-                suffix: ' CR',
+                suffix: ' COURSE',
               ),
               const SizedBox(width: 32),
               _SmallInfo(
