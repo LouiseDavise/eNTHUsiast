@@ -7,6 +7,7 @@ import 'widgets/course_planner_filter_sheet.dart';
 import 'widgets/course_planner_schedule_grid.dart' as schedule;
 import 'widgets/course_planned_course_card.dart';
 import 'widgets/course_planner_enroll_card.dart';
+import 'widgets/course_planner_ai_button.dart';
 
 class CoursePlannerScreen extends StatefulWidget {
   const CoursePlannerScreen({super.key});
@@ -623,16 +624,17 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF7E3291),
-        elevation: 10,
-        shape: const CircleBorder(),
-        onPressed: () {},
-        child: const Icon(
-          Icons.auto_awesome_rounded,
-          color: Colors.white,
-          size: 26,
-        ),
+      floatingActionButton: CoursePlannerAiButton(
+        onTap: () {
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) {
+              return const _AiPlannerSheet();
+            },
+          );
+        },
       ),
       body: SafeArea(
         child: Column(
@@ -1251,6 +1253,132 @@ class _MyPlanView extends StatelessWidget {
           totalCredits: totalCredits,
         ),
       ],
+    );
+  }
+}
+
+class _AiPlannerSheet extends StatelessWidget {
+  const _AiPlannerSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(24, 20, 24, 24 + bottomPadding),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(30),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF3E8FF),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: Color(0xFF7E3291),
+                  size: 25,
+                ),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Text(
+                  'Ask Bao-Bao',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    fontStyle: FontStyle.italic,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ),
+              InkWell(
+                borderRadius: BorderRadius.circular(100),
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF8FAFC),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    color: Color(0xFF94A3B8),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          const Text(
+            'Need help planning your schedule?',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF020617),
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          const Text(
+            'Bao-Bao can help recommend courses, check conflicts, and suggest a balanced course plan.',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.5,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF94A3B8),
+            ),
+          ),
+
+          const SizedBox(height: 22),
+
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            height: 50,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: const Color(0xFFE9D5FF),
+              ),
+            ),
+            child: const Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Ask about your course plan...',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFCBD5E1),
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.send_rounded,
+                  color: Color(0xFF7E3291),
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
