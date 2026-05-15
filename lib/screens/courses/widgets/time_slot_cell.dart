@@ -24,50 +24,52 @@ class TimeSlotCell extends StatelessWidget {
         children: [
           // Start time – top right
           Positioned(
-            top: 2,
-            right: 4,
+            top: 4, // Increased slightly so it doesn't touch the top grid line
+            right: 6, // Increased slightly to keep it away from the column border
             child: Text(
               startTime,
               style: const TextStyle(
-                fontSize: 7,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF9CA3AF),
+                fontSize: 9, // Increased from 7 for mobile readability
+                fontWeight: FontWeight.w600, // Adjusted from w500
+                color: Color(0xFF94A3B8), // Unified with UI palette
               ),
             ),
           ),
+          
           // Slot badge – vertically centered
           Positioned.fill(
             child: Center(
               child: Container(
-                width: 18,
-                height: 18,
+                width: 24, // Increased from 18 to accommodate larger text
+                height: 24,
                 decoration: const BoxDecoration(
-                  color: Color(0xFFF3F4F6),
+                  color: Color(0xFFF1F5F9), // Unified light gray bg
                   shape: BoxShape.circle,
                 ),
                 child: Center(
                   child: Text(
                     label,
                     style: const TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF6B7280),
+                      fontSize: 11, // Increased from 9
+                      fontWeight: FontWeight.w700, // Reduced from w800
+                      color: Color(0xFF64748B),
                     ),
                   ),
                 ),
               ),
             ),
           ),
+          
           // End time – bottom right
           Positioned(
-            bottom: 2,
-            right: 4,
+            bottom: 4, // Increased slightly so it doesn't touch the bottom grid line
+            right: 6,
             child: Text(
               endTime,
               style: const TextStyle(
-                fontSize: 6,
-                fontWeight: FontWeight.w400,
-                color: Color(0xFFD1D5DB),
+                fontSize: 9, // Increased from 6 (size 6 is generally unreadable)
+                fontWeight: FontWeight.w500, // Increased from w400
+                color: Color(0xFFCBD5E1), // Kept slightly lighter than start time
               ),
             ),
           ),

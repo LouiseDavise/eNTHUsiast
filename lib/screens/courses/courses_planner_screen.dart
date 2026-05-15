@@ -40,11 +40,7 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       midtermDate: 'Oct 15',
       finalDate: 'Dec 20',
       projectDate: 'Dec 10',
-      grading: {
-        'Exams': 40,
-        'Projects': 40,
-        'Participation': 20,
-      },
+      grading: {'Exams': 40, 'Projects': 40, 'Participation': 20},
       syllabus: [
         'Introduction & Overview',
         'Core Concepts & Theory',
@@ -73,16 +69,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       midtermDate: 'Oct 20',
       finalDate: 'Dec 18',
       projectDate: 'Dec 5',
-      grading: {
-        'Exams': 50,
-        'Projects': 30,
-        'Participation': 20,
-      },
-      syllabus: [
-        'CPU Basics',
-        'Memory System',
-        'Instruction Pipeline',
-      ],
+      grading: {'Exams': 50, 'Projects': 30, 'Participation': 20},
+      syllabus: ['CPU Basics', 'Memory System', 'Instruction Pipeline'],
       timeSlot: 'Tue 08:00 - 09:50',
       slotCode: 'T1T2',
       location: 'Engineering Building, Room 205',
@@ -106,16 +94,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       midtermDate: 'Oct 18',
       finalDate: 'Dec 22',
       projectDate: 'None',
-      grading: {
-        'Exams': 70,
-        'Homework': 20,
-        'Participation': 10,
-      },
-      syllabus: [
-        'Counting',
-        'Random Variables',
-        'Expected Value',
-      ],
+      grading: {'Exams': 70, 'Homework': 20, 'Participation': 10},
+      syllabus: ['Counting', 'Random Variables', 'Expected Value'],
       timeSlot: 'Tue 13:20 - 15:10',
       slotCode: 'T5T6',
       location: 'General Building, Room 301',
@@ -139,16 +119,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       midtermDate: 'Oct 12',
       finalDate: 'Dec 16',
       projectDate: 'None',
-      grading: {
-        'Exams': 50,
-        'Homework': 30,
-        'Participation': 20,
-      },
-      syllabus: [
-        'Reading Practice',
-        'Writing Practice',
-        'Final Presentation',
-      ],
+      grading: {'Exams': 50, 'Homework': 30, 'Participation': 20},
+      syllabus: ['Reading Practice', 'Writing Practice', 'Final Presentation'],
       timeSlot: 'Thu 13:20 - 15:10',
       slotCode: 'R5R6',
       location: 'Language Center, Room 101',
@@ -172,11 +144,7 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       midtermDate: 'Oct 17',
       finalDate: 'Dec 19',
       projectDate: 'Nov 30',
-      grading: {
-        'Exams': 40,
-        'Projects': 40,
-        'Participation': 20,
-      },
+      grading: {'Exams': 40, 'Projects': 40, 'Participation': 20},
       syllabus: [
         'Society and Identity',
         'Culture and Media',
@@ -205,15 +173,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       midtermDate: 'None',
       finalDate: 'Dec 15',
       projectDate: 'None',
-      grading: {
-        'Participation': 70,
-        'Skill Test': 30,
-      },
-      syllabus: [
-        'Basic Training',
-        'Team Practice',
-        'Final Skill Test',
-      ],
+      grading: {'Participation': 70, 'Skill Test': 30},
+      syllabus: ['Basic Training', 'Team Practice', 'Final Skill Test'],
       timeSlot: 'Wed 16:30 - 17:20',
       slotCode: 'W8',
       location: 'Gymnasium Court 2',
@@ -237,15 +198,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       midtermDate: 'Oct 25',
       finalDate: 'Dec 23',
       projectDate: 'Dec 12',
-      grading: {
-        'Projects': 70,
-        'Participation': 30,
-      },
-      syllabus: [
-        'Flutter Basics',
-        'Firebase Integration',
-        'Final App Demo',
-      ],
+      grading: {'Projects': 70, 'Participation': 30},
+      syllabus: ['Flutter Basics', 'Firebase Integration', 'Final App Demo'],
       timeSlot: 'Mon 18:30 - 20:20',
       slotCode: 'MaMb',
       location: 'CS Lab, Room 501',
@@ -269,15 +223,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       midtermDate: 'Oct 21',
       finalDate: 'Dec 21',
       projectDate: 'None',
-      grading: {
-        'Exams': 80,
-        'Homework': 20,
-      },
-      syllabus: [
-        'Motion',
-        'Energy',
-        'Electricity',
-      ],
+      grading: {'Exams': 80, 'Homework': 20},
+      syllabus: ['Motion', 'Energy', 'Electricity'],
       timeSlot: 'Tue 10:10 - 12:00',
       slotCode: 'T3T4',
       location: 'Science Building, Room 102',
@@ -301,11 +248,7 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       midtermDate: 'Oct 19',
       finalDate: 'Dec 18',
       projectDate: 'None',
-      grading: {
-        'Exams': 70,
-        'Lab': 20,
-        'Participation': 10,
-      },
+      grading: {'Exams': 70, 'Lab': 20, 'Participation': 10},
       syllabus: [
         'Atoms and Molecules',
         'Chemical Bonds',
@@ -334,16 +277,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       midtermDate: 'Oct 16',
       finalDate: 'Dec 17',
       projectDate: 'None',
-      grading: {
-        'Exams': 60,
-        'Homework': 20,
-        'Participation': 20,
-      },
-      syllabus: [
-        'Supply and Demand',
-        'Market Structure',
-        'Economic Policy',
-      ],
+      grading: {'Exams': 60, 'Homework': 20, 'Participation': 20},
+      syllabus: ['Supply and Demand', 'Market Structure', 'Economic Policy'],
       timeSlot: 'Fri 13:20 - 15:10',
       slotCode: 'F5F6',
       location: 'Management Building, Room 201',
@@ -367,11 +302,7 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       midtermDate: 'Oct 14',
       finalDate: 'Dec 14',
       projectDate: 'Dec 1',
-      grading: {
-        'Exams': 50,
-        'Projects': 30,
-        'Participation': 20,
-      },
+      grading: {'Exams': 50, 'Projects': 30, 'Participation': 20},
       syllabus: [
         'Mind and Behavior',
         'Learning and Memory',
@@ -400,16 +331,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       midtermDate: 'Oct 13',
       finalDate: 'Dec 13',
       projectDate: 'Nov 28',
-      grading: {
-        'Exams': 50,
-        'Projects': 30,
-        'Participation': 20,
-      },
-      syllabus: [
-        'Ancient Civilizations',
-        'Modern History',
-        'Globalization',
-      ],
+      grading: {'Exams': 50, 'Projects': 30, 'Participation': 20},
+      syllabus: ['Ancient Civilizations', 'Modern History', 'Globalization'],
       timeSlot: 'Mon 15:30 - 17:20',
       slotCode: 'M7M8',
       location: 'Humanities Building, Room 305',
@@ -433,11 +356,7 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       midtermDate: 'Oct 22',
       finalDate: 'Dec 20',
       projectDate: 'Dec 6',
-      grading: {
-        'Exams': 40,
-        'Projects': 40,
-        'Participation': 20,
-      },
+      grading: {'Exams': 40, 'Projects': 40, 'Participation': 20},
       syllabus: [
         'Social Structure',
         'Groups and Institutions',
@@ -466,15 +385,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       midtermDate: 'None',
       finalDate: 'Dec 11',
       projectDate: 'Dec 4',
-      grading: {
-        'Projects': 70,
-        'Participation': 30,
-      },
-      syllabus: [
-        'Visual Elements',
-        'Art Appreciation',
-        'Creative Project',
-      ],
+      grading: {'Projects': 70, 'Participation': 30},
+      syllabus: ['Visual Elements', 'Art Appreciation', 'Creative Project'],
       timeSlot: 'Fri 15:30 - 16:20',
       slotCode: 'F7',
       location: 'Arts Center, Room 102',
@@ -498,16 +410,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       midtermDate: 'Oct 23',
       finalDate: 'Dec 24',
       projectDate: 'None',
-      grading: {
-        'Exams': 60,
-        'Homework': 20,
-        'Participation': 20,
-      },
-      syllabus: [
-        'Logic and Argument',
-        'Ethics',
-        'Knowledge and Reality',
-      ],
+      grading: {'Exams': 60, 'Homework': 20, 'Participation': 20},
+      syllabus: ['Logic and Argument', 'Ethics', 'Knowledge and Reality'],
       timeSlot: 'Thu 15:30 - 17:20',
       slotCode: 'R7R8',
       location: 'Humanities Building, Room 406',
@@ -531,11 +435,7 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       midtermDate: 'Oct 16',
       finalDate: 'Dec 19',
       projectDate: 'Dec 8',
-      grading: {
-        'Exams': 35,
-        'Projects': 45,
-        'Participation': 20,
-      },
+      grading: {'Exams': 35, 'Projects': 45, 'Participation': 20},
       syllabus: [
         'Digital Hardware Basics',
         'FPGA Design',
@@ -569,7 +469,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
         (plannedCourse) => plannedCourse.id == course.id,
       );
 
-      final matchesSearch = query.isEmpty ||
+      final matchesSearch =
+          query.isEmpty ||
           course.title.toLowerCase().contains(query) ||
           course.code.toLowerCase().contains(query) ||
           course.professor.toLowerCase().contains(query) ||
@@ -584,7 +485,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
           selectedCredits == null || course.credits == selectedCredits;
 
       final matchesDepartment =
-          selectedDepartment == 'All' || course.department == selectedDepartment;
+          selectedDepartment == 'All' ||
+          course.department == selectedDepartment;
 
       return !alreadyPlanned &&
           matchesSearch &&
@@ -597,12 +499,49 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
   void addCourse(PlannerCourse course) {
     final alreadyAdded = plannedCourses.any((item) => item.id == course.id);
 
-    if (!alreadyAdded) {
-      setState(() {
-        plannedCourses.add(course);
-        selectedTab = 1;
-      });
+    if (alreadyAdded) {
+      return;
     }
+
+    final hasConflict = hasScheduleConflict(course);
+
+    if (hasConflict) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${course.title} conflicts with your current plan.',
+          ),
+          backgroundColor: const Color(0xFFFF2D55),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    setState(() {
+      plannedCourses.add(course);
+
+      // Do NOT switch tab automatically.
+      // selectedTab = 1;  <-- remove this
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${course.title} added to My Plan.',
+        ),
+        backgroundColor: const Color(0xFF7E3291),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+        duration: const Duration(seconds: 1),
+      ),
+    );
   }
 
   void removeCourse(PlannerCourse course) {
@@ -627,7 +566,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       final courseStart = course.startSlot;
       final courseEnd = course.startSlot + course.duration;
 
-      final isOverlapping = plannedStart < courseEnd && courseStart < plannedEnd;
+      final isOverlapping =
+          plannedStart < courseEnd && courseStart < plannedEnd;
 
       if (isOverlapping) {
         return true;
@@ -748,9 +688,7 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
 class _Header extends StatelessWidget {
   final int totalCredits;
 
-  const _Header({
-    required this.totalCredits,
-  });
+  const _Header({required this.totalCredits});
 
   @override
   Widget build(BuildContext context) {
@@ -770,7 +708,9 @@ class _Header extends StatelessWidget {
               ),
               child: const Icon(
                 Icons.chevron_left_rounded,
-                color: Color(0xFF94A3B8),
+                color: Color(
+                  0xFF64748B,
+                ), // Darkened slightly for better contrast
                 size: 26,
               ),
             ),
@@ -780,9 +720,9 @@ class _Header extends StatelessWidget {
             child: Text(
               'Course Planner',
               style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                fontStyle: FontStyle.italic,
+                fontSize: 24, // Increased from 22
+                fontWeight:
+                    FontWeight.w800, // Reduced from w900, removed italic
                 color: Color(0xFF0F172A),
               ),
             ),
@@ -793,18 +733,20 @@ class _Header extends StatelessWidget {
               const Text(
                 'TOTAL CREDITS',
                 style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.5,
-                  color: Color(0xFFCBD5E1),
+                  fontSize: 11, // Increased from 9
+                  fontWeight: FontWeight.w700, // Reduced from w900
+                  letterSpacing: 1.0, // Reduced from 1.5
+                  color: Color(
+                    0xFF94A3B8,
+                  ), // Darkened slightly from CBD5E1 for legibility
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 '$totalCredits',
                 style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
+                  fontSize: 22, // Increased from 20 to balance with main title
+                  fontWeight: FontWeight.w800, // Reduced from w900
                   color: Color(0xFF7E3291),
                 ),
               ),
@@ -831,10 +773,12 @@ class _Tabs extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 28),
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(4), // Inner padding for the "pill" effect
       decoration: BoxDecoration(
         color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(
+          16,
+        ), // Adjusted to 16 for a smooth pill
       ),
       child: Row(
         children: [
@@ -872,14 +816,16 @@ class _TabButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: InkWell(
-        borderRadius: BorderRadius.circular(13),
+        borderRadius: BorderRadius.circular(
+          14,
+        ), // Smoothed from 13 to match outer
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          height: 38,
+          height: 42, // Increased from 38 for a better mobile tap target
           decoration: BoxDecoration(
             color: active ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(13),
+            borderRadius: BorderRadius.circular(14),
             boxShadow: active
                 ? [
                     BoxShadow(
@@ -896,9 +842,9 @@ class _TabButton extends StatelessWidget {
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.3,
+                  fontSize: 12, // Increased from 9 for readability
+                  fontWeight: FontWeight.w700, // Reduced from w900
+                  letterSpacing: 0.5, // Reduced from 1.3
                   color: active
                       ? const Color(0xFF7E3291)
                       : const Color(0xFF94A3B8),
@@ -907,8 +853,8 @@ class _TabButton extends StatelessWidget {
               if (badge > 0 && title == 'MY PLAN') ...[
                 const SizedBox(width: 8),
                 Container(
-                  width: 16,
-                  height: 16,
+                  width: 18, // Increased from 16 to fit larger text
+                  height: 18,
                   decoration: const BoxDecoration(
                     color: Color(0xFF7E3291),
                     shape: BoxShape.circle,
@@ -917,8 +863,8 @@ class _TabButton extends StatelessWidget {
                     child: Text(
                       '$badge',
                       style: const TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w900,
+                        fontSize: 10, // Increased from 9
+                        fontWeight: FontWeight.w700, // Reduced from w900
                         color: Colors.white,
                       ),
                     ),
@@ -967,9 +913,10 @@ class _DiscoverViewState extends State<_DiscoverView> {
 
   @override
   Widget build(BuildContext context) {
-    final hasFilter = widget.selectedType != 'ALL' ||
-    widget.selectedCredits != null ||
-    widget.selectedDepartment != 'All';
+    final hasFilter =
+        widget.selectedType != 'ALL' ||
+        widget.selectedCredits != null ||
+        widget.selectedDepartment != 'All';
 
     final hasSearch = widget.searchQuery.trim().isNotEmpty;
 
@@ -980,7 +927,7 @@ class _DiscoverViewState extends State<_DiscoverView> {
       children: [
         AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          height: 50,
+          height: 52, // Increased slightly from 50
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             color: Colors.white,
@@ -1008,10 +955,10 @@ class _DiscoverViewState extends State<_DiscoverView> {
                 color: isSearchActive
                     ? const Color(0xFF9333EA)
                     : const Color(0xFFCBD5E1),
-                size: 21,
+                size: 22, // Increased slightly
               ),
 
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
 
               Expanded(
                 child: Focus(
@@ -1028,24 +975,18 @@ class _DiscoverViewState extends State<_DiscoverView> {
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
-                      disabledBorder: InputBorder.none,
-                      errorBorder: InputBorder.none,
-                      focusedErrorBorder: InputBorder.none,
                       isDense: true,
-                      filled: true,
-                      fillColor: Colors.transparent,
                       contentPadding: EdgeInsets.zero,
                       hintStyle: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 14, // Increased from 13
+                        fontWeight: FontWeight.w500, // Reduced from w700
                         color: Color(0xFFCBD5E1),
                       ),
                     ),
                     style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 14, // Increased from 13
+                      fontWeight: FontWeight.w600, // Reduced from w700
                       color: Color(0xFF0F172A),
-                      backgroundColor: Colors.transparent,
                     ),
                   ),
                 ),
@@ -1057,6 +998,7 @@ class _DiscoverViewState extends State<_DiscoverView> {
                 borderRadius: BorderRadius.circular(99),
                 onTap: widget.onFilterTap,
                 child: Stack(
+                  alignment: Alignment.center,
                   clipBehavior: Clip.none,
                   children: [
                     Icon(
@@ -1064,18 +1006,19 @@ class _DiscoverViewState extends State<_DiscoverView> {
                       color: hasFilter
                           ? const Color(0xFF7E3291)
                           : const Color(0xFF94A3B8),
-                      size: 22,
+                      size: 24, // Increased slightly
                     ),
                     if (hasFilter)
                       Positioned(
-                        right: -2,
-                        top: -2,
+                        right: 0,
+                        top: 0,
                         child: Container(
-                          width: 7,
-                          height: 7,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF7E3291),
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF7E3291),
                             shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 1.5),
                           ),
                         ),
                       ),
@@ -1086,22 +1029,22 @@ class _DiscoverViewState extends State<_DiscoverView> {
           ),
         ),
 
-        const SizedBox(height: 20),
+        const SizedBox(height: 24), // Increased from 20
 
         const Row(
           children: [
             Icon(
               Icons.auto_awesome_rounded,
-              size: 15,
+              size: 16, // Increased slightly
               color: Color(0xFF7E3291),
             ),
             SizedBox(width: 8),
             Text(
               'RECOMMENDED FOR YOU',
               style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.6,
+                fontSize: 11, // Increased from 9
+                fontWeight: FontWeight.w700, // Reduced from w900
+                letterSpacing: 0.8, // Reduced from 1.6
                 color: Color(0xFF94A3B8),
               ),
             ),
@@ -1122,27 +1065,41 @@ class _DiscoverViewState extends State<_DiscoverView> {
               child: Text(
                 'No courses found.',
                 style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 14, // Increased from 13
+                  fontWeight: FontWeight.w600, // Reduced from w800
                   color: Color(0xFF94A3B8),
                 ),
               ),
             ),
           )
         else
-          ...widget.courses.map(
-            (course) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 14),
-                child: PlannerCourseCard(
-                  course: course,
-                  hasConflict: widget.hasConflict(course),
-                  onTap: () => widget.onCourseTap(course),
-                  onAdd: () => widget.onAddCourse(course),
-                ),
-              );
-            },
-          ),
+          ...widget.courses.map((course) {
+            final conflict = widget.hasConflict(course);
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: PlannerCourseCard(
+                course: course,
+                hasConflict: conflict,
+                onTap: () => widget.onCourseTap(course),
+                onAdd: conflict
+                    ? () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              '${course.title} conflicts with your current plan.',
+                            ),
+                            backgroundColor: const Color(0xFFFF2D55),
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        );
+                      }
+                    : () => widget.onAddCourse(course),
+              ),
+            );
+          }),
       ],
     );
   }
@@ -1176,10 +1133,7 @@ class _MyPlanView extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: const Color(0xFFF3E8FF),
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: const Color(0xFFE9D5FF),
-                    width: 3,
-                  ),
+                  border: Border.all(color: const Color(0xFFE9D5FF), width: 3),
                 ),
                 child: const Icon(
                   Icons.assignment_outlined,
@@ -1187,48 +1141,47 @@ class _MyPlanView extends StatelessWidget {
                   size: 36,
                 ),
               ),
-              const SizedBox(height: 22),
+              const SizedBox(height: 24),
               const Text(
                 'Your plan is empty',
                 style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
+                  fontSize: 18, // Increased from 15
+                  fontWeight: FontWeight.w800, // Reduced from w900
                   color: Color(0xFF020617),
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               const Text(
                 'Search and add courses to start planning your\nacademic journey.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 13, // Increased from 11
                   height: 1.5,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w500, // Reduced from w600
                   color: Color(0xFF94A3B8),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
               ElevatedButton(
                 onPressed: onBrowse,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF7E3291),
                   foregroundColor: Colors.white,
-                  elevation: 8,
-                  shadowColor: const Color(0xFF7E3291).withOpacity(0.35),
+                  elevation: 0, // Flattened to match modern UI
                   padding: const EdgeInsets.symmetric(
                     horizontal: 34,
-                    vertical: 16,
+                    vertical: 18,
                   ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(16), // Unified to 16
                   ),
                 ),
                 child: const Text(
                   'BROWSE COURSES',
                   style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1,
+                    fontSize: 14, // Increased from 10
+                    fontWeight: FontWeight.w700, // Reduced from w900
+                    letterSpacing: 0.5, // Reduced from 1
                   ),
                 ),
               ),
@@ -1245,58 +1198,53 @@ class _MyPlanView extends StatelessWidget {
           children: [
             Icon(
               Icons.calendar_month_outlined,
-              size: 14,
+              size: 16, // Increased slightly
               color: Color(0xFF7E3291),
             ),
             SizedBox(width: 8),
             Text(
               'WEEKLY SCHEDULE',
               style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.6,
+                fontSize: 11, // Increased from 9
+                fontWeight: FontWeight.w700, // Reduced from w900
+                letterSpacing: 0.8, // Reduced from 1.6
                 color: Color(0xFF94A3B8),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
+        // Note: Using the alias or prefix if necessary for the custom grid
         schedule.PlannerScheduleGrid(
           courses: plannedCourses,
           onRemove: onRemove,
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 32), // Increased from 24
         const Row(
           children: [
-            Icon(
-              Icons.assignment_outlined,
-              size: 14,
-              color: Color(0xFF7E3291),
-            ),
+            Icon(Icons.assignment_outlined, size: 16, color: Color(0xFF7E3291)),
             SizedBox(width: 8),
             Text(
               'COURSE LIST',
               style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.6,
+                fontSize: 11, // Increased from 9
+                fontWeight: FontWeight.w700, // Reduced from w900
+                letterSpacing: 0.8,
                 color: Color(0xFF94A3B8),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        ...plannedCourses.map(
-          (course) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: PlannedCourseCard(
-                course: course,
-                onRemove: () => onRemove(course),
-              ),
-            );
-          },
-        ),
+        const SizedBox(height: 14),
+        ...plannedCourses.map((course) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: PlannedCourseCard(
+              course: course,
+              onRemove: () => onRemove(course),
+            ),
+          );
+        }),
         const SizedBox(height: 12),
         PlannerEnrollCard(
           courseCount: plannedCourses.length,

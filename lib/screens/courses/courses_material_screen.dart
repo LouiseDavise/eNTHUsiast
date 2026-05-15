@@ -113,9 +113,8 @@ class CourseMaterialsScreen extends StatelessWidget {
                   const Text(
                     'Course Materials',
                     style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      fontStyle: FontStyle.italic,
+                      fontSize: 24, // Increased from 22
+                      fontWeight: FontWeight.w800, // Reduced from w900, removed italic
                       color: Color(0xFF0F172A),
                     ),
                   ),
@@ -228,28 +227,27 @@ class _Header extends StatelessWidget {
             course.title,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              fontStyle: FontStyle.italic,
+              fontSize: 24, // Increased from 22
+              fontWeight: FontWeight.w800, // Reduced from w900, removed italic
               color: Color(0xFF0F172A),
             ),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 10), // Slightly increased spacing
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5), // Increased vertical padding
           decoration: BoxDecoration(
             color: isElearn
                 ? const Color(0xFFDBEAFE)
                 : const Color(0xFFFFEDD5),
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(8), // Softened from 6 to 8
           ),
           child: Text(
             course.platform.toUpperCase(),
             style: TextStyle(
-              fontSize: 8,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.8,
+              fontSize: 10, // Increased from 8
+              fontWeight: FontWeight.w700, // Reduced from w900
+              letterSpacing: 0.5, // Reduced from 0.8
               color: isElearn
                   ? const Color(0xFF2563EB)
                   : const Color(0xFFF97316),
@@ -274,18 +272,21 @@ class _UnitTitle extends StatelessWidget {
       children: [
         Container(
           width: 22,
-          height: 2,
-          color: const Color(0xFFD8B4FE),
+          height: 3, // Slightly thicker line to match larger text
+          decoration: BoxDecoration(
+            color: const Color(0xFFD8B4FE),
+            borderRadius: BorderRadius.circular(99),
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Text(
             title.toUpperCase(),
             style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 2,
-              color: Color(0xFF94A3B8),
+              fontSize: 12, // Increased from 10
+              fontWeight: FontWeight.w700, // Reduced from w900
+              letterSpacing: 1.0, // Reduced from 2.0
+              color: Color(0xFF64748B), // Slightly darker gray for better legibility
             ),
           ),
         ),
@@ -307,16 +308,16 @@ class _CircleBackButton extends StatelessWidget {
       borderRadius: BorderRadius.circular(100),
       onTap: onTap,
       child: Container(
-        width: 36,
-        height: 36,
+        width: 38, // Slightly increased from 36
+        height: 38,
         decoration: const BoxDecoration(
           color: Colors.white,
           shape: BoxShape.circle,
         ),
         child: const Icon(
           Icons.chevron_left_rounded,
-          color: Color(0xFF94A3B8),
-          size: 25,
+          color: Color(0xFF64748B), // Darkened slightly from 94A3B8
+          size: 26,
         ),
       ),
     );

@@ -28,8 +28,7 @@ class CoursesScreen extends StatelessWidget {
                 '115 Spring',
                 style: TextStyle(
                   fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  fontStyle: FontStyle.italic,
+                  fontWeight: FontWeight.w800, // Reduced from w900, removed italic
                   color: Color(0xFF111827),
                   letterSpacing: -0.5,
                 ),

@@ -47,7 +47,7 @@ class PlannedCourseCard extends StatelessWidget {
                   course.title,
                   style: const TextStyle(
                     fontSize: 16,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700, // Reduced from w900
                     color: Color(0xFF020617),
                   ),
                 ),
@@ -55,9 +55,9 @@ class PlannedCourseCard extends StatelessWidget {
                 Text(
                   '${course.code} • ${course.credits} CREDITS',
                   style: const TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1,
+                    fontSize: 12, // Increased from 9
+                    fontWeight: FontWeight.w600, // Reduced from w900
+                    letterSpacing: 0.5, // Softened from 1.0
                     color: Color(0xFF94A3B8),
                   ),
                 ),
