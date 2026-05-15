@@ -340,34 +340,69 @@ class _CourseBlock extends StatelessWidget {
     required this.onRemove,
   });
 
+  Color _softBackground(Color color) {
+    return Color.alphaBlend(
+      color.withValues(alpha: 0.12),
+      Colors.white,
+    );
+  }
+
+  Color _softBorder(Color color) {
+    return color.withValues(alpha: 0.55);
+  }
+
+  Color _strongText(Color color) {
+    return Color.alphaBlend(
+      color.withValues(alpha: 0.85),
+      Colors.black,
+    );
+  }
+
+  String _shortLocation(String location) {
+    if (location.contains(',')) {
+      return location.split(',').last.trim();
+    }
+
+    return location;
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isCompact = constraints.maxHeight < 80;
+        final isShort = constraints.maxHeight < 80;
+        final isNarrow = constraints.maxWidth < 42;
+
+        final bgColor = _softBackground(course.color);
+        final borderColor = hasConflict
+            ? const Color(0xFFFF2D55)
+            : _softBorder(course.color);
+        final textColor = _strongText(course.color);
+
+        final titleFontSize = isNarrow ? 6.6 : 7.4;
+        final codeFontSize = isNarrow ? 6.2 : 6.8;
+        final locationFontSize = isNarrow ? 5.6 : 6.2;
 
         return ClipRRect(
           borderRadius: BorderRadius.circular(12),
           child: Container(
-            padding: EdgeInsets.all(isCompact ? 5 : 7),
+            padding: EdgeInsets.all(isNarrow ? 5 : 6),
             decoration: BoxDecoration(
-              color: course.color,
+              color: bgColor,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: hasConflict
-                    ? const Color(0xFFFF2D55)
-                    : Colors.black.withValues(alpha: 0.12),
-                width: hasConflict ? 1.3 : 1,
+                color: borderColor,
+                width: hasConflict ? 1.4 : 1.2,
               ),
-              boxShadow: hasConflict
-                  ? [
-                      BoxShadow(
-                        color: const Color(0xFFFF2D55).withValues(alpha: 0.18),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                    ]
-                  : [],
+              boxShadow: [
+                BoxShadow(
+                  color: hasConflict
+                      ? const Color(0xFFFF2D55).withValues(alpha: 0.12)
+                      : course.color.withValues(alpha: 0.08),
+                  blurRadius: 6,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
             child: Stack(
               clipBehavior: Clip.hardEdge,
@@ -376,50 +411,58 @@ class _CourseBlock extends StatelessWidget {
                   left: 0,
                   top: 0,
                   right: 0,
-                  bottom: isCompact ? 18 : 22,
+                  bottom: isShort ? 18 : 22,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        course.code,
-                        maxLines: 1,
+                        course.title,
+                        maxLines: isShort ? 2 : 3,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: isCompact ? 6.5 : 7,
-                          height: 1.0,
+                          fontSize: titleFontSize,
+                          height: 1.08,
                           fontWeight: FontWeight.w900,
-                          color: Colors.black,
+                          color: textColor,
                         ),
                       ),
 
-                      if (!isCompact) const SizedBox(height: 2),
+                      const SizedBox(height: 3),
 
-                      Flexible(
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 3,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.45),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
                         child: Text(
-                          course.title,
-                          maxLines: isCompact ? 1 : 2,
+                          course.code,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: isCompact ? 6.5 : 7,
+                            fontSize: codeFontSize,
                             height: 1.0,
                             fontWeight: FontWeight.w900,
-                            color: Colors.black,
+                            color: textColor.withValues(alpha: 0.78),
                           ),
                         ),
                       ),
 
-                      if (!isCompact) ...[
-                        const SizedBox(height: 2),
+                      if (!isShort) ...[
+                        const SizedBox(height: 3),
                         Flexible(
                           child: Text(
-                            course.location,
-                            maxLines: 2,
+                            _shortLocation(course.location),
+                            maxLines: isNarrow ? 1 : 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 6,
-                              height: 1.0,
+                              fontSize: locationFontSize,
+                              height: 1.08,
                               fontWeight: FontWeight.w800,
-                              color: Colors.black.withValues(alpha: 0.75),
+                              color: textColor.withValues(alpha: 0.65),
                             ),
                           ),
                         ),
@@ -428,7 +471,7 @@ class _CourseBlock extends StatelessWidget {
                   ),
                 ),
 
-                if (hasConflict && !isCompact)
+                if (hasConflict)
                   Positioned(
                     left: 0,
                     bottom: 0,
@@ -463,16 +506,19 @@ class _CourseBlock extends StatelessWidget {
                       }
                     },
                     child: Container(
-                      width: isCompact ? 16 : 18,
-                      height: isCompact ? 16 : 18,
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
+                      width: isNarrow ? 15 : 18,
+                      height: isNarrow ? 15 : 18,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.92),
                         shape: BoxShape.circle,
+                        border: Border.all(
+                          color: borderColor.withValues(alpha: 0.35),
+                        ),
                       ),
                       child: Icon(
                         Icons.close_rounded,
-                        size: isCompact ? 10 : 12,
-                        color: const Color(0xFF94A3B8),
+                        size: isNarrow ? 9 : 12,
+                        color: textColor.withValues(alpha: 0.65),
                       ),
                     ),
                   ),
