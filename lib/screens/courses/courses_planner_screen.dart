@@ -499,12 +499,49 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
   void addCourse(PlannerCourse course) {
     final alreadyAdded = plannedCourses.any((item) => item.id == course.id);
 
-    if (!alreadyAdded) {
-      setState(() {
-        plannedCourses.add(course);
-        selectedTab = 1;
-      });
+    if (alreadyAdded) {
+      return;
     }
+
+    final hasConflict = hasScheduleConflict(course);
+
+    if (hasConflict) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${course.title} conflicts with your current plan.',
+          ),
+          backgroundColor: const Color(0xFFFF2D55),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    setState(() {
+      plannedCourses.add(course);
+
+      // Do NOT switch tab automatically.
+      // selectedTab = 1;  <-- remove this
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${course.title} added to My Plan.',
+        ),
+        backgroundColor: const Color(0xFF7E3291),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+        duration: const Duration(seconds: 1),
+      ),
+    );
   }
 
   void removeCourse(PlannerCourse course) {
@@ -1037,13 +1074,29 @@ class _DiscoverViewState extends State<_DiscoverView> {
           )
         else
           ...widget.courses.map((course) {
+            final conflict = widget.hasConflict(course);
             return Padding(
               padding: const EdgeInsets.only(bottom: 14),
               child: PlannerCourseCard(
                 course: course,
-                hasConflict: widget.hasConflict(course),
+                hasConflict: conflict,
                 onTap: () => widget.onCourseTap(course),
-                onAdd: () => widget.onAddCourse(course),
+                onAdd: conflict
+                    ? () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              '${course.title} conflicts with your current plan.',
+                            ),
+                            backgroundColor: const Color(0xFFFF2D55),
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        );
+                      }
+                    : () => widget.onAddCourse(course),
               ),
             );
           }),
