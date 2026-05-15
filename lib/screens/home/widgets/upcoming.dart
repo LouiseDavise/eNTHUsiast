@@ -192,13 +192,13 @@ class _UpcomingTaskItemState extends State<_UpcomingTaskItem> {
           Padding(
             padding: const EdgeInsets.only(left: 20),
             child: widget.isCompleted
-                ? const Icon(Icons.undo_rounded, color: Colors.white, size: 28)
+                ? const SizedBox.shrink()
                 : _buildCelebrationWidget(),
           ),
           Padding(
             padding: const EdgeInsets.only(right: 20),
             child: widget.isCompleted
-                ? const Icon(Icons.undo_rounded, color: Colors.white, size: 28)
+                ? const SizedBox.shrink()
                 : _buildCelebrationWidget(),
           ),
         ],
