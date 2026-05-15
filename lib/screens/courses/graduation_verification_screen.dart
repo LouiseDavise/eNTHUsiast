@@ -263,6 +263,7 @@ class GraduationVerificationScreen extends StatelessWidget {
 
                   const SizedBox(height: 28),
 
+                  // 假設 dummyCategories 定義在你的 schedule_data.dart 或是 state 中
                   ...dummyCategories.map(
                     (category) {
                       return Padding(
@@ -309,7 +310,7 @@ class _Header extends StatelessWidget {
               ),
               child: const Icon(
                 Icons.chevron_left_rounded,
-                color: Color(0xFF94A3B8),
+                color: Color(0xFF64748B), // Darkened slightly for better contrast
                 size: 26,
               ),
             ),
@@ -323,9 +324,8 @@ class _Header extends StatelessWidget {
               Text(
                 'EECS-GS',
                 style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  fontStyle: FontStyle.italic,
+                  fontSize: 22, // Increased from 18
+                  fontWeight: FontWeight.w800, // Reduced from w900, removed italic
                   color: Color(0xFF0F172A),
                 ),
               ),
@@ -333,9 +333,9 @@ class _Header extends StatelessWidget {
               Text(
                 'GRADUATION VERIFICATION',
                 style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2,
+                  fontSize: 11, // Increased from 9
+                  fontWeight: FontWeight.w700, // Reduced from w900
+                  letterSpacing: 1.0, // Reduced from 2.0
                   color: Color(0xFF94A3B8),
                 ),
               ),

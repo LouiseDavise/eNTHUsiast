@@ -108,9 +108,9 @@ class _MenuSquareButtonState extends State<MenuSquareButton> {
                 duration: const Duration(milliseconds: 180),
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 13,
-                  height: 1.1,
-                  fontWeight: FontWeight.w900,
+                  fontSize: 14, // Increased from 13
+                  height: 1.2, // Increased from 1.1 for better line height if it wraps
+                  fontWeight: FontWeight.w600, // Reduced from w900 for a cleaner UI
                   color: isActive
                       ? widget.activeColor
                       : const Color(0xFF111827),

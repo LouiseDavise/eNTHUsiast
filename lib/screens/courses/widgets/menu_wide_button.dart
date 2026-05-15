@@ -109,12 +109,13 @@ class _MenuWideButtonState extends State<MenuWideButton> {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     AnimatedDefaultTextStyle(
                       duration: const Duration(milliseconds: 180),
                       style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
+                        fontSize: 16, // Increased from 15
+                        fontWeight: FontWeight.w600, // Reduced from w900
                         color: isActive
                             ? widget.activeColor
                             : const Color(0xFF111827),
@@ -122,14 +123,14 @@ class _MenuWideButtonState extends State<MenuWideButton> {
                       child: Text(widget.title),
                     ),
 
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 4), // Adjusted from 5 for tighter grouping
 
                     Text(
                       widget.subtitle,
                       style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1,
+                        fontSize: 12, // Increased from 10
+                        fontWeight: FontWeight.w600, // Reduced from w800
+                        letterSpacing: 0.5, // Reduced from 1.0
                         color: Color(0xFF94A3B8),
                       ),
                     ),
