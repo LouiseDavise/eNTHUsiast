@@ -69,7 +69,7 @@ class DayDetailsPopup extends StatelessWidget {
                               child: Text(e.type.toUpperCase(), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1.5)),
                             ),
                             const SizedBox(height: 12),
-                            Text(e.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                            Text(e.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black)),
                             Text(e.code, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 1.5)),
                             const SizedBox(height: 16),
                             Row(

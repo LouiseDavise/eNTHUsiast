@@ -7,7 +7,8 @@ class CalendarWidget extends StatefulWidget {
   final DateTime currentDate;
   final DateTime selectedDate;
   final Function(DateTime) onDateSelected;
-  final Function(int) onNavigate; // +1 or -1 week/month
+  // CHANGED: Now returns the calculated new DateTime instead of an int (+1/-1)
+  final Function(DateTime) onNavigate; 
 
   const CalendarWidget({
     Key? key,
@@ -23,10 +24,27 @@ class CalendarWidget extends StatefulWidget {
 
 class _CalendarWidgetState extends State<CalendarWidget> {
   bool _showFullCalendar = false;
+  double _dragDistance = 0;
 
   // Helper: Format date as YYYY-MM-DD
   String _formatDateKey(DateTime date) {
     return "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+  }
+
+  // Handle Context-Aware Navigation (Week vs Month)
+  void _handleNavigation(int step) {
+    DateTime newDate;
+    DateTime cleanDate = DateUtils.dateOnly(widget.currentDate);
+    if (_showFullCalendar) {
+      newDate = DateTime(cleanDate.year, cleanDate.month + step, 1);
+    } else {
+      newDate = DateTime(
+        cleanDate.year, 
+        cleanDate.month, 
+        cleanDate.day + (7 * step)
+      );
+    }
+    widget.onNavigate(newDate);
   }
 
   // Get Priority Dots for a specific date
@@ -84,8 +102,22 @@ class _CalendarWidgetState extends State<CalendarWidget> {
 
   // Generate Week View Days
   List<DateTime> _getWeekDays() {
-    final startOfWeek = widget.currentDate.subtract(Duration(days: widget.currentDate.weekday % 7));
-    return List.generate(7, (index) => startOfWeek.add(Duration(days: index)));
+    DateTime cleanDate = DateUtils.dateOnly(widget.currentDate);
+    int offset = widget.currentDate.weekday % 7;
+    
+    // FIX: Safely calculate Sunday (Start of Week)
+    DateTime startOfWeek = DateTime(
+      cleanDate.year, 
+      cleanDate.month, 
+      cleanDate.day - offset
+    );
+
+    // Generate the 7 days of the week explicitly
+    return List.generate(7, (index) => DateTime(
+      startOfWeek.year, 
+      startOfWeek.month, 
+      startOfWeek.day + index
+    ));
   }
 
   // Generate Month View Days (Including padding for previous/next month)
@@ -144,10 +176,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                   const SizedBox(width: 12),
                   const Text(
                     "Calendar",
-                    style: TextStyle(
-                      fontSize: 20, 
-                      fontWeight: FontWeight.w900,
-                      color: Colors.black),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.black),
                   ),
                 ],
               ),
@@ -175,7 +204,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconButton(
-                onPressed: () => widget.onNavigate(-1),
+                onPressed: () => _handleNavigation(-1), // Updated
                 icon: Icon(Icons.chevron_left_rounded, color: Colors.grey.shade400),
               ),
               SizedBox(
@@ -183,11 +212,11 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                 child: Text(
                   currentMonthYear,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.black87),
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.black),
                 ),
               ),
               IconButton(
-                onPressed: () => widget.onNavigate(1),
+                onPressed: () => _handleNavigation(1), // Updated
                 icon: Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
               ),
             ],
@@ -211,59 +240,70 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     final today = DateTime.now();
 
     return GestureDetector(
-      onHorizontalDragEnd: (details) {
-        if (details.primaryVelocity! > 0) widget.onNavigate(-1);
-        if (details.primaryVelocity! < 0) widget.onNavigate(1);
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragUpdate: (details) {
+        _dragDistance += details.primaryDelta!;
       },
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: weekDays.map((date) {
-          final isSelected = DateUtils.isSameDay(date, widget.selectedDate);
-          final isToday = DateUtils.isSameDay(date, today);
+      onHorizontalDragEnd: (details) {
+        if (_dragDistance > 40 || details.primaryVelocity! > 300) {
+          _handleNavigation(-1); 
+        } else if (_dragDistance < -40 || details.primaryVelocity! < -300) {
+          _handleNavigation(1);
+        }
+        _dragDistance = 0;
+      },
+      child: Container(
+        color: Colors.transparent,
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: weekDays.map((date) {
+            final isSelected = DateUtils.isSameDay(date, widget.selectedDate);
+            final isToday = DateUtils.isSameDay(date, today);
 
-          return GestureDetector(
-            onTap: () => widget.onDateSelected(date),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 42,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                color: isSelected ? nthuPurple : (isToday ? Colors.white : Colors.white),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: isSelected ? nthuPurple : (isToday ? nthuPurple : Colors.grey.shade50),
-                  width: 2,
+            return GestureDetector(
+              onTap: () => widget.onDateSelected(date),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 42,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                decoration: BoxDecoration(
+                  color: isSelected ? nthuPurple : Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: isToday && !isSelected
+                      ? Border.all(color: nthuPurple, width: 2)
+                      : Border.all(color: isSelected ? nthuPurple : Colors.grey.shade50, width: 2),
+                  boxShadow: isSelected
+                      ? [BoxShadow(color: nthuPurple.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 6))]
+                      : [],
                 ),
-                boxShadow: isSelected ? [
-                  BoxShadow(color: nthuPurple.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 6))
-                ] : [],
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    DateFormat('E').format(date).toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w900,
-                      color: isSelected ? Colors.white : Colors.grey.shade400,
+                child: Column(
+                  children: [
+                    Text(
+                      DateFormat('E').format(date).toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                        color: isSelected ? Colors.white : (isToday ? nthuPurple : Colors.grey.shade400),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "${date.day}",
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                      color: isSelected ? Colors.white : Colors.black87,
+                    const SizedBox(height: 4),
+                    Text(
+                      "${date.day}",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        color: isSelected ? Colors.white : Colors.black87,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  _buildEventDots(date, isSelected),
-                ],
+                    const SizedBox(height: 4),
+                    _buildEventDots(date, isSelected),
+                  ],
+                ),
               ),
-            ),
-          );
-        }).toList(),
+            );
+          }).toList(),
+        ),
       ),
     );
   }
@@ -314,7 +354,6 @@ class _CalendarWidgetState extends State<CalendarWidget> {
               return GestureDetector(
                 onTap: () {
                   widget.onDateSelected(date);
-                  setState(() => _showFullCalendar = false); // Auto-close on select
                 },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
@@ -331,7 +370,8 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w900,
-                          color: isSelected ? Colors.white : Colors.black87,
+                          // UPDATED: Make the day number purple if it's today
+                          color: isSelected ? Colors.white : (isToday ? nthuPurple : Colors.black87),
                         ),
                       ),
                       const SizedBox(height: 2),

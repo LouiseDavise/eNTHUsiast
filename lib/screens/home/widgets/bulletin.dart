@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../utilities/data.dart';
 import '../utilities/models.dart';
+import 'package:flutter/gestures.dart'; // <-- FIX 3: Required for pointer devices
 
 class BulletinWidget extends StatefulWidget {
   final bool isCollapsed;
@@ -157,6 +158,13 @@ class _BulletinWidgetState extends State<BulletinWidget> {
                         height: 180, // aspect-[16/9] approximation
                         child: PageView.builder(
                           controller: _pageController,
+                          scrollBehavior: ScrollConfiguration.of(context).copyWith(
+                            dragDevices: {
+                              PointerDeviceKind.touch,
+                              PointerDeviceKind.mouse,
+                              PointerDeviceKind.trackpad,
+                            },
+                          ),
                           onPageChanged: (index) {
                             setState(() => _currentIndex = index);
                             _startTimer(); // Reset timer on manual swipe

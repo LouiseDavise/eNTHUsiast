@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../utilities/data.dart';
 import '../utilities/models.dart';
@@ -18,7 +19,6 @@ class UpcomingTasksWidget extends StatelessWidget {
 
   String _formatCountdown(DateTime dueDate) {
     final now = DateTime.now();
-    // Replicating TSX logic to set time to end of day for due date
     final deadline = DateTime(dueDate.year, dueDate.month, dueDate.day, 23, 59, 59);
     final diff = deadline.difference(now);
 
@@ -77,8 +77,6 @@ class UpcomingTasksWidget extends StatelessWidget {
                   color: Colors.black),
               ),
               const Spacer(),
-              // (Sort & Filter menus would go here - handled in Main Screen state usually, 
-              // but for brevity we'll leave placeholder buttons)
               IconButton(
                 icon: const Icon(Icons.swap_vert_rounded, color: nthuPurple),
                 onPressed: () {},
@@ -96,7 +94,7 @@ class UpcomingTasksWidget extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Colors.grey.shade50.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(32),
-                border: Border.all(color: Colors.grey.shade100, style: BorderStyle.solid), // Changed from dashed since flutter doesn't natively support dashed borders without custom painters
+                border: Border.all(color: Colors.grey.shade100, style: BorderStyle.solid), 
               ),
               child: const Text(
                 "NO MATCHING EVENTS",
@@ -114,129 +112,12 @@ class UpcomingTasksWidget extends StatelessWidget {
                 final task = filteredEvents[index];
                 final isCompleted = completedTaskIds.contains(task.id);
 
-                return Dismissible(
-                  key: Key(task.id),
-                  direction: DismissDirection.horizontal,
-                  onDismissed: (_) {
-                    onToggleComplete(task.id);
-                  },
-                  background: Container(
-                    alignment: Alignment.centerLeft,
-                    padding: const EdgeInsets.only(left: 20),
-                    decoration: BoxDecoration(color: Colors.green, borderRadius: BorderRadius.circular(24)),
-                    child: const Icon(Icons.check_circle_rounded, color: Colors.white),
-                  ),
-                  secondaryBackground: Container(
-                    alignment: Alignment.centerRight,
-                    padding: const EdgeInsets.only(right: 20),
-                    decoration: BoxDecoration(color: Colors.green, borderRadius: BorderRadius.circular(24)),
-                    child: const Icon(Icons.check_circle_rounded, color: Colors.white),
-                  ),
-                  child: GestureDetector(
-                    onTap: () {
-                      if (!isCompleted) onTaskTap(task);
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      foregroundDecoration: isCompleted
-                          ? BoxDecoration(
-                              color: Colors.white.withOpacity(0.5),
-                              backgroundBlendMode: BlendMode.saturation,
-                            )
-                          : null,
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 6,
-                            height: 60,
-                            decoration: BoxDecoration(
-                              color: task.color,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      task.code.toUpperCase(),
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 1.5,
-                                        color: isCompleted ? Colors.grey : nthuPurple.withOpacity(0.6),
-                                      ),
-                                    ),
-                                    if (!isCompleted)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: Colors.orange.shade50,
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Text(
-                                          _formatCountdown(task.dueDate),
-                                          style: TextStyle(
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.w900,
-                                            letterSpacing: -0.5,
-                                            color: Colors.orange.shade600,
-                                          ),
-                                        ),
-                                      )
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  task.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: isCompleted ? Colors.grey : Colors.black87,
-                                    decoration: isCompleted ? TextDecoration.lineThrough : null,
-                                  ),
-                                ),
-                                if (!isCompleted) ...[
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(4),
-                                          child: LinearProgressIndicator(
-                                            value: task.progress / 100,
-                                            backgroundColor: Colors.grey.shade200,
-                                            valueColor: AlwaysStoppedAnimation<Color>(task.color),
-                                            minHeight: 4,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        "${task.progress}%",
-                                        style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: Colors.grey),
-                                      )
-                                    ],
-                                  )
-                                ]
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                return _UpcomingTaskItem(
+                  task: task,
+                  isCompleted: isCompleted,
+                  countdownStr: _formatCountdown(task.dueDate),
+                  onToggleComplete: onToggleComplete,
+                  onTaskTap: onTaskTap,
                 );
               },
             ),
@@ -244,4 +125,270 @@ class UpcomingTasksWidget extends StatelessWidget {
       ),
     );
   }
+}
+
+// ----------------------------------------------------------------------
+// NEW: Stateful Widget to track Drag Progress for the Confetti Animation
+// ----------------------------------------------------------------------
+class _UpcomingTaskItem extends StatefulWidget {
+  final AppEvent task;
+  final bool isCompleted;
+  final String countdownStr;
+  final Function(String) onToggleComplete;
+  final Function(AppEvent) onTaskTap;
+
+  const _UpcomingTaskItem({
+    Key? key,
+    required this.task,
+    required this.isCompleted,
+    required this.countdownStr,
+    required this.onToggleComplete,
+    required this.onTaskTap,
+  }) : super(key: key);
+
+  @override
+  State<_UpcomingTaskItem> createState() => _UpcomingTaskItemState();
+}
+
+class _UpcomingTaskItemState extends State<_UpcomingTaskItem> {
+  double _swipeProgress = 0.0;
+
+  // Builds the dynamic confetti WITHOUT the tick symbol
+  Widget _buildCelebrationWidget() {
+    double burstProgress = ((_swipeProgress - 0.15) / 0.4).clamp(0.0, 1.0);
+    double opacity = 1.0 - ((_swipeProgress - 0.7) / 0.3).clamp(0.0, 1.0);
+
+    return SizedBox(
+      width: 56,
+      height: 56,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Confetti particle painter
+          if (_swipeProgress > 0.15)
+            Opacity(
+              opacity: opacity,
+              child: CustomPaint(
+                size: const Size(56, 56),
+                painter: _ParticlePainter(progress: burstProgress),
+              ),
+            ),
+          // FIX 2: The tick (check_circle_rounded) has been completely removed from here
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        // 1. STATIC BACKGROUND (Rounded and hosts the animation)
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.green,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(left: 16),
+                  child: _buildCelebrationWidget(),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 16),
+                  child: _buildCelebrationWidget(),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // 2. THE SWIPABLE CARD
+        Dismissible(
+          key: Key(widget.task.id),
+          direction: DismissDirection.horizontal,
+          onUpdate: (details) {
+            setState(() {
+              _swipeProgress = details.progress;
+            });
+          },
+          // FIX 1: Use confirmDismiss instead of onDismissed
+          confirmDismiss: (direction) async {
+            // Trigger the completion toggle
+            widget.onToggleComplete(widget.task.id);
+            
+            // Reset swipe progress state
+            setState(() {
+              _swipeProgress = 0.0;
+            });
+            
+            // Return FALSE to tell Flutter NOT to remove the widget from the tree.
+            // This makes the card gracefully snap back into place while updating its state.
+            return false; 
+          },
+          background: const SizedBox.shrink(),
+          secondaryBackground: const SizedBox.shrink(),
+          child: GestureDetector(
+            onTap: () {
+              if (!widget.isCompleted) widget.onTaskTap(widget.task);
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              foregroundDecoration: widget.isCompleted
+                  ? BoxDecoration(
+                      color: Colors.white.withOpacity(0.5),
+                      backgroundBlendMode: BlendMode.saturation,
+                      borderRadius: BorderRadius.circular(24),
+                    )
+                  : null,
+              child: Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: widget.task.color,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              widget.task.code.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.5,
+                                color: widget.isCompleted ? Colors.grey : nthuPurple.withOpacity(0.6),
+                              ),
+                            ),
+                            if (!widget.isCompleted)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.shade50,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  widget.countdownStr,
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: -0.5,
+                                    color: Colors.orange.shade600,
+                                  ),
+                                ),
+                              )
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.task.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: widget.isCompleted ? Colors.grey : Colors.black87,
+                            decoration: widget.isCompleted ? TextDecoration.lineThrough : null,
+                          ),
+                        ),
+                        if (!widget.isCompleted) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: LinearProgressIndicator(
+                                    value: widget.task.progress / 100,
+                                    backgroundColor: Colors.grey.shade200,
+                                    valueColor: AlwaysStoppedAnimation<Color>(widget.task.color),
+                                    minHeight: 4,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                "${widget.task.progress}%",
+                                style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: Colors.grey),
+                              )
+                            ],
+                          )
+                        ]
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ----------------------------------------------------------------------
+// NEW: Custom Painter for the Confetti Particles
+// ----------------------------------------------------------------------
+class _ParticlePainter extends CustomPainter {
+  final double progress;
+
+  _ParticlePainter({required this.progress});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    // Vibrant colors that pop against the green background
+    final colors = [
+      Colors.white, 
+      Colors.yellowAccent, 
+      Colors.pink.shade200, 
+      Colors.cyanAccent, 
+      Colors.orangeAccent, 
+      Colors.white
+    ];
+    final paint = Paint()..style = PaintingStyle.fill;
+
+    // Draw 6 particles spreading out in a circle
+    for (int i = 0; i < 6; i++) {
+      final angle = (i * 60) * math.pi / 180;
+      // Distance pushes outward as swipe progress increases
+      final distance = 14.0 + (progress * 28.0);
+      final x = center.dx + distance * math.cos(angle);
+      final y = center.dy + distance * math.sin(angle);
+
+      paint.color = colors[i % colors.length];
+
+      if (i % 2 == 0) {
+        // Draw shrinking circles
+        canvas.drawCircle(Offset(x, y), 3.0 + (1 - progress) * 2, paint);
+      } else {
+        // Draw spinning squares
+        canvas.save();
+        canvas.translate(x, y);
+        canvas.rotate(progress * math.pi * 2); // Spin effect
+        canvas.drawRect(Rect.fromCenter(center: Offset.zero, width: 6, height: 6), paint);
+        canvas.restore();
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ParticlePainter oldDelegate) => oldDelegate.progress != progress;
 }
