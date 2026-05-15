@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../theme/app_theme.dart';
-import '../widgets/profile_header.dart';
-import '../widgets/settings_menu.dart';
-
+import '../../theme/app_theme.dart';
+import '../../widgets/profile_header.dart';
+import '../../widgets/settings_menu.dart';
 
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
@@ -14,7 +13,6 @@ class AccountScreen extends StatefulWidget {
 }
 
 class _AccountScreenState extends State<AccountScreen> {
-  
   void _onLogout() {
     showDialog(
       context: context,
@@ -33,7 +31,7 @@ class _AccountScreenState extends State<AccountScreen> {
               ),
               child: Icon(
                 Icons.logout_rounded,
-                color: AppTheme.critical, 
+                color: AppTheme.critical,
                 size: 28,
               ),
             ),
@@ -49,7 +47,10 @@ class _AccountScreenState extends State<AccountScreen> {
             const SizedBox(height: 8),
             Text(
               'Are you sure you want to log out of your NTHU account?',
-              style: GoogleFonts.dmSans(fontSize: 13, color: const Color(0xFF6B7280)),
+              style: GoogleFonts.dmSans(
+                fontSize: 13,
+                color: const Color(0xFF6B7280),
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -86,7 +87,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       );
                     },
                     style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.critical, 
+                      backgroundColor: AppTheme.critical,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),

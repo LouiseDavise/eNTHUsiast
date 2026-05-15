@@ -41,9 +41,9 @@ class ProgressSummaryCard extends StatelessWidget {
                 child: Text(
                   'TOTAL PROGRESS',
                   style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 2,
+                    fontSize: 12, // Increased from 10
+                    fontWeight: FontWeight.w700, // Reduced from w900
+                    letterSpacing: 1.0, // Reduced from 2.0
                     color: Color(0xFFE9D5FF),
                   ),
                 ),
@@ -73,20 +73,19 @@ class ProgressSummaryCard extends StatelessWidget {
                 '$earnedCredits',
                 style: const TextStyle(
                   fontSize: 42,
-                  height: 0.9,
-                  fontWeight: FontWeight.w900,
-                  fontStyle: FontStyle.italic,
+                  height: 1.0, // Adjusted from 0.9 for upright text
+                  fontWeight: FontWeight.w800, // Reduced from w900, removed italic
                   color: Colors.white,
                 ),
               ),
-              const SizedBox(width: 5),
+              const SizedBox(width: 6),
               Padding(
-                padding: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.only(bottom: 6), // Adjusted to align baseline
                 child: Text(
                   '/ $totalCredits cr',
                   style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
+                    fontSize: 14, // Increased from 12
+                    fontWeight: FontWeight.w600, // Reduced from w900
                     color: Color(0xFFD8B4FE),
                   ),
                 ),
@@ -125,9 +124,9 @@ class ProgressSummaryCard extends StatelessWidget {
               Text(
                 '${(progress * 100).toStringAsFixed(1)}% COMPLETED',
                 style: const TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.6,
+                  fontSize: 11, // Increased from 9
+                  fontWeight: FontWeight.w700, // Reduced from w900
+                  letterSpacing: 0.5, // Reduced from 0.6
                   color: Colors.white,
                 ),
               ),
@@ -158,9 +157,9 @@ class _SmallInfo extends StatelessWidget {
         Text(
           label,
           style: const TextStyle(
-            fontSize: 8,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1,
+            fontSize: 10, // Increased from 8
+            fontWeight: FontWeight.w600, // Reduced from w900
+            letterSpacing: 0.5, // Reduced from 1.0
             color: Color(0xFFD8B4FE),
           ),
         ),
@@ -171,17 +170,16 @@ class _SmallInfo extends StatelessWidget {
               TextSpan(
                 text: value,
                 style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  fontStyle: FontStyle.italic,
+                  fontSize: 18, // Increased from 16
+                  fontWeight: FontWeight.w700, // Reduced from w900, removed italic
                   color: Colors.white,
                 ),
               ),
               TextSpan(
                 text: suffix,
                 style: const TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w900,
+                  fontSize: 12, // Increased from 9
+                  fontWeight: FontWeight.w600, // Reduced from w900
                   color: Colors.white,
                 ),
               ),

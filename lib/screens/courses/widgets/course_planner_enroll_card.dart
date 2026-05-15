@@ -31,26 +31,25 @@ class PlannerEnrollCard extends StatelessWidget {
           const Text(
             'Ready to Enroll?',
             style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              fontStyle: FontStyle.italic,
+              fontSize: 22, // Increased from 18
+              fontWeight: FontWeight.w800, // Reduced from w900, removed italic
               color: Colors.white,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           Text(
             'You have selected $courseCount courses totaling $totalCredits credits for the Fall 2026 semester.',
             style: const TextStyle(
-              fontSize: 12,
-              height: 1.45,
-              fontWeight: FontWeight.w600,
+              fontSize: 14, // Increased from 12
+              height: 1.5,
+              fontWeight: FontWeight.w400, // Reduced from w600 for body text readability
               color: Color(0xFFE9D5FF),
             ),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
-            height: 50,
+            height: 52, // Slightly taller tap target
             child: ElevatedButton(
               onPressed: () {},
               style: ElevatedButton.styleFrom(
@@ -58,15 +57,15 @@ class PlannerEnrollCard extends StatelessWidget {
                 foregroundColor: const Color(0xFF7E3291),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(16), // Smoothed to match modern standard
                 ),
               ),
               child: const Text(
                 'PROCEED TO REGISTRATION',
                 style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.4,
+                  fontSize: 13, // Increased from 10
+                  fontWeight: FontWeight.w700, // Reduced from w900
+                  letterSpacing: 1.0, // Softened from 1.4
                 ),
               ),
             ),

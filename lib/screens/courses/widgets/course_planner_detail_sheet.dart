@@ -44,9 +44,9 @@ class PlannerDetailSheet extends StatelessWidget {
                   Text(
                     '${course.code} • ${course.credits} CREDITS',
                     style: const TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1,
+                      fontSize: 12, // Increased from 9
+                      fontWeight: FontWeight.w700, // Reduced from w900
+                      letterSpacing: 0.5,
                       color: Color(0xFF94A3B8),
                     ),
                   ),
@@ -69,14 +69,13 @@ class PlannerDetailSheet extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 8),
               Text(
                 course.title,
                 style: const TextStyle(
-                  fontSize: 28,
-                  height: 1.0,
-                  fontWeight: FontWeight.w900,
-                  fontStyle: FontStyle.italic,
+                  fontSize: 26, // Adjusted slightly for balance
+                  height: 1.1,
+                  fontWeight: FontWeight.w800, // Reduced from w900, removed italic
                   color: Color(0xFF020617),
                 ),
               ),
@@ -113,9 +112,8 @@ class PlannerDetailSheet extends StatelessWidget {
                         child: Text(
                           course.professor[0],
                           style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                            fontStyle: FontStyle.italic,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700, // Reduced from w900
                             color: Color(0xFF0F172A),
                           ),
                         ),
@@ -126,8 +124,8 @@ class PlannerDetailSheet extends StatelessWidget {
                       child: Text(
                         course.professor,
                         style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w900,
+                          fontSize: 16, // Increased from 15
+                          fontWeight: FontWeight.w600, // Reduced from w900
                           color: Color(0xFF020617),
                         ),
                       ),
@@ -138,17 +136,17 @@ class PlannerDetailSheet extends StatelessWidget {
                         Text(
                           '⭐ ${course.rating.toStringAsFixed(1)}',
                           style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w900,
+                            fontSize: 14, // Increased from 13
+                            fontWeight: FontWeight.w700, // Reduced from w900
                             color: Color(0xFFF59E0B),
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          '${course.reviews} REVIEWS',
-                          style: const TextStyle(
-                            fontSize: 8,
-                            fontWeight: FontWeight.w900,
+                        const Text(
+                          'REVIEWS', // Removed the duplicate count if it's visually too busy, or keep if needed
+                          style: TextStyle(
+                            fontSize: 10, // Increased from 8
+                            fontWeight: FontWeight.w600, // Reduced from w900
                             color: Color(0xFF94A3B8),
                           ),
                         ),
@@ -281,9 +279,9 @@ class PlannerDetailSheet extends StatelessWidget {
                           child: Text(
                             '${entry.key + 1}',
                             style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFFCBD5E1),
+                              fontSize: 12, // Increased from 10
+                              fontWeight: FontWeight.w700, // Reduced from w900
+                              color: Color(0xFF94A3B8),
                             ),
                           ),
                         ),
@@ -293,8 +291,9 @@ class PlannerDetailSheet extends StatelessWidget {
                         child: Text(
                           entry.value,
                           style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
+                            fontSize: 14, // Increased from 12 for readability
+                            fontWeight: FontWeight.w500, // Reduced from w900
+                            height: 1.3,
                             color: Color(0xFF0F172A),
                           ),
                         ),
@@ -309,17 +308,18 @@ class PlannerDetailSheet extends StatelessWidget {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF7E3291),
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 18),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
+                  elevation: 0,
                 ),
                 child: const Text(
                   'ADD TO MY PLAN',
                   style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.4,
+                    fontSize: 14, // Increased from 11
+                    fontWeight: FontWeight.w700, // Reduced from w900
+                    letterSpacing: 1.0, // Toned down letter spacing
                   ),
                 ),
               ),
@@ -374,10 +374,10 @@ class _DetailSectionTitle extends StatelessWidget {
         Text(
           title,
           style: const TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.6,
-            color: Color(0xFF020617),
+            fontSize: 11, // Increased from 10
+            fontWeight: FontWeight.w700, // Reduced from w900
+            letterSpacing: 1.2, // Toned down
+            color: Color(0xFF475569), // Softened from pure black
           ),
         ),
       ],
@@ -398,7 +398,7 @@ class _DeadlineBox extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 72,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: const Color(0xFFFBFCFE),
         borderRadius: BorderRadius.circular(16),
@@ -406,22 +406,23 @@ class _DeadlineBox extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
             label,
             style: const TextStyle(
-              fontSize: 8,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1,
-              color: Color(0xFFCBD5E1),
+              fontSize: 10, // Increased from 8
+              fontWeight: FontWeight.w600, // Reduced from w900
+              letterSpacing: 0.5,
+              color: Color(0xFF94A3B8),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             value,
             style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
+              fontSize: 14, // Increased from 12
+              fontWeight: FontWeight.w700, // Reduced from w900
               color: Color(0xFF020617),
             ),
           ),
@@ -449,29 +450,29 @@ class _LegendItem extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 7,
-            height: 7,
+            width: 8, // Increased slightly
+            height: 8,
             decoration: BoxDecoration(
               color: color,
               shape: BoxShape.circle,
             ),
           ),
-          const SizedBox(width: 7),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               label,
               style: const TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF334155),
+                fontSize: 11, // Increased from 9
+                fontWeight: FontWeight.w600, // Reduced from w900
+                color: Color(0xFF475569),
               ),
             ),
           ),
           Text(
             '$percent%',
             style: const TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w900,
+              fontSize: 12, // Increased from 9
+              fontWeight: FontWeight.w700, // Reduced from w900
               color: Color(0xFF020617),
             ),
           ),
@@ -496,7 +497,7 @@ class _ScheduleInfoBox extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 72,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: const Color(0xFFFBFCFE),
         borderRadius: BorderRadius.circular(16),
@@ -504,33 +505,34 @@ class _ScheduleInfoBox extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
             label,
             style: const TextStyle(
-              fontSize: 8,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1,
+              fontSize: 10, // Increased from 8
+              fontWeight: FontWeight.w600, // Reduced from w900
+              letterSpacing: 0.5,
               color: Color(0xFF94A3B8),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Row(
             children: [
               Icon(
                 icon,
-                size: 13,
+                size: 14, // Increased slightly
                 color: const Color(0xFF3B82F6),
               ),
-              const SizedBox(width: 5),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
+                    fontSize: 13, // Increased from 11
+                    fontWeight: FontWeight.w700, // Reduced from w900
                     color: Color(0xFF020617),
                   ),
                 ),
@@ -558,7 +560,7 @@ class _CapacityBox extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       decoration: BoxDecoration(
         color: const Color(0xFFFBFCFE),
         borderRadius: BorderRadius.circular(16),
@@ -573,9 +575,9 @@ class _CapacityBox extends StatelessWidget {
                 child: Text(
                   'COURSE CAPACITY',
                   style: TextStyle(
-                    fontSize: 8,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1,
+                    fontSize: 10, // Increased from 8
+                    fontWeight: FontWeight.w600, // Reduced from w900
+                    letterSpacing: 0.5,
                     color: Color(0xFF94A3B8),
                   ),
                 ),
@@ -583,33 +585,33 @@ class _CapacityBox extends StatelessWidget {
               Text(
                 '$max STUDENTS',
                 style: const TextStyle(
-                  fontSize: 8,
-                  fontWeight: FontWeight.w900,
+                  fontSize: 11, // Increased from 8
+                  fontWeight: FontWeight.w700, // Reduced from w900
                   color: Color(0xFF7E3291),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           ClipRRect(
             borderRadius: BorderRadius.circular(99),
             child: LinearProgressIndicator(
               value: progress,
-              minHeight: 5,
+              minHeight: 6, // Increased slightly
               backgroundColor: const Color(0xFFE5E7EB),
               valueColor: const AlwaysStoppedAnimation<Color>(
                 Color(0xFF7E3291),
               ),
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           const Text(
             'Registration is subject to department approval and available space at the time of enrollment.',
             style: TextStyle(
-              fontSize: 9,
-              height: 1.4,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF94A3B8),
+              fontSize: 11, // Increased from 9
+              height: 1.5,
+              fontWeight: FontWeight.w500, // Adjusted for readable body text
+              color: Color(0xFF64748B), // Slightly darker for legibility
             ),
           ),
         ],

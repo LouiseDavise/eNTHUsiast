@@ -48,19 +48,19 @@ class MaterialWeekCard extends StatelessWidget {
                 Text(
                   material.week.toUpperCase(),
                   style: const TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.2,
+                    fontSize: 11, // Increased from 9
+                    fontWeight: FontWeight.w700, // Reduced from w900
+                    letterSpacing: 0.5, // Reduced from 1.2
                     color: Color(0xFF9333EA),
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6), // Increased from 4 for better visual separation
                 Text(
                   material.title,
                   style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                    height: 1.15,
+                    fontSize: 15, // Increased from 14
+                    fontWeight: FontWeight.w600, // Reduced from w900 for cleaner reading
+                    height: 1.2, // Increased from 1.15
                     color: Color(0xFF020617),
                   ),
                 ),

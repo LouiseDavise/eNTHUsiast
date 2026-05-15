@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'home_screen.dart';
 import 'social_screen.dart';
 import 'courses/courses_screen.dart';
-import 'account_screen.dart';
+import 'account/account_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -57,7 +57,7 @@ class _MainScreenState extends State<MainScreen> {
   // Individual nav Widget
   Widget _buildNavItem(int index, IconData icon, String label) {
     bool isActive = _currentIndex == index;
-    
+
     Color primaryColor = const Color(0xFF7A3392); // Deep Purple
     Color inactiveColor = const Color(0xFFB0B3C7); // Grey-blue
 
@@ -84,7 +84,7 @@ class _MainScreenState extends State<MainScreen> {
                         blurRadius: 12,
                         spreadRadius: 4,
                         offset: const Offset(0, 4),
-                      )
+                      ),
                     ]
                   : [],
             ),

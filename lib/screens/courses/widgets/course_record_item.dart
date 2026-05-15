@@ -47,7 +47,7 @@ class CourseRecordItem extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), // Slightly increased padding
       decoration: BoxDecoration(
         color: const Color(0xFFFBFCFE),
         borderRadius: BorderRadius.circular(16),
@@ -56,8 +56,8 @@ class CourseRecordItem extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 26,
-            height: 26,
+            width: 28, // Increased from 26 to balance larger text
+            height: 28,
             decoration: BoxDecoration(
               color: iconBgColor,
               borderRadius: BorderRadius.circular(8),
@@ -69,7 +69,7 @@ class CourseRecordItem extends StatelessWidget {
               isPassed
                   ? Icons.check_circle_outline_rounded
                   : Icons.radio_button_unchecked_rounded,
-              size: 15,
+              size: 16, // Increased slightly
               color: iconColor,
             ),
           ),
@@ -83,8 +83,8 @@ class CourseRecordItem extends StatelessWidget {
                 Text(
                   record.title,
                   style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
+                    fontSize: 15, // Increased from 12
+                    fontWeight: FontWeight.w700, // Reduced from w900
                     color: Color(0xFF020617),
                   ),
                 ),
@@ -94,9 +94,9 @@ class CourseRecordItem extends StatelessWidget {
                     Text(
                       '${record.credits} CREDITS',
                       style: const TextStyle(
-                        fontSize: 8,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.8,
+                        fontSize: 11, // Increased from 8
+                        fontWeight: FontWeight.w600, // Reduced from w900
+                        letterSpacing: 0.5, // Reduced from 0.8
                         color: Color(0xFF94A3B8),
                       ),
                     ),
@@ -105,18 +105,19 @@ class CourseRecordItem extends StatelessWidget {
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 2,
+                          horizontal: 6, // Slightly increased
+                          vertical: 3, // Slightly increased
                         ),
                         decoration: BoxDecoration(
                           color: const Color(0xFFF3E8FF),
-                          borderRadius: BorderRadius.circular(5),
+                          borderRadius: BorderRadius.circular(6), // Softened
                         ),
                         child: Text(
                           'GRADE: ${record.grade}',
                           style: const TextStyle(
-                            fontSize: 8,
-                            fontWeight: FontWeight.w900,
+                            fontSize: 10, // Increased from 8
+                            fontWeight: FontWeight.w700, // Reduced from w900
+                            letterSpacing: 0.5,
                             color: Color(0xFF7E22CE),
                           ),
                         ),
@@ -129,16 +130,17 @@ class CourseRecordItem extends StatelessWidget {
           ),
 
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5), // Increased from 7/4
             decoration: BoxDecoration(
               color: statusBgColor,
-              borderRadius: BorderRadius.circular(7),
+              borderRadius: BorderRadius.circular(8), // Increased from 7
             ),
             child: Text(
               statusText,
               style: TextStyle(
-                fontSize: 8,
-                fontWeight: FontWeight.w900,
+                fontSize: 10, // Increased from 8
+                fontWeight: FontWeight.w700, // Reduced from w900
+                letterSpacing: 0.5,
                 color: statusTextColor,
               ),
             ),

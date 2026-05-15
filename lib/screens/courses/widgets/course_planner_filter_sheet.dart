@@ -109,9 +109,8 @@ class _PlannerFilterSheetState extends State<PlannerFilterSheet> {
                   child: Text(
                     'Filter Courses',
                     style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      fontStyle: FontStyle.italic,
+                      fontSize: 22, // Increased from 18
+                      fontWeight: FontWeight.w800, // Reduced from w900, removed italic
                       color: Color(0xFF0F172A),
                     ),
                   ),
@@ -203,8 +202,8 @@ class _PlannerFilterSheetState extends State<PlannerFilterSheet> {
                       child: Text(
                         selectedDepartment,
                         style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 14, // Increased from 13
+                          fontWeight: FontWeight.w600, // Reduced from w800
                           color: selectedDepartment == 'All'
                               ? const Color(0xFF64748B)
                               : const Color(0xFF7E3291),
@@ -241,15 +240,15 @@ class _PlannerFilterSheetState extends State<PlannerFilterSheet> {
                   elevation: 8,
                   shadowColor: const Color(0xFF7E3291).withValues(alpha: 0.3),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(16), // Adjusted to 16 for standard sizing
                   ),
                 ),
                 child: const Text(
                   'APPLY',
                   style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.6,
+                    fontSize: 14, // Increased from 11
+                    fontWeight: FontWeight.w700, // Reduced from w900
+                    letterSpacing: 1.0, // Reduced from 1.6
                   ),
                 ),
               ),
@@ -306,9 +305,8 @@ class _DepartmentPickerSheet extends StatelessWidget {
                   child: Text(
                     'Select Department',
                     style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      fontStyle: FontStyle.italic,
+                      fontSize: 20, // Increased from 18
+                      fontWeight: FontWeight.w800, // Reduced from w900, removed italic
                       color: Color(0xFF0F172A),
                     ),
                   ),
@@ -343,7 +341,7 @@ class _DepartmentPickerSheet extends StatelessWidget {
                 final isSelected = department == selectedDepartment;
 
                 return InkWell(
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(16), // Adjusted to 16
                   onTap: () {
                     Navigator.pop(context, department);
                   },
@@ -351,13 +349,13 @@ class _DepartmentPickerSheet extends StatelessWidget {
                     duration: const Duration(milliseconds: 160),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 18,
-                      vertical: 15,
+                      vertical: 16, // Increased vertical padding slightly for better tap target
                     ),
                     decoration: BoxDecoration(
                       color: isSelected
                           ? const Color(0xFFF3E8FF)
                           : const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(18),
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: isSelected
                             ? const Color(0xFFD8B4FE)
@@ -370,9 +368,9 @@ class _DepartmentPickerSheet extends StatelessWidget {
                           child: Text(
                             department,
                             style: TextStyle(
-                              fontSize: 13,
+                              fontSize: 15, // Increased from 13
                               fontWeight:
-                                  isSelected ? FontWeight.w900 : FontWeight.w700,
+                                  isSelected ? FontWeight.w700 : FontWeight.w500, // Reduced from w900/w700
                               color: isSelected
                                   ? const Color(0xFF7E3291)
                                   : const Color(0xFF334155),
@@ -416,9 +414,9 @@ class _SectionTitle extends StatelessWidget {
     return Text(
       text,
       style: const TextStyle(
-        fontSize: 10,
-        fontWeight: FontWeight.w900,
-        letterSpacing: 1.5,
+        fontSize: 12, // Increased from 10
+        fontWeight: FontWeight.w700, // Reduced from w900
+        letterSpacing: 1.0, // Reduced from 1.5
         color: Color(0xFF94A3B8),
       ),
     );
@@ -442,7 +440,7 @@ class _FilterChip extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12), // Adjusted vertical padding
         decoration: BoxDecoration(
           color: active ? const Color(0xFF7E3291) : const Color(0xFFF8FAFC),
           borderRadius: BorderRadius.circular(16),
@@ -459,9 +457,9 @@ class _FilterChip extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1,
+            fontSize: 12, // Increased from 10
+            fontWeight: FontWeight.w600, // Reduced from w900
+            letterSpacing: 0.5, // Reduced from 1.0
             color: active ? Colors.white : const Color(0xFF64748B),
           ),
         ),
@@ -506,8 +504,8 @@ class _CircleFilter extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
+              fontSize: 15, // Increased from 13
+              fontWeight: FontWeight.w700, // Reduced from w900
               color: active ? Colors.white : const Color(0xFF64748B),
             ),
           ),

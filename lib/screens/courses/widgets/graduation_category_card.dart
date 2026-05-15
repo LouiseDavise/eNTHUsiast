@@ -56,9 +56,8 @@ class _GraduationCategoryCardState extends State<GraduationCategoryCard> {
                       Text(
                         category.title,
                         style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w900,
-                          fontStyle: FontStyle.italic,
+                          fontSize: 18, // Increased from 17
+                          fontWeight: FontWeight.w800, // Reduced from w900, removed italic
                           color: Color(0xFF020617),
                         ),
                       ),
@@ -69,18 +68,17 @@ class _GraduationCategoryCardState extends State<GraduationCategoryCard> {
                             TextSpan(
                               text: '${category.earnedCredits}',
                               style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w900,
-                                fontStyle: FontStyle.italic,
+                                fontSize: 22, // Increased from 20
+                                fontWeight: FontWeight.w800, // Reduced from w900, removed italic
                                 color: Color(0xFF7E22CE),
                               ),
                             ),
                             TextSpan(
                               text: ' / ${category.requiredCredits} CREDITS',
                               style: const TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1,
+                                fontSize: 12, // Increased from 9
+                                fontWeight: FontWeight.w600, // Reduced from w900
+                                letterSpacing: 0.5, // Reduced from 1
                                 color: Color(0xFF94A3B8),
                               ),
                             ),
@@ -130,9 +128,9 @@ class _GraduationCategoryCardState extends State<GraduationCategoryCard> {
                 const Text(
                   'COURSE RECORDS',
                   style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 2,
+                    fontSize: 11, // Increased from 9
+                    fontWeight: FontWeight.w700, // Reduced from w900
+                    letterSpacing: 1.0, // Reduced from 2.0
                     color: Color(0xFF94A3B8),
                   ),
                 ),
