@@ -186,7 +186,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text("eNTHUsiast", style: TextStyle(fontFamily: 'Roboto', fontSize: 28, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
+                          const Text("eNTHUsiast", style: TextStyle(fontFamily: 'Roboto', fontSize: 28, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, color: Colors.black)),
                           Row(
                             children: [
                               Container(width: 6, height: 6, decoration: const BoxDecoration(color: nthuPurple, shape: BoxShape.circle)),

@@ -112,7 +112,10 @@ class _BulletinWidgetState extends State<BulletinWidget> {
                     children: [
                       const Text(
                         "Bulletin Board",
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                        style: TextStyle(
+                          fontSize: 20, 
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black),
                       ),
                       if (widget.isCollapsed)
                         Container(

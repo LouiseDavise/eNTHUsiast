@@ -52,7 +52,7 @@ class _AddTaskPopupState extends State<AddTaskPopup> {
                 children: [
                   const Icon(Icons.check_box_rounded, color: nthuPurple, size: 28),
                   const SizedBox(width: 8),
-                  const Text("New TODO", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
+                  const Text("New TODO", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, color: Colors.black)),
                 ],
               ),
               const SizedBox(height: 24),

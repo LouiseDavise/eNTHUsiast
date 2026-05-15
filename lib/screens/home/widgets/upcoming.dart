@@ -44,7 +44,7 @@ class UpcomingTasksWidget extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(40),
-        border: Border.all(color: Colors.grey.shade50),
+        border: Border.all(color: Colors.grey.shade100),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.02),
@@ -71,7 +71,10 @@ class UpcomingTasksWidget extends StatelessWidget {
               const SizedBox(width: 12),
               const Text(
                 "Upcoming",
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                style: TextStyle(
+                  fontSize: 20, 
+                  fontWeight: FontWeight.w900,
+                  color: Colors.black),
               ),
               const Spacer(),
               // (Sort & Filter menus would go here - handled in Main Screen state usually, 
