@@ -173,7 +173,6 @@ class _UpcomingTaskItemState extends State<_UpcomingTaskItem> {
                 painter: _ParticlePainter(progress: burstProgress),
               ),
             ),
-          // FIX 2: The tick (check_circle_rounded) has been completely removed from here
         ],
       ),
     );
@@ -181,164 +180,155 @@ class _UpcomingTaskItemState extends State<_UpcomingTaskItem> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // 1. STATIC BACKGROUND (Rounded and hosts the animation)
-        Positioned.fill(
-          child: Container(
+    // The native background that sits behind the card
+    Widget swipeBackground = Container(
+      decoration: BoxDecoration(
+        color: widget.isCompleted ? Colors.grey.shade300 : Colors.green,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 20),
+            child: widget.isCompleted
+                ? const Icon(Icons.undo_rounded, color: Colors.white, size: 28)
+                : _buildCelebrationWidget(),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 20),
+            child: widget.isCompleted
+                ? const Icon(Icons.undo_rounded, color: Colors.white, size: 28)
+                : _buildCelebrationWidget(),
+          ),
+        ],
+      ),
+    );
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: Dismissible(
+        // THE MAGIC FIX: By changing the key based on completion status, 
+        // Flutter lets the card slide completely off the screen without crashing!
+        key: Key('${widget.task.id}_${widget.isCompleted}'),
+        direction: DismissDirection.horizontal,
+        onUpdate: (details) {
+          setState(() {
+            _swipeProgress = details.progress;
+          });
+        },
+        onDismissed: (_) {
+          widget.onToggleComplete(widget.task.id);
+        },
+        background: swipeBackground,
+        secondaryBackground: swipeBackground,
+        child: GestureDetector(
+          onTap: () {
+            if (!widget.isCompleted) widget.onTaskTap(widget.task);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.green,
-              borderRadius: BorderRadius.circular(24),
+              color: Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(24), // Keeps the white card rounded
             ),
+            foregroundDecoration: widget.isCompleted
+                ? BoxDecoration(
+                    color: Colors.white.withOpacity(0.5),
+                    backgroundBlendMode: BlendMode.saturation,
+                    borderRadius: BorderRadius.circular(24), // Prevents sharp overlay corners
+                  )
+                : null,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Padding(
-                  padding: const EdgeInsets.only(left: 16),
-                  child: _buildCelebrationWidget(),
+                Container(
+                  width: 6,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: widget.task.color,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(right: 16),
-                  child: _buildCelebrationWidget(),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            widget.task.code.toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.5,
+                              color: widget.isCompleted ? Colors.grey : nthuPurple.withOpacity(0.6),
+                            ),
+                          ),
+                          if (!widget.isCompleted)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade50,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                widget.countdownStr,
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -0.5,
+                                  color: Colors.orange.shade600,
+                                ),
+                              ),
+                            )
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        widget.task.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: widget.isCompleted ? Colors.grey : Colors.black87,
+                          decoration: widget.isCompleted ? TextDecoration.lineThrough : null,
+                        ),
+                      ),
+                      if (!widget.isCompleted) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: widget.task.progress / 100,
+                                  backgroundColor: Colors.grey.shade200,
+                                  valueColor: AlwaysStoppedAnimation<Color>(widget.task.color),
+                                  minHeight: 4,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              "${widget.task.progress}%",
+                              style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: Colors.grey),
+                            )
+                          ],
+                        )
+                      ]
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
         ),
-
-        // 2. THE SWIPABLE CARD
-        Dismissible(
-          key: Key(widget.task.id),
-          direction: DismissDirection.horizontal,
-          onUpdate: (details) {
-            setState(() {
-              _swipeProgress = details.progress;
-            });
-          },
-          // FIX 1: Use confirmDismiss instead of onDismissed
-          confirmDismiss: (direction) async {
-            // Trigger the completion toggle
-            widget.onToggleComplete(widget.task.id);
-            
-            // Reset swipe progress state
-            setState(() {
-              _swipeProgress = 0.0;
-            });
-            
-            // Return FALSE to tell Flutter NOT to remove the widget from the tree.
-            // This makes the card gracefully snap back into place while updating its state.
-            return false; 
-          },
-          background: const SizedBox.shrink(),
-          secondaryBackground: const SizedBox.shrink(),
-          child: GestureDetector(
-            onTap: () {
-              if (!widget.isCompleted) widget.onTaskTap(widget.task);
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(24),
-              ),
-              foregroundDecoration: widget.isCompleted
-                  ? BoxDecoration(
-                      color: Colors.white.withOpacity(0.5),
-                      backgroundBlendMode: BlendMode.saturation,
-                      borderRadius: BorderRadius.circular(24),
-                    )
-                  : null,
-              child: Row(
-                children: [
-                  Container(
-                    width: 6,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      color: widget.task.color,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              widget.task.code.toUpperCase(),
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.5,
-                                color: widget.isCompleted ? Colors.grey : nthuPurple.withOpacity(0.6),
-                              ),
-                            ),
-                            if (!widget.isCompleted)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.shade50,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  widget.countdownStr,
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: -0.5,
-                                    color: Colors.orange.shade600,
-                                  ),
-                                ),
-                              )
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          widget.task.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: widget.isCompleted ? Colors.grey : Colors.black87,
-                            decoration: widget.isCompleted ? TextDecoration.lineThrough : null,
-                          ),
-                        ),
-                        if (!widget.isCompleted) ...[
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: LinearProgressIndicator(
-                                    value: widget.task.progress / 100,
-                                    backgroundColor: Colors.grey.shade200,
-                                    valueColor: AlwaysStoppedAnimation<Color>(widget.task.color),
-                                    minHeight: 4,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                "${widget.task.progress}%",
-                                style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: Colors.grey),
-                              )
-                            ],
-                          )
-                        ]
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
