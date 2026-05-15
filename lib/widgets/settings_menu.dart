@@ -1,3 +1,4 @@
+import 'package:enthusiast/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../theme/app_theme.dart';
@@ -15,21 +16,21 @@ class SettingsMenuWidget extends StatelessWidget {
         iconColor: AppTheme.primary,
         iconBg: AppTheme.primaryContainer,
         label: 'Account',
-        onTap: () => _showComingSoon(context, 'Account'),
+        onTap: () => Navigator.pushNamed(context, AppRoutes.profileScreen),
       ),
       _MenuItem(
         icon: Icons.description_outlined,
         iconColor: AppTheme.orange,
         iconBg: Color(0xFFFFEDD5),
         label: 'Transcript',
-        onTap: () => _showComingSoon(context, 'Transcript'),
+        onTap: () => Navigator.pushNamed(context, AppRoutes.transcriptScreen),
       ),
       _MenuItem(
         icon: Icons.language_rounded,
         iconColor: Color(0xFF1D4ED8),
         iconBg: Color(0xFFDBEAFE),
         label: 'Language',
-        onTap: () => _showComingSoon(context, 'Language'),
+        onTap: () => Navigator.pushNamed(context, AppRoutes.languageScreen),
       ),
       _MenuItem(
         icon: Icons.settings_outlined,
