@@ -1,5 +1,29 @@
 {
   "dependencies": {
+    "firebase-admin": "^13.10.0",
     "flutter": "^0.0.5"
-  }
+  },
+  "name": "enthusiast",
+  "version": "1.0.0",
+  "description": "File Structure = https://www.geeksforgeeks.org/flutter/flutter-file-structure/\r Prototype URL = https://enthusiast2.netlify.app/",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LouiseDavise/eNTHUsiast.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/LouiseDavise/eNTHUsiast/issues"
+  },
+  "homepage": "https://github.com/LouiseDavise/eNTHUsiast#readme"
 }

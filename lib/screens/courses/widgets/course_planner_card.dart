@@ -92,7 +92,7 @@ class PlannerCourseCard extends StatelessWidget {
                         label: course.slotCode,
                       ),
                       _Tag(
-                        label: 'LIMIT: ${course.limit}',
+                        label: course.limit < 0 ? 'LIMIT: N/A' : 'LIMIT: ${course.limit}',
                         bgColor: const Color(0xFFF1F5F9),
                         textColor: const Color(0xFF64748B),
                       ),

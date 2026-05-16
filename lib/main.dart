@@ -8,9 +8,9 @@ import 'theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  //await Firebase.initializeApp(
-  //  options: DefaultFirebaseOptions.currentPlatform,
-  //);
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
   runApp(const MyApp());
 }
@@ -23,12 +23,9 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'eNTHUsiast App',
       debugShowCheckedModeBanner: false,
-
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-  
       initialRoute: AppRoutes.mainScreen,
-
       routes: AppRoutes.routes,
     );
   }

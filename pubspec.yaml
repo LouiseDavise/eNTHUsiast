@@ -36,8 +36,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   google_fonts: ^8.1.0
   lucide_icons: 0.257.0
-  firebase_core: ^4.7.0
-  cloud_firestore: ^6.3.0
+  firebase_core: ^4.9.0
+  cloud_firestore: ^6.4.1
   intl: ^0.19.0
   http: ^1.6.0
 
