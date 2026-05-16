@@ -134,15 +134,34 @@ class _HomeScreenState extends State<HomeScreen> {
           final subs = _subtasksMap[event.id] ?? [];
           return SubtaskManagerPopup(
             event: event,
-            subtasks: subs,
+            subtasks: _subtasksMap[event.id] ?? [],
             onToggle: (subId) {
               setState(() {
-                final sub = subs.firstWhere((s) => s.id == subId);
+                final sub = (_subtasksMap[event.id] ?? []).firstWhere((s) => s.id == subId);
                 sub.completed = !sub.completed;
               });
-              setStateModal(() {}); // Re-render modal
+              setStateModal(() {});
             },
-            onUpdate: () => Navigator.pop(context),
+            onUpdate: () {
+              setState(() {});
+              Navigator.pop(context);
+            },
+            onAddSubtask: (newText) {
+              setState(() {
+                if (_subtasksMap[event.id] == null) {
+                  _subtasksMap[event.id] = [];
+                }
+
+                _subtasksMap[event.id]!.add(
+                  Subtask(
+                    id: 'st-${DateTime.now().millisecondsSinceEpoch}', 
+                    text: newText,
+                    completed: false,
+                  ),
+                );
+              });
+              setStateModal(() {});
+            },
           );
         }
       ),
@@ -186,7 +205,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text("eNTHUsiast", style: TextStyle(fontFamily: 'Roboto', fontSize: 28, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
+                          const Text("eNTHUsiast", style: TextStyle(fontFamily: 'Roboto', fontSize: 28, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, color: Colors.black)),
                           Row(
                             children: [
                               Container(width: 6, height: 6, decoration: const BoxDecoration(color: nthuPurple, shape: BoxShape.circle)),
@@ -218,9 +237,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     });
                     _openDayDetails(date);
                   },
-                  onNavigate: (offset) {
+                  onNavigate: (newDate) {
                     setState(() {
-                      _currentDate = DateTime(_currentDate.year, _currentDate.month + offset, _currentDate.day);
+                      _currentDate = newDate; 
                     });
                   },
                 ),
@@ -252,7 +271,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: _openAddTask,
                 backgroundColor: nthuPurple,
                 elevation: 8,
-                shape: const CircleBorder(side: BorderSide(color: Colors.white, width: 4)),
+                shape: const CircleBorder(),
                 child: const Icon(Icons.add_rounded, color: Colors.white, size: 32),
               ),
             ),

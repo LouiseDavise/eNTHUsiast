@@ -8,7 +8,7 @@ class AppEvent {
   final String type;
   final Color color;
   final String location;
-  final int progress;
+  int progress;
   final DateTime dueDate;
 
   AppEvent({

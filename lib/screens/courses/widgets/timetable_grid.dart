@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../../models/courses_model.dart';
-import '../utilities/schedule_data.dart';
 import 'course_card.dart';
 import 'grid_painter.dart';
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-
+import 'dart:convert';
+import 'package:flutter/services.dart';
 import '../../models/graduation_verification_model.dart';
 import 'widgets/graduation_category_card.dart';
 import 'widgets/progress_summary_card.dart';
@@ -7,239 +8,31 @@ import 'widgets/progress_summary_card.dart';
 class GraduationVerificationScreen extends StatelessWidget {
   const GraduationVerificationScreen({super.key});
 
-  static const List<GraduationCategory> dummyCategories = [
-    GraduationCategory(
-      title: 'Compulsory',
-      earnedCredits: 12,
-      requiredCredits: 30,
-      records: [
-        GraduationCourseRecord(
-          title: 'Language Course',
-          credits: 4,
-          grade: 'A+',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'College Chinese',
-          credits: 2,
-          grade: 'A',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'English (1)',
-          credits: 2,
-          grade: 'A-',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'English (2)',
-          credits: 2,
-          grade: 'B+',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'Physical Education',
-          credits: 0,
-          grade: 'P',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'Student Service',
-          credits: 0,
-          grade: 'P',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'Conduct',
-          credits: 0,
-          grade: 'A',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'History and Culture',
-          credits: 2,
-          grade: '',
-          status: 'inProgress',
-        ),
-        GraduationCourseRecord(
-          title: 'General Education: Humanities',
-          credits: 2,
-          grade: '',
-          status: 'inProgress',
-        ),
-      ],
-    ),
+  /// Now returns a Map containing both 'summary' and 'categories'
+  Future<Map<String, dynamic>> _loadGraduationData() async {
+    final String response = await rootBundle.loadString('assets/graduation_data.json');
+    final Map<String, dynamic> data = json.decode(response);
 
-    GraduationCategory(
-      title: 'Department Required',
-      earnedCredits: 15,
-      requiredCredits: 22,
-      records: [
-        GraduationCourseRecord(
-          title: 'Introduction to Programming',
-          credits: 3,
-          grade: 'A',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'Data Structures',
-          credits: 3,
-          grade: 'A-',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'Algorithm',
-          credits: 3,
-          grade: 'B+',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'Computer Networks',
-          credits: 3,
-          grade: 'A',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'Operating Systems',
-          credits: 3,
-          grade: 'B+',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'Compiler Design',
-          credits: 3,
-          grade: '',
-          status: 'inProgress',
-        ),
-        GraduationCourseRecord(
-          title: 'Senior Project',
-          credits: 4,
-          grade: '',
-          status: 'inProgress',
-        ),
-      ],
-    ),
+    final summary = data['summary'];
+    final List<dynamic> catData = data['categories'];
 
-    GraduationCategory(
-      title: 'Basic Core Elective',
-      earnedCredits: 9,
-      requiredCredits: 24,
-      records: [
-        GraduationCourseRecord(
-          title: 'Calculus',
-          credits: 3,
-          grade: 'A-',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'Linear Algebra',
-          credits: 3,
-          grade: 'B+',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'Probability',
-          credits: 3,
-          grade: 'A-',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'Discrete Mathematics',
-          credits: 3,
-          grade: '',
-          status: 'inProgress',
-        ),
-        GraduationCourseRecord(
-          title: 'Statistics',
-          credits: 3,
-          grade: '',
-          status: 'notPassed',
-        ),
-      ],
-    ),
+    final categories = catData.map((cat) => GraduationCategory(
+      title: cat['title'],
+      earnedCredits: cat['earnedCredits'],
+      requiredCredits: cat['requiredCredits'],
+      records: (cat['records'] as List).map((rec) => GraduationCourseRecord(
+        title: rec['title'],
+        credits: rec['credits'],
+        grade: rec['grade'],
+        status: rec['status'],
+      )).toList(),
+    )).toList();
 
-    GraduationCategory(
-      title: 'Elective Core',
-      earnedCredits: 6,
-      requiredCredits: 21,
-      records: [
-        GraduationCourseRecord(
-          title: 'Software Studio',
-          credits: 3,
-          grade: 'A',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'Database Systems',
-          credits: 3,
-          grade: 'A-',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'Web Programming',
-          credits: 3,
-          grade: '',
-          status: 'inProgress',
-        ),
-        GraduationCourseRecord(
-          title: 'Mobile Application Development',
-          credits: 3,
-          grade: '',
-          status: 'inProgress',
-        ),
-      ],
-    ),
-
-    GraduationCategory(
-      title: 'Professional Elective',
-      earnedCredits: 12,
-      requiredCredits: 30,
-      records: [
-        GraduationCourseRecord(
-          title: 'Logic Design',
-          credits: 3,
-          grade: 'A',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'Artificial Intelligence',
-          credits: 3,
-          grade: 'A-',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'Machine Learning',
-          credits: 3,
-          grade: 'B+',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'Network Security',
-          credits: 3,
-          grade: 'A',
-          status: 'passed',
-        ),
-        GraduationCourseRecord(
-          title: 'Embedded Systems',
-          credits: 3,
-          grade: '',
-          status: 'inProgress',
-        ),
-        GraduationCourseRecord(
-          title: 'Cloud Computing',
-          credits: 3,
-          grade: '',
-          status: 'inProgress',
-        ),
-        GraduationCourseRecord(
-          title: 'Computer Vision',
-          credits: 3,
-          grade: '',
-          status: 'notPassed',
-        ),
-      ],
-    ),
-  ];
+    return {
+      'summary': summary,
+      'categories': categories,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -249,30 +42,43 @@ class GraduationVerificationScreen extends StatelessWidget {
         child: Column(
           children: [
             _Header(),
-
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-                children: [
-                  const ProgressSummaryCard(
-                    earnedCredits: 63,
-                    totalCredits: 128,
-                    semesterCredits: '6',
-                    cumulativeGpa: '3.82',
-                  ),
+              child: FutureBuilder<Map<String, dynamic>>(
+                future: _loadGraduationData(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  } else if (snapshot.hasError) {
+                    return Center(child: Text('Error: ${snapshot.error}'));
+                  }
 
-                  const SizedBox(height: 28),
+                  final data = snapshot.data!;
+                  final summary = data['summary'];
+                  final categories = data['categories'] as List<GraduationCategory>;
+                  
+                  // Dynamically calculate total earned credits
+                  int totalEarned = categories.fold(0, (sum, item) => sum + item.earnedCredits);
+                  const int graduationRequirement = 128; // Adjust to your department's rule
 
-                  // 假設 dummyCategories 定義在你的 schedule_data.dart 或是 state 中
-                  ...dummyCategories.map(
-                    (category) {
-                      return Padding(
+                  return ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                    children: [
+                      // Feed the parsed data directly into your widget!
+                      ProgressSummaryCard(
+                        earnedCredits: totalEarned,
+                        totalCredits: graduationRequirement,
+                        semesterCredits: summary['currentSemesterCourses'],
+                        cumulativeGpa: summary['cumulativeGpa'],
+                      ),
+                      const SizedBox(height: 28),
+                      
+                      ...categories.map((category) => Padding(
                         padding: const EdgeInsets.only(bottom: 18),
                         child: GraduationCategoryCard(category: category),
-                      );
-                    },
-                  ),
-                ],
+                      )),
+                    ],
+                  );
+                },
               ),
             ),
           ],
@@ -310,22 +116,20 @@ class _Header extends StatelessWidget {
               ),
               child: const Icon(
                 Icons.chevron_left_rounded,
-                color: Color(0xFF64748B), // Darkened slightly for better contrast
+                color: Color(0xFF64748B),
                 size: 26,
               ),
             ),
           ),
-
           const SizedBox(width: 14),
-
           const Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'EECS-GS',
                 style: TextStyle(
-                  fontSize: 22, // Increased from 18
-                  fontWeight: FontWeight.w800, // Reduced from w900, removed italic
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
                   color: Color(0xFF0F172A),
                 ),
               ),
@@ -333,9 +137,9 @@ class _Header extends StatelessWidget {
               Text(
                 'GRADUATION VERIFICATION',
                 style: TextStyle(
-                  fontSize: 11, // Increased from 9
-                  fontWeight: FontWeight.w700, // Reduced from w900
-                  letterSpacing: 1.0, // Reduced from 2.0
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.0,
                   color: Color(0xFF94A3B8),
                 ),
               ),
