@@ -59,6 +59,8 @@ flutter:
   assets:
       - assets/schedule.json
       - assets/graduation_data.json
+      - assets/email.json
+      - assets/upcoming_task.json
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.

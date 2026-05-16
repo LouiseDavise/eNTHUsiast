@@ -23,7 +23,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isBulletinCollapsed = false;
   DateTime _currentDate = DateTime.now();
   DateTime _selectedDate = DateTime.now();
-  
+
   List<String> _completedTaskIds = [];
   List<AppEvent> _customEvents = [];
   Map<String, List<Subtask>> _subtasksMap = Map.from(initialSubtasksMap);
@@ -36,7 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // Combine Hardcoded Events + Custom Events for the Upcoming List
   List<AppEvent> get _allUpcomingEvents {
     List<AppEvent> items = [];
-    
+
     // Add all events from calendar that aren't purely lectures
     initialCalendarEvents.forEach((dateKey, events) {
       for (var event in events) {
@@ -75,14 +75,20 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openDayDetails(DateTime date) {
     final key = _formatDateKey(date);
     final events = initialCalendarEvents[key] ?? [];
-    final customForDay = _customEvents.where((e) => _formatDateKey(e.dueDate) == key).toList();
-    
-    final allEventsForDay = [...events, ...customForDay].where((e) => e.type != 'Lecture').toList();
+    final customForDay = _customEvents
+        .where((e) => _formatDateKey(e.dueDate) == key)
+        .toList();
+
+    final allEventsForDay = [
+      ...events,
+      ...customForDay,
+    ].where((e) => e.type != 'Lecture').toList();
 
     if (allEventsForDay.isNotEmpty) {
       showDialog(
         context: context,
-        builder: (context) => DayDetailsPopup(date: date, events: allEventsForDay),
+        builder: (context) =>
+            DayDetailsPopup(date: date, events: allEventsForDay),
       );
     }
   }
@@ -93,7 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => AddTaskPopup(
         onSave: (title, date, subtaskList) {
           final newEventId = DateTime.now().millisecondsSinceEpoch.toString();
-          
+
           final newEvent = AppEvent(
             id: newEventId,
             title: title,
@@ -106,7 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
           setState(() {
             _customEvents.add(newEvent);
-            
+
             // Add custom subtasks if any
             if (subtaskList.isNotEmpty) {
               _subtasksMap[newEventId] = subtaskList.asMap().entries.map((e) {
@@ -137,7 +143,9 @@ class _HomeScreenState extends State<HomeScreen> {
             subtasks: _subtasksMap[event.id] ?? [],
             onToggle: (subId) {
               setState(() {
-                final sub = (_subtasksMap[event.id] ?? []).firstWhere((s) => s.id == subId);
+                final sub = (_subtasksMap[event.id] ?? []).firstWhere(
+                  (s) => s.id == subId,
+                );
                 sub.completed = !sub.completed;
               });
               setStateModal(() {});
@@ -154,7 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
                 _subtasksMap[event.id]!.add(
                   Subtask(
-                    id: 'st-${DateTime.now().millisecondsSinceEpoch}', 
+                    id: 'st-${DateTime.now().millisecondsSinceEpoch}',
                     text: newText,
                     completed: false,
                   ),
@@ -163,7 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
               setStateModal(() {});
             },
           );
-        }
+        },
       ),
     );
   }
@@ -171,13 +179,20 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     // Sort upcoming events (incomplete first, then by priority/date)
-    final displayEvents = _allUpcomingEvents.where((e) => e.dueDate.isAfter(DateTime.now().subtract(const Duration(days: 1)))).toList()
-      ..sort((a, b) {
-        bool aDone = _completedTaskIds.contains(a.id);
-        bool bDone = _completedTaskIds.contains(b.id);
-        if (aDone != bDone) return aDone ? 1 : -1;
-        return a.dueDate.compareTo(b.dueDate);
-      });
+    final displayEvents =
+        _allUpcomingEvents
+            .where(
+              (e) => e.dueDate.isAfter(
+                DateTime.now().subtract(const Duration(days: 1)),
+              ),
+            )
+            .toList()
+          ..sort((a, b) {
+            bool aDone = _completedTaskIds.contains(a.id);
+            bool bDone = _completedTaskIds.contains(b.id);
+            if (aDone != bDone) return aDone ? 1 : -1;
+            return a.dueDate.compareTo(b.dueDate);
+          });
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -199,22 +214,49 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: Colors.yellow.shade100,
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.wb_sunny_rounded, color: Colors.orange), // Spring Icon Placeholder
+                        child: const Icon(
+                          Icons.wb_sunny_rounded,
+                          color: Colors.orange,
+                        ), // Spring Icon Placeholder
                       ),
                       const SizedBox(width: 16),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text("eNTHUsiast", style: TextStyle(fontFamily: 'Roboto', fontSize: 28, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, color: Colors.black)),
+                          const Text(
+                            "eNTHUsiast",
+                            style: TextStyle(
+                              fontFamily: 'Roboto',
+                              fontSize: 28,
+                              fontWeight: FontWeight.w900,
+                              fontStyle: FontStyle.italic,
+                              color: Colors.black,
+                            ),
+                          ),
                           Row(
                             children: [
-                              Container(width: 6, height: 6, decoration: const BoxDecoration(color: nthuPurple, shape: BoxShape.circle)),
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  color: nthuPurple,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
                               const SizedBox(width: 8),
-                              const Text("115 SPRING SEMESTER", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: nthuPurple, letterSpacing: 2)),
+                              const Text(
+                                "115 SPRING SEMESTER",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                  color: nthuPurple,
+                                  letterSpacing: 2,
+                                ),
+                              ),
                             ],
-                          )
+                          ),
                         ],
-                      )
+                      ),
                     ],
                   ),
                 ),
@@ -222,7 +264,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 // Card 1: Bulletin
                 BulletinWidget(
                   isCollapsed: _isBulletinCollapsed,
-                  onToggleCollapse: () => setState(() => _isBulletinCollapsed = !_isBulletinCollapsed),
+                  onToggleCollapse: () => setState(
+                    () => _isBulletinCollapsed = !_isBulletinCollapsed,
+                  ),
                 ),
                 const SizedBox(height: 32),
 
@@ -239,27 +283,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                   onNavigate: (newDate) {
                     setState(() {
-                      _currentDate = newDate; 
+                      _currentDate = newDate;
                     });
                   },
                 ),
                 const SizedBox(height: 32),
 
                 // Card 3: Upcoming Tasks
-                UpcomingTasksWidget(
-                  filteredEvents: displayEvents,
-                  completedTaskIds: _completedTaskIds,
-                  onToggleComplete: (id) {
-                    setState(() {
-                      if (_completedTaskIds.contains(id)) {
-                        _completedTaskIds.remove(id);
-                      } else {
-                        _completedTaskIds.add(id);
-                      }
-                    });
-                  },
-                  onTaskTap: _openSubtaskManager,
-                ),
+                UpcomingTasksWidget(onTaskTap: _openSubtaskManager),
               ],
             ),
 
@@ -272,7 +303,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 backgroundColor: nthuPurple,
                 elevation: 8,
                 shape: const CircleBorder(),
-                child: const Icon(Icons.add_rounded, color: Colors.white, size: 32),
+                child: const Icon(
+                  Icons.add_rounded,
+                  color: Colors.white,
+                  size: 32,
+                ),
               ),
             ),
           ],
@@ -280,4 +315,4 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-} 
+}
