@@ -46,3 +46,6 @@ app.*.map.json
 
 # Firebase key
 serviceAccountKey.json
+scripts/credentials.json
+scripts/token.json
+scripts/email_parser.py
