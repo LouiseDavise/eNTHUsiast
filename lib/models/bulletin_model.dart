@@ -1,43 +1,36 @@
-import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class BulletinModel {
+class BulletinItem {
   final String id;
-  final String category;
+  final String sender;
   final String title;
-  final String subtitle;
-  final String imageUrl;
-  final String semanticLabel;
-  final Color? gradientStart;
-  final Color? gradientEnd;
+  final String snippet;
+  final String fullText;
+  final DateTime? updatedAt;
 
-  BulletinModel({
+  const BulletinItem({
     required this.id,
-    required this.category,
+    required this.sender,
     required this.title,
-    required this.subtitle,
-    required this.imageUrl,
-    required this.semanticLabel,
-    this.gradientStart,
-    this.gradientEnd,
+    required this.snippet,
+    required this.fullText,
+    required this.updatedAt,
   });
 
-  factory BulletinModel.fromMap(Map<String, dynamic> map) {
-    return BulletinModel(
-      id: map['id'] as String,
-      category: map['category'] as String,
-      title: map['title'] as String,
-      subtitle: map['subtitle'] as String,
-      imageUrl: map['imageUrl'] as String,
-      semanticLabel: map['semanticLabel'] as String,
+  factory BulletinItem.fromFirestore(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+
+    return BulletinItem(
+      id: data['id']?.toString() ?? doc.id,
+      sender: data['sender']?.toString() ?? '',
+      title: data['title']?.toString() ?? 'Untitled Bulletin',
+      snippet: data['snippet']?.toString() ?? '',
+      fullText: data['fullText']?.toString() ?? '',
+      updatedAt: data['updatedAt'] is Timestamp
+          ? (data['updatedAt'] as Timestamp).toDate()
+          : null,
     );
   }
-
-  Map<String, dynamic> toMap() => {
-    'id': id,
-    'category': category,
-    'title': title,
-    'subtitle': subtitle,
-    'imageUrl': imageUrl,
-    'semanticLabel': semanticLabel,
-  };
 }
