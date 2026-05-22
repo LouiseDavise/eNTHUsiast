@@ -27,6 +27,7 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
   int? selectedCredits;
 
   Set<String> baoBaoRecommendedCourseIds = {};
+  bool showBaoBaoRecommendationsOnly = false;
 
   final List<PlannerCourse> plannedCourses = [];
 
@@ -104,11 +105,15 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       final matchesDepartment =
           selectedDepartment == 'All' || course.department == selectedDepartment;
 
+      final matchesBaoBaoRecommendation = !showBaoBaoRecommendationsOnly ||
+          baoBaoRecommendedCourseIds.contains(course.id);
+
       return !alreadyPlanned &&
           matchesSearch &&
           matchesType &&
           matchesCredits &&
-          matchesDepartment;
+          matchesDepartment &&
+          matchesBaoBaoRecommendation;
     }).toList();
 
     result.sort((a, b) {
@@ -238,8 +243,22 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
         selectedType = result['type'];
         selectedCredits = result['credits'];
         selectedDepartment = result['department'];
+
+        showBaoBaoRecommendationsOnly = false;
+        baoBaoRecommendedCourseIds.clear();
       });
     }
+  }
+
+  void exitBaoBaoRecommendations() {
+    setState(() {
+      baoBaoRecommendedCourseIds.clear();
+      showBaoBaoRecommendationsOnly = false;
+      searchQuery = '';
+      selectedType = 'ALL';
+      selectedCredits = null;
+      selectedDepartment = 'All';
+    });
   }
 
   Future<void> openBaoBaoChat() async {
@@ -247,7 +266,10 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.45),
       builder: (_) {
-        return const CoursePlannerAiChatDialog();
+        return CoursePlannerAiChatDialog(
+          allCourses: allCourses,
+          plannedCourses: plannedCourses,
+        );
       },
     );
 
@@ -277,6 +299,7 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       selectedCredits = null;
       selectedDepartment = 'All';
       baoBaoRecommendedCourseIds = recommendedIds;
+      showBaoBaoRecommendationsOnly = true;
     });
   }
 
@@ -321,9 +344,18 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
                               selectedDepartment: selectedDepartment,
                               recommendedCourseIds:
                                   baoBaoRecommendedCourseIds,
+                              showBaoBaoRecommendationsOnly:
+                                  showBaoBaoRecommendationsOnly,
+                              onExitBaoBaoRecommendations:
+                                  exitBaoBaoRecommendations,
                               onSearchChanged: (value) {
                                 setState(() {
                                   searchQuery = value;
+
+                                  if (value.trim().isNotEmpty) {
+                                    showBaoBaoRecommendationsOnly = false;
+                                    baoBaoRecommendedCourseIds.clear();
+                                  }
                                 });
                               },
                               onFilterTap: openFilter,
@@ -540,9 +572,11 @@ class _DiscoverView extends StatefulWidget {
   final String selectedType;
   final String selectedDepartment;
   final Set<String> recommendedCourseIds;
+  final bool showBaoBaoRecommendationsOnly;
   final int? selectedCredits;
   final ValueChanged<String> onSearchChanged;
   final VoidCallback onFilterTap;
+  final VoidCallback onExitBaoBaoRecommendations;
   final ValueChanged<PlannerCourse> onCourseTap;
   final ValueChanged<PlannerCourse> onAddCourse;
   final bool Function(PlannerCourse course) hasConflict;
@@ -554,6 +588,8 @@ class _DiscoverView extends StatefulWidget {
     required this.selectedDepartment,
     required this.selectedCredits,
     required this.recommendedCourseIds,
+    required this.showBaoBaoRecommendationsOnly,
+    required this.onExitBaoBaoRecommendations,
     required this.onSearchChanged,
     required this.onFilterTap,
     required this.onCourseTap,
@@ -683,26 +719,86 @@ class _DiscoverViewState extends State<_DiscoverView> {
             ],
           ),
         ),
-        const SizedBox(height: 24),
-        const Row(
-          children: [
-            Icon(
-              Icons.auto_awesome_rounded,
-              size: 16,
-              color: Color(0xFF7E3291),
-            ),
-            SizedBox(width: 8),
-            Text(
-              'RECOMMENDED FOR YOU',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.8,
-                color: Color(0xFF94A3B8),
+        const SizedBox(height: 18),
+        if (widget.showBaoBaoRecommendationsOnly) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3E8FF),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: const Color(0xFFD8B4FE),
               ),
             ),
-          ],
-        ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 18,
+                  color: Color(0xFF7E3291),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Showing Bao-Bao recommendations',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF7E3291),
+                    ),
+                  ),
+                ),
+                InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: widget.onExitBaoBaoRecommendations,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Text(
+                      'SHOW ALL',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.7,
+                        color: Color(0xFF7E3291),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+        ],
+        if (widget.showBaoBaoRecommendationsOnly) ...[
+          const Row(
+            children: [
+              Icon(
+                Icons.auto_awesome_rounded,
+                size: 16,
+                color: Color(0xFF7E3291),
+              ),
+              SizedBox(width: 8),
+              Text(
+                'RECOMMENDED BY BAO-BAO',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: Color(0xFF94A3B8),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+        ],
         const SizedBox(height: 14),
         if (widget.courses.isEmpty)
           Container(

@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
 
+import '../../../models/courses_planner_model.dart';
+import '../api/bao_bao_ai_api.dart';
 import 'bao_bao_avatar.dart';
-import 'package:enthusiast/screens/courses/api/bao_bao_ai_api.dart';
 
 class CoursePlannerAiChatDialog extends StatefulWidget {
-  const CoursePlannerAiChatDialog({super.key});
+  final List<PlannerCourse> allCourses;
+  final List<PlannerCourse> plannedCourses;
+
+  const CoursePlannerAiChatDialog({
+    super.key,
+    required this.allCourses,
+    required this.plannedCourses,
+  });
 
   @override
   State<CoursePlannerAiChatDialog> createState() =>
@@ -19,26 +27,6 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog> {
 
   bool isLoading = false;
 
-  bool _isRecommendationRequest(String message) {
-    final lower = message.toLowerCase();
-
-    return lower.contains('recommend') ||
-        lower.contains('suggest') ||
-        lower.contains('what course') ||
-        lower.contains('choose course') ||
-        lower.contains('help me plan') ||
-        lower.contains('course plan');
-  }
-
-  List<String> _recommendedCourseIds() {
-    return [
-      'cs210',
-      'math202',
-      'ge101',
-      'pe101',
-    ];
-  }
-
   final List<_ChatMessage> messages = [
     _ChatMessage(
       text:
@@ -46,6 +34,91 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog> {
       isUser: false,
     ),
   ];
+
+  bool _isRecommendationRequest(String message) {
+    final lower = message.toLowerCase();
+
+    final hasCourseKeyword =
+        lower.contains('course') ||
+        lower.contains('class') ||
+        lower.contains('subject');
+
+    final hasRecommendKeyword =
+        lower.contains('recommend') ||
+        lower.contains('suggest') ||
+        lower.contains('find') ||
+        lower.contains('choose') ||
+        lower.contains('need') ||
+        lower.contains('want') ||
+        lower.contains('looking for') ||
+        lower.contains('beginner');
+
+    final hasSpecificCourseIntent =
+        lower.contains('japanese') ||
+        lower.contains('chinese') ||
+        lower.contains('english') ||
+        lower.contains('language') ||
+        lower.contains('pe') ||
+        lower.contains('sport') ||
+        lower.contains('math') ||
+        lower.contains('computer') ||
+        lower.contains('programming') ||
+        lower.contains('ai') ||
+        lower.contains('credit');
+
+    return (hasCourseKeyword && hasRecommendKeyword) || hasSpecificCourseIntent;
+  }
+
+  List<Map<String, dynamic>> _buildCourseCatalogForAi() {
+    return widget.allCourses.map((course) {
+      return {
+        'id': course.id,
+        'code': course.code,
+        'title': course.title,
+        'professor': course.professor,
+        'credits': course.credits,
+        'type': course.type,
+        'department': course.department,
+        'slotCode': course.slotCode,
+        'timeSlot': course.timeSlot,
+        'location': course.location,
+        'rating': course.rating,
+        'limit': course.limit,
+        'alreadyPlanned': _isAlreadyPlanned(course),
+        'hasConflict': _hasConflict(course),
+      };
+    }).toList();
+  }
+
+  bool _isAlreadyPlanned(PlannerCourse course) {
+    return widget.plannedCourses.any(
+      (plannedCourse) => plannedCourse.id == course.id,
+    );
+  }
+
+  bool _hasConflict(PlannerCourse course) {
+    for (final plannedCourse in widget.plannedCourses) {
+      if (plannedCourse.id == course.id) {
+        continue;
+      }
+
+      if (plannedCourse.day != course.day) {
+        continue;
+      }
+
+      final plannedStart = plannedCourse.startSlot;
+      final plannedEnd = plannedCourse.startSlot + plannedCourse.duration;
+
+      final courseStart = course.startSlot;
+      final courseEnd = course.startSlot + course.duration;
+
+      if (plannedStart < courseEnd && courseStart < plannedEnd) {
+        return true;
+      }
+    }
+
+    return false;
+  }
 
   @override
   void dispose() {
@@ -68,7 +141,7 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog> {
     });
   }
 
- Future<void> sendMessage() async {
+  Future<void> sendMessage() async {
     final text = _messageController.text.trim();
 
     if (text.isEmpty || isLoading) {
@@ -82,36 +155,63 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog> {
           isUser: true,
         ),
       );
+      isLoading = true;
     });
 
     _messageController.clear();
     _scrollToBottom();
 
     if (_isRecommendationRequest(text)) {
-      setState(() {
-        messages.add(
-          const _ChatMessage(
-            text:
-                'Bao-Bao found some recommended courses for you 🐼\nOpening Discover now...',
-            isUser: false,
-          ),
+      try {
+        final recommendedIds = await _baoBaoAiApi.askBaoBaoRecommendedCourseIds(
+          userMessage: text,
+          courseCatalog: _buildCourseCatalogForAi(),
         );
-      });
 
-      _scrollToBottom();
+        if (!mounted) return;
 
-      await Future.delayed(const Duration(milliseconds: 750));
+        setState(() {
+          isLoading = false;
+        });
 
-      if (!mounted) return;
+        if (recommendedIds.isEmpty) {
+          setState(() {
+            messages.add(
+              const _ChatMessage(
+                text:
+                    'Bao-Bao could not find suitable courses from your current course list.',
+                isUser: false,
+              ),
+            );
+          });
 
-      Navigator.pop(context, _recommendedCourseIds());
+          _scrollToBottom();
+          return;
+        }
 
-      return;
+        Navigator.pop(context, {
+          'courseIds': recommendedIds,
+        });
+
+        return;
+      } catch (_) {
+        if (!mounted) return;
+
+        setState(() {
+          isLoading = false;
+          messages.add(
+            const _ChatMessage(
+              text:
+                  'Bao-Bao could not prepare course recommendations right now. Please try again.',
+              isUser: false,
+            ),
+          );
+        });
+
+        _scrollToBottom();
+        return;
+      }
     }
-
-    setState(() {
-      isLoading = true;
-    });
 
     try {
       final reply = await _baoBaoAiApi.askBaoBao(text);
@@ -157,10 +257,6 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog> {
 
     if (lower.contains('conflict')) {
       return 'Bao-Bao thinks you should avoid conflict courses. Please check the courses marked with × CONFLICT.';
-    }
-
-    if (lower.contains('recommend') || lower.contains('suggest')) {
-      return 'Bao-Bao suggests choosing a balanced mix of CORE, ELECTIVE, and GE courses.';
     }
 
     if (lower.contains('credit')) {
