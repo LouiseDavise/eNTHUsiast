@@ -15,7 +15,7 @@ class PlannerDetailSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
-      initialChildSize: 0.88,
+      initialChildSize: 0.91,
       maxChildSize: 0.94,
       minChildSize: 0.5,
       builder: (context, scrollController) {
@@ -185,70 +185,70 @@ class PlannerDetailSheet extends StatelessWidget {
               _CapacityBox(
                 limit: course.limit,
               ),
-              const SizedBox(height: 28),
-              const _DetailSectionTitle(
-                icon: Icons.calendar_month_rounded,
-                color: Color(0xFFFF5B6E),
-                title: 'ACADEMIC DEADLINES',
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: _DeadlineBox(
-                      label: 'MIDTERM',
-                      value: course.midtermDate,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _DeadlineBox(
-                      label: 'FINAL',
-                      value: course.finalDate,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _DeadlineBox(
-                label: 'PROJECT FINAL',
-                value: course.projectDate,
-              ),
-              const SizedBox(height: 28),
-              const _DetailSectionTitle(
-                icon: Icons.check_box_outlined,
-                color: Color(0xFF10B981),
-                title: 'GRADING BREAKDOWN',
-              ),
-              const SizedBox(height: 14),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: SizedBox(
-                  height: 12,
-                  child: Row(
-                    children: course.grading.entries.map((entry) {
-                      return Expanded(
-                        flex: entry.value,
-                        child: Container(
-                          color: _gradingColor(entry.key),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 18,
-                runSpacing: 10,
-                children: course.grading.entries.map((entry) {
-                  return _LegendItem(
-                    label: entry.key.toUpperCase(),
-                    percent: entry.value,
-                    color: _gradingColor(entry.key),
-                  );
-                }).toList(),
-              ),
+              // const SizedBox(height: 28),
+              // const _DetailSectionTitle(
+              //   icon: Icons.calendar_month_rounded,
+              //   color: Color(0xFFFF5B6E),
+              //   title: 'ACADEMIC DEADLINES',
+              // ),
+              // const SizedBox(height: 14),
+              // Row(
+              //   children: [
+              //     Expanded(
+              //       child: _DeadlineBox(
+              //         label: 'MIDTERM',
+              //         value: course.midtermDate,
+              //       ),
+              //     ),
+              //     const SizedBox(width: 12),
+              //     Expanded(
+              //       child: _DeadlineBox(
+              //         label: 'FINAL',
+              //         value: course.finalDate,
+              //       ),
+              //     ),
+              //   ],
+              // ),
+              // const SizedBox(height: 12),
+              // _DeadlineBox(
+              //   label: 'PROJECT FINAL',
+              //   value: course.projectDate,
+              // ),
+              // const SizedBox(height: 28),
+              // const _DetailSectionTitle(
+              //   icon: Icons.check_box_outlined,
+              //   color: Color(0xFF10B981),
+              //   title: 'GRADING BREAKDOWN',
+              // ),
+              // const SizedBox(height: 14),
+              // ClipRRect(
+              //   borderRadius: BorderRadius.circular(999),
+              //   child: SizedBox(
+              //     height: 12,
+              //     child: Row(
+              //       children: course.grading.entries.map((entry) {
+              //         return Expanded(
+              //           flex: entry.value,
+              //           child: Container(
+              //             color: _gradingColor(entry.key),
+              //           ),
+              //         );
+              //       }).toList(),
+              //     ),
+              //   ),
+              // ),
+              // const SizedBox(height: 14),
+              // Wrap(
+              //   spacing: 18,
+              //   runSpacing: 10,
+              //   children: course.grading.entries.map((entry) {
+              //     return _LegendItem(
+              //       label: entry.key.toUpperCase(),
+              //       percent: entry.value,
+              //       color: _gradingColor(entry.key),
+              //     );
+              //   }).toList(),
+              // ),
               const SizedBox(height: 28),
               const _DetailSectionTitle(
                 icon: Icons.groups_rounded,
