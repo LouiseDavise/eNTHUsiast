@@ -1,6 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../utilities/data.dart';
+import '../utilities/models.dart'; // Added to recognize AppEvent
+import 'upcoming.dart'; // Added to recognize UpcomingTasksWidget
 
 class AddTaskPopup extends StatefulWidget {
   final Function(String title, DateTime date, List<String> subtasks) onSave;
@@ -16,18 +18,41 @@ class _AddTaskPopupState extends State<AddTaskPopup> {
   final TextEditingController _subtaskCtrl = TextEditingController();
   DateTime? _selectedDate;
   List<String> _subtasks = [];
-  String? _error;
+  String? _titleError;
+  String? _dateError;
 
   void _save() {
-    if (_titleCtrl.text.trim().isEmpty) {
-      setState(() => _error = "Event Title cannot be empty");
+    setState(() {
+      _titleError = _titleCtrl.text.trim().isEmpty ? "Event Title cannot be empty" : null;
+      _dateError = _selectedDate == null ? "Please select a date" : null;
+    });
+
+    if (_titleError != null || _dateError != null) {
       return;
     }
-    if (_selectedDate == null) {
-      setState(() => _error = "Please select a date");
-      return;
-    }
+
+    // 1. Create the new AppEvent object using the text field input data
+    final newTodoTask = AppEvent(
+      id: UniqueKey().toString(), // Generates a unique ID
+      title: _titleCtrl.text.trim(),
+      code: 'TODO', // Fallback tag code
+      time: '23:59',
+      type: 'todo', // Categorizes it into the TODO purple filter tag
+      color: UpcomingTasksWidget.getColorForType('todo'), // Maps to 0xFF752481
+      location: 'Online',
+      progress: 0,
+      dueDate: _selectedDate!,
+    );
+
+    // 2. Push it into the reactive tasksNotifier list to immediately update the view
+    UpcomingTasksWidget.tasksNotifier.value = [
+      ...UpcomingTasksWidget.tasksNotifier.value,
+      newTodoTask,
+    ];
+
+    // 3. Keep your original callback in case other components depend on it
     widget.onSave(_titleCtrl.text.trim(), _selectedDate!, _subtasks);
+    
     Navigator.pop(context);
   }
 
@@ -79,11 +104,24 @@ class _AddTaskPopupState extends State<AddTaskPopup> {
                       fillColor: Colors.grey.shade50,
                       hintText: "ex. Probability Extra Assignment",
                       hintStyle: TextStyle(color: Colors.grey.shade400, fontWeight: FontWeight.bold),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16), 
+                        borderSide: _titleError != null ? BorderSide(color: Colors.red.shade400, width: 1.5) : BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16), 
+                        borderSide: _titleError != null ? BorderSide(color: Colors.red.shade400, width: 1.5) : BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16), 
+                        borderSide: _titleError != null ? BorderSide(color: Colors.red.shade400, width: 1.5) : BorderSide.none,
+                      ),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     ),
                   ),
                 ),
+                if (_titleError != null) 
+                  Padding(padding: const EdgeInsets.only(top: 8), child: Text(_titleError!, style: const TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold))),
                 const SizedBox(height: 24),
                 
                 // Date Picker
@@ -102,7 +140,11 @@ class _AddTaskPopupState extends State<AddTaskPopup> {
                   child: Container(
                     height: 56,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(16)),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50, 
+                      borderRadius: BorderRadius.circular(16),
+                      border: _dateError != null ? Border.all(color: Colors.red.shade400, width: 1.5) : null,
+                    ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -110,13 +152,13 @@ class _AddTaskPopupState extends State<AddTaskPopup> {
                           _selectedDate != null ? _formatSimpleDate(_selectedDate!) : "dd/mm/yyyy",
                           style: TextStyle(fontWeight: FontWeight.bold, color: _selectedDate != null ? Colors.black87 : Colors.grey.shade400, fontSize: 15),
                         ),
-                        Icon(Icons.calendar_today_rounded, color: Colors.black87, size: 20),
+                        const Icon(Icons.calendar_today_rounded, color: Colors.black87, size: 20),
                       ],
                     ),
                   ),
                 ),
-                if (_error != null) 
-                  Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold))),
+                if (_dateError != null) 
+                  Padding(padding: const EdgeInsets.only(top: 8), child: Text(_dateError!, style: const TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold))),
                 const SizedBox(height: 24),
                 
                 // Subtasks Input
@@ -188,13 +230,19 @@ class _AddTaskPopupState extends State<AddTaskPopup> {
                 Row(
                   children: [
                     Expanded(
-                      child: TextButton(
-                        onPressed: () => Navigator.pop(context), 
-                        child: Text("CANCEL", style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w900, letterSpacing: 1.5, fontSize: 12)),
+                      child: SizedBox(
+                        height: 56,
+                        child: TextButton(
+                          onPressed: () => Navigator.pop(context), 
+                          style: TextButton.styleFrom(
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
+                          child: Text("CANCEL", style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w900, letterSpacing: 1.5, fontSize: 12)),
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 16),
                     Expanded(
-                      flex: 2, 
                       child: SizedBox(
                         height: 56,
                         child: ElevatedButton(

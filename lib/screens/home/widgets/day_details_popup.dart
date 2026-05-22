@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../utilities/models.dart';
+import 'tutorial.dart';
 
 const List<String> _monthNames = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -21,6 +22,7 @@ class DayDetailsPopup extends StatelessWidget {
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.all(16),
       child: Container(
+        key: TutorialTargetRegistry.get('calendar-details-popup-content'),
         constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(48)),
         child: Column(

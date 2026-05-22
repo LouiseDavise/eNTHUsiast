@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'tutorial.dart';
 
 // ── Custom Data Model ────────────────────────────────────────────────────────
 class DynamicBulletin {
@@ -377,6 +378,7 @@ class _BulletinWidgetState extends State<BulletinWidget> {
                         children: [
                           const SizedBox(height: 16),
                           SizedBox(
+                            key: TutorialTargetRegistry.get('bulletin-board-card'),
                             height: 180, 
                             child: isLoading 
                               ? const Center(child: CircularProgressIndicator(color: nthuPurple))
