@@ -1,146 +1,179 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../../../theme/app_theme.dart';
-import '../../../models/bulletin_model.dart';
-import '../../../widgets/custom_image_widget.dart';
 
-class BulletinBoardWidget extends StatefulWidget {
-  final List<BulletinModel> bulletins;
+import '../../models/bulletin_model.dart';
+import 'package:enthusiast/screens/home/services/bulletin_firestore_service.dart';
 
-  const BulletinBoardWidget({super.key, required this.bulletins});
-
-  @override
-  State<BulletinBoardWidget> createState() => _BulletinBoardWidgetState();
-}
-
-class _BulletinBoardWidgetState extends State<BulletinBoardWidget> {
-  late PageController _pageController;
-  int _currentPage = 0;
-
-  // Auto-scroll colors for each bulletin card
-  final List<List<Color>> _cardGradients = [
-    [Color(0xFF0D9488), Color(0xFF0F766E)],
-    [Color(0xFF6B21A8), Color(0xFF4C1D95)],
-    [Color(0xFF1D4ED8), Color(0xFF1E3A8A)],
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController(viewportFraction: 1.0);
-    _startAutoScroll();
-  }
-
-  void _startAutoScroll() {
-    Future.delayed(const Duration(seconds: 4), () {
-      if (!mounted) return;
-      final next = (_currentPage + 1) % widget.bulletins.length;
-      _pageController.animateToPage(
-        next,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeOutCubic,
-      );
-      _startAutoScroll();
-    });
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
+class BulletinBoardScreen extends StatelessWidget {
+  const BulletinBoardScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(15),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+    final service = BulletinFirestoreService();
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFF8FAFC),
+        elevation: 0,
+        foregroundColor: const Color(0xFF0F172A),
+        title: const Text(
+          'Bulletin Board',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
           ),
-        ],
+        ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        Icons.notifications_outlined,
-                        color: AppTheme.primary,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Bulletin Board',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1A1A2E),
-                      ),
-                    ),
-                  ],
+      body: StreamBuilder<List<BulletinItem>>(
+        stream: service.watchBulletins(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFF7E3291),
+              ),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Failed to load bulletins:\n${snapshot.error}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-                Icon(
-                  Icons.expand_less_rounded,
-                  color: Color(0xFF9CA3AF),
-                  size: 20,
+              ),
+            );
+          }
+
+          final bulletins = snapshot.data ?? [];
+
+          if (bulletins.isEmpty) {
+            return const Center(
+              child: Text(
+                'No bulletins found.',
+                style: TextStyle(
+                  color: Color(0xFF94A3B8),
+                  fontWeight: FontWeight.w600,
                 ),
-              ],
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 100),
+            itemCount: bulletins.length,
+            itemBuilder: (context, index) {
+              final bulletin = bulletins[index];
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: _BulletinCard(
+                  bulletin: bulletin,
+                  onTap: () {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) {
+                        return _BulletinDetailSheet(bulletin: bulletin);
+                      },
+                    );
+                  },
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _BulletinCard extends StatelessWidget {
+  final BulletinItem bulletin;
+  final VoidCallback onTap;
+
+  const _BulletinCard({
+    required this.bulletin,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: const Color(0xFFF1F5F9),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.055),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
-            const SizedBox(height: 14),
-            SizedBox(
-              height: 160,
-              child: PageView.builder(
-                controller: _pageController,
-                itemCount: widget.bulletins.length,
-                onPageChanged: (index) => setState(() => _currentPage = index),
-                itemBuilder: (context, index) {
-                  final bulletin = widget.bulletins[index];
-                  final gradient =
-                      _cardGradients[index % _cardGradients.length];
-                  return _BulletinCard(
-                    bulletin: bulletin,
-                    gradientColors: gradient,
-                  );
-                },
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF3E8FF),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(
+                Icons.campaign_rounded,
+                color: Color(0xFF7E3291),
               ),
             ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(widget.bulletins.length, (index) {
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeOutCubic,
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  width: _currentPage == index ? 20 : 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: _currentPage == index
-                        ? AppTheme.primary
-                        : Color(0xFFD1D5DB),
-                    borderRadius: BorderRadius.circular(100),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    bulletin.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                    ),
                   ),
-                );
-              }),
+                  const SizedBox(height: 6),
+                  Text(
+                    bulletin.snippet.isNotEmpty
+                        ? bulletin.snippet
+                        : bulletin.sender,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      height: 1.4,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF94A3B8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: Color(0xFFCBD5E1),
             ),
           ],
         ),
@@ -149,92 +182,101 @@ class _BulletinBoardWidgetState extends State<BulletinBoardWidget> {
   }
 }
 
-class _BulletinCard extends StatelessWidget {
-  final BulletinModel bulletin;
-  final List<Color> gradientColors;
+class _BulletinDetailSheet extends StatelessWidget {
+  final BulletinItem bulletin;
 
-  const _BulletinCard({required this.bulletin, required this.gradientColors});
+  const _BulletinDetailSheet({
+    required this.bulletin,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          CustomImageWidget(
-            imageUrl: bulletin.imageUrl,
-            width: double.infinity,
-            height: 160,
-            fit: BoxFit.cover,
-            semanticLabel: bulletin.semanticLabel,
-          ),
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  gradientColors[0].withAlpha(224),
-                  gradientColors[1].withAlpha(184),
-                ],
-                begin: Alignment.bottomLeft,
-                end: Alignment.topRight,
-              ),
+    return DraggableScrollableSheet(
+      initialChildSize: 0.86,
+      minChildSize: 0.45,
+      maxChildSize: 0.94,
+      builder: (context, scrollController) {
+        return Container(
+          padding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(34),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Text(
-                  bulletin.category,
-                  style: GoogleFonts.dmSans(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white.withAlpha(217),
-                    letterSpacing: 1.5,
+          child: ListView(
+            controller: scrollController,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.campaign_rounded,
+                    color: Color(0xFF7E3291),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  bulletin.title,
-                  style: GoogleFonts.dmSans(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                    fontStyle: FontStyle.italic,
-                    height: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: Colors.white.withAlpha(204),
-                      width: 1.5,
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'BULLETIN DETAIL',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.9,
+                        color: Color(0xFF94A3B8),
+                      ),
                     ),
+                  ),
+                  InkWell(
                     borderRadius: BorderRadius.circular(100),
-                  ),
-                  child: Text(
-                    'LEARN MORE',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                      letterSpacing: 1.2,
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFF8FAFC),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        color: Color(0xFF94A3B8),
+                      ),
                     ),
                   ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Text(
+                bulletin.title,
+                style: const TextStyle(
+                  fontSize: 24,
+                  height: 1.15,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                bulletin.sender,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF94A3B8),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                bulletin.fullText,
+                style: const TextStyle(
+                  fontSize: 14,
+                  height: 1.55,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF334155),
+                ),
+              ),
+              const SizedBox(height: 32),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

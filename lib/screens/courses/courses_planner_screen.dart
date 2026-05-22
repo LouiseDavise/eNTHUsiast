@@ -7,6 +7,9 @@ import 'widgets/course_planner_filter_sheet.dart';
 import 'widgets/course_planner_schedule_grid.dart' as schedule;
 import 'widgets/course_planned_course_card.dart';
 import 'widgets/course_planner_enroll_card.dart';
+import 'widgets/course_planner_ai_button.dart';
+import 'widgets/course_planner_ai_chat_dialog.dart';
+import 'services/course_planner_firestore_services.dart';
 
 class CoursePlannerScreen extends StatefulWidget {
   const CoursePlannerScreen({super.key});
@@ -23,433 +26,47 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
   String selectedDepartment = 'All';
   int? selectedCredits;
 
+  Set<String> baoBaoRecommendedCourseIds = {};
+
   final List<PlannerCourse> plannedCourses = [];
 
-  static const List<PlannerCourse> dummyCourses = [
-    PlannerCourse(
-      id: 'cs301',
-      code: 'CS301',
-      title: 'Machine Learning',
-      professor: 'Lee Meng Jiao',
-      credits: 2,
-      type: 'CORE',
-      department: 'Computer Science',
-      limit: 60,
-      rating: 5.0,
-      reviews: 128,
-      midtermDate: 'Oct 15',
-      finalDate: 'Dec 20',
-      projectDate: 'Dec 10',
-      grading: {'Exams': 40, 'Projects': 40, 'Participation': 20},
-      syllabus: [
-        'Introduction & Overview',
-        'Core Concepts & Theory',
-        'Practical Applications',
-      ],
-      timeSlot: 'Mon 11:10 - 14:10',
-      slotCode: 'M4M5',
-      location: 'Building B, Room 402',
-      day: 1,
-      startSlot: 3,
-      duration: 2,
-      color: Color(0xFF14B8A6),
-    ),
+  final CoursePlannerFirestoreService _courseService =
+      CoursePlannerFirestoreService();
 
-    PlannerCourse(
-      id: 'cs210',
-      code: 'CS210',
-      title: 'Computer Architecture',
-      professor: 'Huang Wei Cheng',
-      credits: 2,
-      type: 'CORE',
-      department: 'Computer Science',
-      limit: 60,
-      rating: 4.8,
-      reviews: 96,
-      midtermDate: 'Oct 20',
-      finalDate: 'Dec 18',
-      projectDate: 'Dec 5',
-      grading: {'Exams': 50, 'Projects': 30, 'Participation': 20},
-      syllabus: ['CPU Basics', 'Memory System', 'Instruction Pipeline'],
-      timeSlot: 'Tue 08:00 - 09:50',
-      slotCode: 'T1T2',
-      location: 'Engineering Building, Room 205',
-      day: 2,
-      startSlot: 0,
-      duration: 2,
-      color: Color(0xFF60A5FA),
-    ),
+  List<PlannerCourse> allCourses = [];
+  bool isLoadingCourses = true;
+  String? courseLoadError;
 
-    PlannerCourse(
-      id: 'math202',
-      code: 'MATH202',
-      title: 'Probability',
-      professor: 'Chen Yi Ting',
-      credits: 3,
-      type: 'ELECTIVE',
-      department: 'Mathematics',
-      limit: 80,
-      rating: 4.6,
-      reviews: 77,
-      midtermDate: 'Oct 18',
-      finalDate: 'Dec 22',
-      projectDate: 'None',
-      grading: {'Exams': 70, 'Homework': 20, 'Participation': 10},
-      syllabus: ['Counting', 'Random Variables', 'Expected Value'],
-      timeSlot: 'Tue 13:20 - 15:10',
-      slotCode: 'T5T6',
-      location: 'General Building, Room 301',
-      day: 2,
-      startSlot: 5,
-      duration: 2,
-      color: Color(0xFFA855F7),
-    ),
+  @override
+  void initState() {
+    super.initState();
+    loadCoursesFromFirebase();
+  }
 
-    PlannerCourse(
-      id: 'lang101',
-      code: 'LANG101',
-      title: 'College Chinese',
-      professor: 'Lin Mei Hua',
-      credits: 2,
-      type: 'LANGUAGE',
-      department: 'Language',
-      limit: 40,
-      rating: 4.7,
-      reviews: 88,
-      midtermDate: 'Oct 12',
-      finalDate: 'Dec 16',
-      projectDate: 'None',
-      grading: {'Exams': 50, 'Homework': 30, 'Participation': 20},
-      syllabus: ['Reading Practice', 'Writing Practice', 'Final Presentation'],
-      timeSlot: 'Thu 13:20 - 15:10',
-      slotCode: 'R5R6',
-      location: 'Language Center, Room 101',
-      day: 4,
-      startSlot: 5,
-      duration: 2,
-      color: Color(0xFFFBBF24),
-    ),
+  Future<void> loadCoursesFromFirebase() async {
+    setState(() {
+      isLoadingCourses = true;
+      courseLoadError = null;
+    });
 
-    PlannerCourse(
-      id: 'ge101',
-      code: 'GE101',
-      title: 'Modern Society and Culture',
-      professor: 'Wang Shu Fen',
-      credits: 2,
-      type: 'GE',
-      department: 'General Education',
-      limit: 100,
-      rating: 4.5,
-      reviews: 64,
-      midtermDate: 'Oct 17',
-      finalDate: 'Dec 19',
-      projectDate: 'Nov 30',
-      grading: {'Exams': 40, 'Projects': 40, 'Participation': 20},
-      syllabus: [
-        'Society and Identity',
-        'Culture and Media',
-        'Final Group Report',
-      ],
-      timeSlot: 'Fri 09:00 - 09:50',
-      slotCode: 'F2',
-      location: 'Humanities Building, Room 210',
-      day: 5,
-      startSlot: 1,
-      duration: 1,
-      color: Color(0xFFF472B6),
-    ),
+    try {
+      final courses = await _courseService.fetchCourses();
 
-    PlannerCourse(
-      id: 'pe101',
-      code: 'PE101',
-      title: 'Physical Education',
-      professor: 'Chang Yu Ming',
-      credits: 1,
-      type: 'PE',
-      department: 'Physical Education',
-      limit: 45,
-      rating: 4.9,
-      reviews: 52,
-      midtermDate: 'None',
-      finalDate: 'Dec 15',
-      projectDate: 'None',
-      grading: {'Participation': 70, 'Skill Test': 30},
-      syllabus: ['Basic Training', 'Team Practice', 'Final Skill Test'],
-      timeSlot: 'Wed 16:30 - 17:20',
-      slotCode: 'W8',
-      location: 'Gymnasium Court 2',
-      day: 3,
-      startSlot: 8,
-      duration: 1,
-      color: Color(0xFF34D399),
-    ),
+      if (!mounted) return;
 
-    PlannerCourse(
-      id: 'lab205',
-      code: 'LAB205',
-      title: 'Software Studio Lab',
-      professor: 'Wu Shane Lung',
-      credits: 1,
-      type: 'LAB',
-      department: 'Computer Science',
-      limit: 30,
-      rating: 4.8,
-      reviews: 41,
-      midtermDate: 'Oct 25',
-      finalDate: 'Dec 23',
-      projectDate: 'Dec 12',
-      grading: {'Projects': 70, 'Participation': 30},
-      syllabus: ['Flutter Basics', 'Firebase Integration', 'Final App Demo'],
-      timeSlot: 'Mon 18:30 - 20:20',
-      slotCode: 'MaMb',
-      location: 'CS Lab, Room 501',
-      day: 1,
-      startSlot: 10,
-      duration: 2,
-      color: Color(0xFF22C55E),
-    ),
+      setState(() {
+        allCourses = courses;
+        isLoadingCourses = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
 
-    PlannerCourse(
-      id: 'phy101',
-      code: 'PHY101',
-      title: 'General Physics',
-      professor: 'Liu Kai Wen',
-      credits: 3,
-      type: 'CORE',
-      department: 'Physics',
-      limit: 90,
-      rating: 4.4,
-      reviews: 73,
-      midtermDate: 'Oct 21',
-      finalDate: 'Dec 21',
-      projectDate: 'None',
-      grading: {'Exams': 80, 'Homework': 20},
-      syllabus: ['Motion', 'Energy', 'Electricity'],
-      timeSlot: 'Tue 10:10 - 12:00',
-      slotCode: 'T3T4',
-      location: 'Science Building, Room 102',
-      day: 2,
-      startSlot: 2,
-      duration: 2,
-      color: Color(0xFF38BDF8),
-    ),
-
-    PlannerCourse(
-      id: 'chem101',
-      code: 'CHEM101',
-      title: 'General Chemistry',
-      professor: 'Tsai Chia Yu',
-      credits: 3,
-      type: 'CORE',
-      department: 'Chemistry',
-      limit: 85,
-      rating: 4.3,
-      reviews: 69,
-      midtermDate: 'Oct 19',
-      finalDate: 'Dec 18',
-      projectDate: 'None',
-      grading: {'Exams': 70, 'Lab': 20, 'Participation': 10},
-      syllabus: [
-        'Atoms and Molecules',
-        'Chemical Bonds',
-        'Reaction Principles',
-      ],
-      timeSlot: 'Thu 09:00 - 09:50',
-      slotCode: 'R2',
-      location: 'Chemistry Building, Room 304',
-      day: 4,
-      startSlot: 1,
-      duration: 1,
-      color: Color(0xFFFB7185),
-    ),
-
-    PlannerCourse(
-      id: 'econ101',
-      code: 'ECON101',
-      title: 'Introduction to Economics',
-      professor: 'Kao Ming Jie',
-      credits: 3,
-      type: 'ELECTIVE',
-      department: 'Economics',
-      limit: 120,
-      rating: 4.6,
-      reviews: 101,
-      midtermDate: 'Oct 16',
-      finalDate: 'Dec 17',
-      projectDate: 'None',
-      grading: {'Exams': 60, 'Homework': 20, 'Participation': 20},
-      syllabus: ['Supply and Demand', 'Market Structure', 'Economic Policy'],
-      timeSlot: 'Fri 13:20 - 15:10',
-      slotCode: 'F5F6',
-      location: 'Management Building, Room 201',
-      day: 5,
-      startSlot: 5,
-      duration: 2,
-      color: Color(0xFFF97316),
-    ),
-
-    PlannerCourse(
-      id: 'psy101',
-      code: 'PSY101',
-      title: 'Introduction to Psychology',
-      professor: 'Hsu Pei Ling',
-      credits: 2,
-      type: 'GE',
-      department: 'Psychology',
-      limit: 70,
-      rating: 4.7,
-      reviews: 84,
-      midtermDate: 'Oct 14',
-      finalDate: 'Dec 14',
-      projectDate: 'Dec 1',
-      grading: {'Exams': 50, 'Projects': 30, 'Participation': 20},
-      syllabus: [
-        'Mind and Behavior',
-        'Learning and Memory',
-        'Social Psychology',
-      ],
-      timeSlot: 'Tue 16:30 - 18:20',
-      slotCode: 'T8T9',
-      location: 'Social Science Building, Room 110',
-      day: 2,
-      startSlot: 8,
-      duration: 2,
-      color: Color(0xFFC084FC),
-    ),
-
-    PlannerCourse(
-      id: 'hist101',
-      code: 'HIST101',
-      title: 'World History',
-      professor: 'Chou Wen An',
-      credits: 2,
-      type: 'GE',
-      department: 'History',
-      limit: 75,
-      rating: 4.2,
-      reviews: 48,
-      midtermDate: 'Oct 13',
-      finalDate: 'Dec 13',
-      projectDate: 'Nov 28',
-      grading: {'Exams': 50, 'Projects': 30, 'Participation': 20},
-      syllabus: ['Ancient Civilizations', 'Modern History', 'Globalization'],
-      timeSlot: 'Mon 15:30 - 17:20',
-      slotCode: 'M7M8',
-      location: 'Humanities Building, Room 305',
-      day: 1,
-      startSlot: 7,
-      duration: 2,
-      color: Color(0xFF818CF8),
-    ),
-
-    PlannerCourse(
-      id: 'soc101',
-      code: 'SOC101',
-      title: 'Sociology',
-      professor: 'Yang Shu Hui',
-      credits: 2,
-      type: 'ELECTIVE',
-      department: 'Sociology',
-      limit: 65,
-      rating: 4.3,
-      reviews: 37,
-      midtermDate: 'Oct 22',
-      finalDate: 'Dec 20',
-      projectDate: 'Dec 6',
-      grading: {'Exams': 40, 'Projects': 40, 'Participation': 20},
-      syllabus: [
-        'Social Structure',
-        'Groups and Institutions',
-        'Social Change',
-      ],
-      timeSlot: 'Wed 13:20 - 15:10',
-      slotCode: 'W5W6',
-      location: 'Social Science Building, Room 208',
-      day: 3,
-      startSlot: 5,
-      duration: 2,
-      color: Color(0xFF2DD4BF),
-    ),
-
-    PlannerCourse(
-      id: 'art101',
-      code: 'ART101',
-      title: 'Introduction to Arts',
-      professor: 'Lai Yu Ting',
-      credits: 1,
-      type: 'ELECTIVE',
-      department: 'Arts',
-      limit: 50,
-      rating: 4.8,
-      reviews: 42,
-      midtermDate: 'None',
-      finalDate: 'Dec 11',
-      projectDate: 'Dec 4',
-      grading: {'Projects': 70, 'Participation': 30},
-      syllabus: ['Visual Elements', 'Art Appreciation', 'Creative Project'],
-      timeSlot: 'Fri 15:30 - 16:20',
-      slotCode: 'F7',
-      location: 'Arts Center, Room 102',
-      day: 5,
-      startSlot: 7,
-      duration: 1,
-      color: Color(0xFFFACC15),
-    ),
-
-    PlannerCourse(
-      id: 'phil101',
-      code: 'PHIL101',
-      title: 'Introduction to Philosophy',
-      professor: 'Teng Li Wei',
-      credits: 4,
-      type: 'GE',
-      department: 'Philosophy',
-      limit: 55,
-      rating: 4.5,
-      reviews: 58,
-      midtermDate: 'Oct 23',
-      finalDate: 'Dec 24',
-      projectDate: 'None',
-      grading: {'Exams': 60, 'Homework': 20, 'Participation': 20},
-      syllabus: ['Logic and Argument', 'Ethics', 'Knowledge and Reality'],
-      timeSlot: 'Thu 15:30 - 17:20',
-      slotCode: 'R7R8',
-      location: 'Humanities Building, Room 406',
-      day: 4,
-      startSlot: 7,
-      duration: 2,
-      color: Color(0xFF9CA3AF),
-    ),
-
-    PlannerCourse(
-      id: 'cs230',
-      code: 'CS230',
-      title: 'Hardware Design & Lab',
-      professor: 'Lee Meng Jiao',
-      credits: 2,
-      type: 'LAB',
-      department: 'Computer Science',
-      limit: 60,
-      rating: 4.9,
-      reviews: 112,
-      midtermDate: 'Oct 16',
-      finalDate: 'Dec 19',
-      projectDate: 'Dec 8',
-      grading: {'Exams': 35, 'Projects': 45, 'Participation': 20},
-      syllabus: [
-        'Digital Hardware Basics',
-        'FPGA Design',
-        'Hardware Lab Project',
-      ],
-      timeSlot: 'Mon 10:10 - 12:00',
-      slotCode: 'M3M4',
-      location: 'Engineering Building, Lab 303',
-      day: 1,
-      startSlot: 2,
-      duration: 2,
-      color: Color(0xFFA855F7),
-    ),
-  ];
+      setState(() {
+        courseLoadError = error.toString();
+        isLoadingCourses = false;
+      });
+    }
+  }
 
   int get totalCredits {
     int total = 0;
@@ -464,19 +81,19 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
   List<PlannerCourse> get filteredCourses {
     final query = searchQuery.trim().toLowerCase();
 
-    return dummyCourses.where((course) {
+    final result = allCourses.where((course) {
       final alreadyPlanned = plannedCourses.any(
         (plannedCourse) => plannedCourse.id == course.id,
       );
 
-      final matchesSearch =
-          query.isEmpty ||
+      final matchesSearch = query.isEmpty ||
           course.title.toLowerCase().contains(query) ||
           course.code.toLowerCase().contains(query) ||
           course.professor.toLowerCase().contains(query) ||
           course.department.toLowerCase().contains(query) ||
           course.type.toLowerCase().contains(query) ||
-          course.slotCode.toLowerCase().contains(query);
+          course.slotCode.toLowerCase().contains(query) ||
+          course.location.toLowerCase().contains(query);
 
       final matchesType =
           selectedType == 'ALL' || course.type.toUpperCase() == selectedType;
@@ -485,8 +102,7 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
           selectedCredits == null || course.credits == selectedCredits;
 
       final matchesDepartment =
-          selectedDepartment == 'All' ||
-          course.department == selectedDepartment;
+          selectedDepartment == 'All' || course.department == selectedDepartment;
 
       return !alreadyPlanned &&
           matchesSearch &&
@@ -494,6 +110,18 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
           matchesCredits &&
           matchesDepartment;
     }).toList();
+
+    result.sort((a, b) {
+      final aRecommended = baoBaoRecommendedCourseIds.contains(a.id);
+      final bRecommended = baoBaoRecommendedCourseIds.contains(b.id);
+
+      if (aRecommended && !bRecommended) return -1;
+      if (!aRecommended && bRecommended) return 1;
+
+      return a.code.compareTo(b.code);
+    });
+
+    return result;
   }
 
   void addCourse(PlannerCourse course) {
@@ -524,9 +152,6 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
 
     setState(() {
       plannedCourses.add(course);
-
-      // Do NOT switch tab automatically.
-      // selectedTab = 1;  <-- remove this
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -617,22 +242,52 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
     }
   }
 
+  Future<void> openBaoBaoChat() async {
+    final result = await showDialog<dynamic>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (_) {
+        return const CoursePlannerAiChatDialog();
+      },
+    );
+
+    if (!mounted) return;
+
+    if (result == null) {
+      return;
+    }
+
+    Set<String> recommendedIds = {};
+
+    if (result is List<String>) {
+      recommendedIds = result.toSet();
+    } else if (result is Map<String, dynamic>) {
+      final ids = result['courseIds'] as List<dynamic>? ?? [];
+      recommendedIds = ids.map((id) => id.toString()).toSet();
+    }
+
+    if (recommendedIds.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      selectedTab = 0;
+      searchQuery = '';
+      selectedType = 'ALL';
+      selectedCredits = null;
+      selectedDepartment = 'All';
+      baoBaoRecommendedCourseIds = recommendedIds;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final courses = filteredCourses;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF7E3291),
-        elevation: 10,
-        shape: const CircleBorder(),
-        onPressed: () {},
-        child: const Icon(
-          Icons.auto_awesome_rounded,
-          color: Colors.white,
-          size: 26,
-        ),
+      floatingActionButton: CoursePlannerAiButton(
+        onTap: openBaoBaoChat,
       ),
       body: SafeArea(
         child: Column(
@@ -650,33 +305,42 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
             ),
             const SizedBox(height: 16),
             Expanded(
-              child: selectedTab == 0
-                  ? _DiscoverView(
-                      courses: courses,
-                      searchQuery: searchQuery,
-                      selectedType: selectedType,
-                      selectedCredits: selectedCredits,
-                      selectedDepartment: selectedDepartment,
-                      onSearchChanged: (value) {
-                        setState(() {
-                          searchQuery = value;
-                        });
-                      },
-                      onFilterTap: openFilter,
-                      onCourseTap: openCourseDetail,
-                      onAddCourse: addCourse,
-                      hasConflict: hasScheduleConflict,
-                    )
-                  : _MyPlanView(
-                      plannedCourses: plannedCourses,
-                      totalCredits: totalCredits,
-                      onBrowse: () {
-                        setState(() {
-                          selectedTab = 0;
-                        });
-                      },
-                      onRemove: removeCourse,
-                    ),
+              child: isLoadingCourses
+                  ? const _CourseLoadingView()
+                  : courseLoadError != null
+                      ? _CourseLoadErrorView(
+                          error: courseLoadError!,
+                          onRetry: loadCoursesFromFirebase,
+                        )
+                      : selectedTab == 0
+                          ? _DiscoverView(
+                              courses: courses,
+                              searchQuery: searchQuery,
+                              selectedType: selectedType,
+                              selectedCredits: selectedCredits,
+                              selectedDepartment: selectedDepartment,
+                              recommendedCourseIds:
+                                  baoBaoRecommendedCourseIds,
+                              onSearchChanged: (value) {
+                                setState(() {
+                                  searchQuery = value;
+                                });
+                              },
+                              onFilterTap: openFilter,
+                              onCourseTap: openCourseDetail,
+                              onAddCourse: addCourse,
+                              hasConflict: hasScheduleConflict,
+                            )
+                          : _MyPlanView(
+                              plannedCourses: plannedCourses,
+                              totalCredits: totalCredits,
+                              onBrowse: () {
+                                setState(() {
+                                  selectedTab = 0;
+                                });
+                              },
+                              onRemove: removeCourse,
+                            ),
             ),
           ],
         ),
@@ -708,9 +372,7 @@ class _Header extends StatelessWidget {
               ),
               child: const Icon(
                 Icons.chevron_left_rounded,
-                color: Color(
-                  0xFF64748B,
-                ), // Darkened slightly for better contrast
+                color: Color(0xFF64748B),
                 size: 26,
               ),
             ),
@@ -720,9 +382,8 @@ class _Header extends StatelessWidget {
             child: Text(
               'Course Planner',
               style: TextStyle(
-                fontSize: 24, // Increased from 22
-                fontWeight:
-                    FontWeight.w800, // Reduced from w900, removed italic
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
                 color: Color(0xFF0F172A),
               ),
             ),
@@ -733,20 +394,18 @@ class _Header extends StatelessWidget {
               const Text(
                 'TOTAL CREDITS',
                 style: TextStyle(
-                  fontSize: 11, // Increased from 9
-                  fontWeight: FontWeight.w700, // Reduced from w900
-                  letterSpacing: 1.0, // Reduced from 1.5
-                  color: Color(
-                    0xFF94A3B8,
-                  ), // Darkened slightly from CBD5E1 for legibility
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.0,
+                  color: Color(0xFF94A3B8),
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 '$totalCredits',
                 style: const TextStyle(
-                  fontSize: 22, // Increased from 20 to balance with main title
-                  fontWeight: FontWeight.w800, // Reduced from w900
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
                   color: Color(0xFF7E3291),
                 ),
               ),
@@ -773,12 +432,10 @@ class _Tabs extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 28),
-      padding: const EdgeInsets.all(4), // Inner padding for the "pill" effect
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(
-          16,
-        ), // Adjusted to 16 for a smooth pill
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
@@ -816,20 +473,18 @@ class _TabButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: InkWell(
-        borderRadius: BorderRadius.circular(
-          14,
-        ), // Smoothed from 13 to match outer
+        borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          height: 42, // Increased from 38 for a better mobile tap target
+          height: 42,
           decoration: BoxDecoration(
             color: active ? Colors.white : Colors.transparent,
             borderRadius: BorderRadius.circular(14),
             boxShadow: active
                 ? [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
+                      color: Colors.black.withValues(alpha: 0.08),
                       blurRadius: 8,
                       offset: const Offset(0, 3),
                     ),
@@ -842,9 +497,9 @@ class _TabButton extends StatelessWidget {
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 12, // Increased from 9 for readability
-                  fontWeight: FontWeight.w700, // Reduced from w900
-                  letterSpacing: 0.5, // Reduced from 1.3
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
                   color: active
                       ? const Color(0xFF7E3291)
                       : const Color(0xFF94A3B8),
@@ -853,7 +508,7 @@ class _TabButton extends StatelessWidget {
               if (badge > 0 && title == 'MY PLAN') ...[
                 const SizedBox(width: 8),
                 Container(
-                  width: 18, // Increased from 16 to fit larger text
+                  width: 18,
                   height: 18,
                   decoration: const BoxDecoration(
                     color: Color(0xFF7E3291),
@@ -863,8 +518,8 @@ class _TabButton extends StatelessWidget {
                     child: Text(
                       '$badge',
                       style: const TextStyle(
-                        fontSize: 10, // Increased from 9
-                        fontWeight: FontWeight.w700, // Reduced from w900
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
                         color: Colors.white,
                       ),
                     ),
@@ -884,6 +539,7 @@ class _DiscoverView extends StatefulWidget {
   final String searchQuery;
   final String selectedType;
   final String selectedDepartment;
+  final Set<String> recommendedCourseIds;
   final int? selectedCredits;
   final ValueChanged<String> onSearchChanged;
   final VoidCallback onFilterTap;
@@ -897,6 +553,7 @@ class _DiscoverView extends StatefulWidget {
     required this.selectedType,
     required this.selectedDepartment,
     required this.selectedCredits,
+    required this.recommendedCourseIds,
     required this.onSearchChanged,
     required this.onFilterTap,
     required this.onCourseTap,
@@ -913,8 +570,7 @@ class _DiscoverViewState extends State<_DiscoverView> {
 
   @override
   Widget build(BuildContext context) {
-    final hasFilter =
-        widget.selectedType != 'ALL' ||
+    final hasFilter = widget.selectedType != 'ALL' ||
         widget.selectedCredits != null ||
         widget.selectedDepartment != 'All';
 
@@ -927,7 +583,7 @@ class _DiscoverViewState extends State<_DiscoverView> {
       children: [
         AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          height: 52, // Increased slightly from 50
+          height: 52,
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             color: Colors.white,
@@ -941,8 +597,8 @@ class _DiscoverViewState extends State<_DiscoverView> {
             boxShadow: [
               BoxShadow(
                 color: isSearchActive
-                    ? const Color(0xFF9333EA).withOpacity(0.16)
-                    : Colors.black.withOpacity(0.04),
+                    ? const Color(0xFF9333EA).withValues(alpha: 0.16)
+                    : Colors.black.withValues(alpha: 0.04),
                 blurRadius: isSearchActive ? 14 : 8,
                 offset: const Offset(0, 4),
               ),
@@ -955,11 +611,9 @@ class _DiscoverViewState extends State<_DiscoverView> {
                 color: isSearchActive
                     ? const Color(0xFF9333EA)
                     : const Color(0xFFCBD5E1),
-                size: 22, // Increased slightly
+                size: 22,
               ),
-
               const SizedBox(width: 12),
-
               Expanded(
                 child: Focus(
                   onFocusChange: (value) {
@@ -971,29 +625,27 @@ class _DiscoverViewState extends State<_DiscoverView> {
                     onChanged: widget.onSearchChanged,
                     cursorColor: const Color(0xFF9333EA),
                     decoration: const InputDecoration(
-                      hintText: 'Search code or name...',
+                      hintText: 'Search code, name, teacher...',
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
                       isDense: true,
                       contentPadding: EdgeInsets.zero,
                       hintStyle: TextStyle(
-                        fontSize: 14, // Increased from 13
-                        fontWeight: FontWeight.w500, // Reduced from w700
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
                         color: Color(0xFFCBD5E1),
                       ),
                     ),
                     style: const TextStyle(
-                      fontSize: 14, // Increased from 13
-                      fontWeight: FontWeight.w600, // Reduced from w700
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
                       color: Color(0xFF0F172A),
                     ),
                   ),
                 ),
               ),
-
               const SizedBox(width: 10),
-
               InkWell(
                 borderRadius: BorderRadius.circular(99),
                 onTap: widget.onFilterTap,
@@ -1006,7 +658,7 @@ class _DiscoverViewState extends State<_DiscoverView> {
                       color: hasFilter
                           ? const Color(0xFF7E3291)
                           : const Color(0xFF94A3B8),
-                      size: 24, // Increased slightly
+                      size: 24,
                     ),
                     if (hasFilter)
                       Positioned(
@@ -1018,7 +670,10 @@ class _DiscoverViewState extends State<_DiscoverView> {
                           decoration: BoxDecoration(
                             color: const Color(0xFF7E3291),
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 1.5),
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 1.5,
+                            ),
                           ),
                         ),
                       ),
@@ -1028,31 +683,27 @@ class _DiscoverViewState extends State<_DiscoverView> {
             ],
           ),
         ),
-
-        const SizedBox(height: 24), // Increased from 20
-
+        const SizedBox(height: 24),
         const Row(
           children: [
             Icon(
               Icons.auto_awesome_rounded,
-              size: 16, // Increased slightly
+              size: 16,
               color: Color(0xFF7E3291),
             ),
             SizedBox(width: 8),
             Text(
               'RECOMMENDED FOR YOU',
               style: TextStyle(
-                fontSize: 11, // Increased from 9
-                fontWeight: FontWeight.w700, // Reduced from w900
-                letterSpacing: 0.8, // Reduced from 1.6
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
                 color: Color(0xFF94A3B8),
               ),
             ),
           ],
         ),
-
         const SizedBox(height: 14),
-
         if (widget.courses.isEmpty)
           Container(
             padding: const EdgeInsets.all(24),
@@ -1065,41 +716,47 @@ class _DiscoverViewState extends State<_DiscoverView> {
               child: Text(
                 'No courses found.',
                 style: TextStyle(
-                  fontSize: 14, // Increased from 13
-                  fontWeight: FontWeight.w600, // Reduced from w800
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                   color: Color(0xFF94A3B8),
                 ),
               ),
             ),
           )
         else
-          ...widget.courses.map((course) {
-            final conflict = widget.hasConflict(course);
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: PlannerCourseCard(
-                course: course,
-                hasConflict: conflict,
-                onTap: () => widget.onCourseTap(course),
-                onAdd: conflict
-                    ? () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              '${course.title} conflicts with your current plan.',
+          ...widget.courses.map(
+            (course) {
+              final conflict = widget.hasConflict(course);
+              final recommendedByBaoBao =
+                  widget.recommendedCourseIds.contains(course.id);
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: PlannerCourseCard(
+                  course: course,
+                  hasConflict: conflict,
+                  recommendedByBaoBao: recommendedByBaoBao,
+                  onTap: () => widget.onCourseTap(course),
+                  onAdd: conflict
+                      ? () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                '${course.title} conflicts with your current plan.',
+                              ),
+                              backgroundColor: const Color(0xFFFF2D55),
+                              behavior: SnackBarBehavior.floating,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
                             ),
-                            backgroundColor: const Color(0xFFFF2D55),
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                        );
-                      }
-                    : () => widget.onAddCourse(course),
-              ),
-            );
-          }),
+                          );
+                        }
+                      : () => widget.onAddCourse(course),
+                ),
+              );
+            },
+          ),
       ],
     );
   }
@@ -1133,7 +790,10 @@ class _MyPlanView extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: const Color(0xFFF3E8FF),
                   shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFFE9D5FF), width: 3),
+                  border: Border.all(
+                    color: const Color(0xFFE9D5FF),
+                    width: 3,
+                  ),
                 ),
                 child: const Icon(
                   Icons.assignment_outlined,
@@ -1145,8 +805,8 @@ class _MyPlanView extends StatelessWidget {
               const Text(
                 'Your plan is empty',
                 style: TextStyle(
-                  fontSize: 18, // Increased from 15
-                  fontWeight: FontWeight.w800, // Reduced from w900
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
                   color: Color(0xFF020617),
                 ),
               ),
@@ -1155,9 +815,9 @@ class _MyPlanView extends StatelessWidget {
                 'Search and add courses to start planning your\nacademic journey.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 13, // Increased from 11
+                  fontSize: 13,
                   height: 1.5,
-                  fontWeight: FontWeight.w500, // Reduced from w600
+                  fontWeight: FontWeight.w500,
                   color: Color(0xFF94A3B8),
                 ),
               ),
@@ -1167,21 +827,21 @@ class _MyPlanView extends StatelessWidget {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF7E3291),
                   foregroundColor: Colors.white,
-                  elevation: 0, // Flattened to match modern UI
+                  elevation: 0,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 34,
                     vertical: 18,
                   ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16), // Unified to 16
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
                 child: const Text(
                   'BROWSE COURSES',
                   style: TextStyle(
-                    fontSize: 14, // Increased from 10
-                    fontWeight: FontWeight.w700, // Reduced from w900
-                    letterSpacing: 0.5, // Reduced from 1
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
                   ),
                 ),
               ),
@@ -1198,37 +858,40 @@ class _MyPlanView extends StatelessWidget {
           children: [
             Icon(
               Icons.calendar_month_outlined,
-              size: 16, // Increased slightly
+              size: 16,
               color: Color(0xFF7E3291),
             ),
             SizedBox(width: 8),
             Text(
               'WEEKLY SCHEDULE',
               style: TextStyle(
-                fontSize: 11, // Increased from 9
-                fontWeight: FontWeight.w700, // Reduced from w900
-                letterSpacing: 0.8, // Reduced from 1.6
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
                 color: Color(0xFF94A3B8),
               ),
             ),
           ],
         ),
         const SizedBox(height: 14),
-        // Note: Using the alias or prefix if necessary for the custom grid
         schedule.PlannerScheduleGrid(
           courses: plannedCourses,
           onRemove: onRemove,
         ),
-        const SizedBox(height: 32), // Increased from 24
+        const SizedBox(height: 32),
         const Row(
           children: [
-            Icon(Icons.assignment_outlined, size: 16, color: Color(0xFF7E3291)),
+            Icon(
+              Icons.assignment_outlined,
+              size: 16,
+              color: Color(0xFF7E3291),
+            ),
             SizedBox(width: 8),
             Text(
               'COURSE LIST',
               style: TextStyle(
-                fontSize: 11, // Increased from 9
-                fontWeight: FontWeight.w700, // Reduced from w900
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
                 letterSpacing: 0.8,
                 color: Color(0xFF94A3B8),
               ),
@@ -1251,6 +914,102 @@ class _MyPlanView extends StatelessWidget {
           totalCredits: totalCredits,
         ),
       ],
+    );
+  }
+}
+
+class _CourseLoadingView extends StatelessWidget {
+  const _CourseLoadingView();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: CircularProgressIndicator(
+        color: Color(0xFF7E3291),
+      ),
+    );
+  }
+}
+
+class _CourseLoadErrorView extends StatelessWidget {
+  final String error;
+  final VoidCallback onRetry;
+
+  const _CourseLoadErrorView({
+    required this.error,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 74,
+              height: 74,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFFF1F2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.cloud_off_rounded,
+                color: Color(0xFFFF2D55),
+                size: 34,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Failed to load courses',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              error,
+              textAlign: TextAlign.center,
+              maxLines: 5,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                height: 1.4,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF94A3B8),
+              ),
+            ),
+            const SizedBox(height: 22),
+            ElevatedButton(
+              onPressed: onRetry,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF7E3291),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 14,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: const Text(
+                'RETRY',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.6,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
