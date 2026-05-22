@@ -50,7 +50,7 @@ class _BulletinWidgetState extends State<BulletinWidget> {
   final Stream<QuerySnapshot<Map<String, dynamic>>> _bulletinsStream =
       FirebaseFirestore.instance
           .collection('bulletins')
-          .orderBy('updatedAt', descending: true)
+          .orderBy('timestamp', descending: true)
           .snapshots();
 
   @override

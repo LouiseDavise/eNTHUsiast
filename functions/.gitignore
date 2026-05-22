@@ -1,0 +1,5 @@
+node_modules/
+*.local
+credentials.json
+token.json
+serviceAccountKey.json
