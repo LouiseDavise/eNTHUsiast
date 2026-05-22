@@ -391,9 +391,9 @@ class _SocialScreenState extends State<SocialScreen> {
                 constraints: const BoxConstraints(maxWidth: 430),
                 child: Column(
                   children: [
-                    const SizedBox(height: 18),
-                    _buildTopActions(),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
+                    _buildTopHeader(),
+                    const SizedBox(height: 10),
                     _buildSearchBar(),
                     _buildFilterChips(),
                     Expanded(
@@ -404,7 +404,7 @@ class _SocialScreenState extends State<SocialScreen> {
                                 18,
                                 18,
                                 18,
-                                100,
+                                120,
                               ),
                               itemBuilder: (context, index) =>
                                   _buildPostCard(posts[index]),
@@ -420,8 +420,8 @@ class _SocialScreenState extends State<SocialScreen> {
           ),
         ],
       ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 70),
+      floatingActionButton: Transform.translate(
+        offset: const Offset(8, 5),
         child: FloatingActionButton(
           onPressed: _showCreatePostSheet,
           backgroundColor: _deepPurple,
@@ -434,12 +434,40 @@ class _SocialScreenState extends State<SocialScreen> {
     );
   }
 
-  Widget _buildTopActions() {
+  Widget _buildTopHeader() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18),
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Spacer(),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Social',
+                  style: TextStyle(
+                    color: Color(0xFF111827),
+                    fontSize: 34,
+                    fontWeight: FontWeight.w900,
+                    height: 0.95,
+                    letterSpacing: -1.35,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Campus Community',
+                  style: TextStyle(
+                    color: _mainTextGrey,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
           Stack(
             clipBehavior: Clip.none,
             children: [
@@ -450,7 +478,7 @@ class _SocialScreenState extends State<SocialScreen> {
                   foregroundColor: _deepPurple,
                   shadowColor: Colors.black.withValues(alpha: 0.10),
                   elevation: 4,
-                  fixedSize: const Size(44, 44),
+                  fixedSize: const Size(46, 46),
                 ),
                 icon: Icon(
                   _savedPostIds.isEmpty
@@ -491,7 +519,7 @@ class _SocialScreenState extends State<SocialScreen> {
 
   Widget _buildSearchBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
       child: Stack(
         alignment: Alignment.centerLeft,
         children: [
@@ -1955,13 +1983,16 @@ class _ThreadReplyBubble extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              Text(
-                reply.time.toUpperCase(),
-                style: const TextStyle(
-                  color: Color(0xFF9AA0B8),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.1,
+              Padding(
+                padding: const EdgeInsets.only(left: 2),
+                child: Text(
+                  reply.time.toUpperCase(),
+                  style: const TextStyle(
+                    color: Color(0xFF9AA0B8),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.1,
+                  ),
                 ),
               ),
             ],
@@ -2029,14 +2060,14 @@ class _ThreadReplyInput extends StatelessWidget {
             child: FilledButton(
               onPressed: onSend,
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFA7A7A7),
+                backgroundColor: _deepPurple,
                 foregroundColor: Colors.white,
                 padding: EdgeInsets.zero,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),
               ),
-              child: const Icon(Icons.add_rounded, size: 30),
+              child: const Icon(Icons.send_rounded, size: 24),
             ),
           ),
         ],

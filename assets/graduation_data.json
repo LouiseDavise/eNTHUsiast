@@ -1,0 +1,246 @@
+{
+    "summary": {
+        "cumulativeGpa": "3.56",
+        "currentSemesterCourses": "7"
+    },
+    "categories": [
+        {
+            "title": "Compulsory",
+            "earnedCredits": 28,
+            "requiredCredits": 30,
+            "records": [
+                {
+                    "title": "Software Studio",
+                    "credits": 3,
+                    "grade": "",
+                    "status": "inProgress"
+                },
+                {
+                    "title": "Operating Systems",
+                    "credits": 3,
+                    "grade": "",
+                    "status": "inProgress"
+                },
+                {
+                    "title": "Introduction  to Computer Networks",
+                    "credits": 3,
+                    "grade": "",
+                    "status": "inProgress"
+                },
+                {
+                    "title": "Algorithms",
+                    "credits": 3,
+                    "grade": "",
+                    "status": "inProgress"
+                },
+                {
+                    "title": "General Physics (I)",
+                    "credits": 4,
+                    "grade": "",
+                    "status": "inProgress"
+                },
+                {
+                    "title": "Linear Algebra",
+                    "credits": 3,
+                    "grade": "B",
+                    "status": "passed"
+                },
+                {
+                    "title": "Data Structures",
+                    "credits": 3,
+                    "grade": "A+",
+                    "status": "passed"
+                },
+                {
+                    "title": "Introduction to Programming in Python",
+                    "credits": 3,
+                    "grade": "A+",
+                    "status": "passed"
+                },
+                {
+                    "title": "General Physics (II)",
+                    "credits": 4,
+                    "grade": "A",
+                    "status": "passed"
+                },
+                {
+                    "title": "Introduction to Programming (II)",
+                    "credits": 3,
+                    "grade": "A",
+                    "status": "passed"
+                },
+                {
+                    "title": "Logic Design",
+                    "credits": 3,
+                    "grade": "C-",
+                    "status": "passed"
+                },
+                {
+                    "title": "Calculus II",
+                    "credits": 3,
+                    "grade": "A-",
+                    "status": "passed"
+                },
+                {
+                    "title": "Introduction to Programming (I)",
+                    "credits": 3,
+                    "grade": "C+",
+                    "status": "passed"
+                },
+                {
+                    "title": "Calculus I",
+                    "credits": 3,
+                    "grade": "A",
+                    "status": "passed"
+                },
+                {
+                    "title": "General Physics B (I)",
+                    "credits": 3,
+                    "grade": "",
+                    "status": "failed"
+                }
+            ]
+        },
+        {
+            "title": "General Education",
+            "earnedCredits": 9,
+            "requiredCredits": 28,
+            "records": [
+                {
+                    "title": "Decision making and Games in daily life",
+                    "credits": 2,
+                    "grade": "A-",
+                    "status": "passed"
+                },
+                {
+                    "title": "Introduction to Eighteenth-century English Art and Society",
+                    "credits": 2,
+                    "grade": "B+",
+                    "status": "passed"
+                },
+                {
+                    "title": "Science Encountered – Time and evolution",
+                    "credits": 2,
+                    "grade": "A-",
+                    "status": "passed"
+                },
+                {
+                    "title": "Social and Cultural Analysis: Cross-Cultural Comparison",
+                    "credits": 3,
+                    "grade": "A",
+                    "status": "passed"
+                }
+            ]
+        },
+        {
+            "title": "Electives",
+            "earnedCredits": 17,
+            "requiredCredits": 40,
+            "records": [
+                {
+                    "title": "Mandarin Intermediate I",
+                    "credits": 4,
+                    "grade": "",
+                    "status": "inProgress"
+                },
+                {
+                    "title": "Mandarin Basic Ⅲ",
+                    "credits": 4,
+                    "grade": "A+",
+                    "status": "passed"
+                },
+                {
+                    "title": "College Life Planning and Design",
+                    "credits": 3,
+                    "grade": "A",
+                    "status": "passed"
+                },
+                {
+                    "title": "Mandarin Basic Conversation Ⅱ",
+                    "credits": 2,
+                    "grade": "A+",
+                    "status": "passed"
+                },
+                {
+                    "title": "Exploring Science: Ideas to Realities",
+                    "credits": 2,
+                    "grade": "A",
+                    "status": "passed"
+                },
+                {
+                    "title": "Upper-Intermediate English II",
+                    "credits": 2,
+                    "grade": "A+",
+                    "status": "passed"
+                },
+                {
+                    "title": "Mandarin Basic Conversation I",
+                    "credits": 2,
+                    "grade": "A",
+                    "status": "passed"
+                },
+                {
+                    "title": "Upper-Intermediate English I",
+                    "credits": 2,
+                    "grade": "A-",
+                    "status": "passed"
+                }
+            ]
+        },
+        {
+            "title": "PE & Service",
+            "earnedCredits": 0,
+            "requiredCredits": 0,
+            "records": [
+                {
+                    "title": "Weight Training",
+                    "credits": 0,
+                    "grade": "",
+                    "status": "inProgress"
+                },
+                {
+                    "title": "Tai Chi",
+                    "credits": 0,
+                    "grade": "A",
+                    "status": "passed"
+                },
+                {
+                    "title": "Conduct",
+                    "credits": 0,
+                    "grade": "A",
+                    "status": "passed"
+                },
+                {
+                    "title": "Weight Training",
+                    "credits": 0,
+                    "grade": "A-",
+                    "status": "passed"
+                },
+                {
+                    "title": "Conduct",
+                    "credits": 0,
+                    "grade": "A",
+                    "status": "passed"
+                },
+                {
+                    "title": "Physical Education",
+                    "credits": 0,
+                    "grade": "A+",
+                    "status": "passed"
+                },
+                {
+                    "title": "Service Learning",
+                    "credits": 0,
+                    "grade": "A",
+                    "status": "passed"
+                },
+                {
+                    "title": "Conduct",
+                    "credits": 0,
+                    "grade": "A",
+                    "status": "passed"
+                }
+            ]
+        }
+    ]
+}
