@@ -1,12 +1,10 @@
 import 'package:enthusiast/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:enthusiast/widgets/button_with_icon_widget.dart';
-import 'package:enthusiast/routes/app_routes.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:enthusiast/widgets/button_circle_back.dart';
-import 'widgets/transcript_card_widget.dart';
 import 'widgets/header_menu_widget.dart';
 import 'ccxp_login_screen.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -16,6 +14,12 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  // Define the scopes we need
+  final List<String> _scopes = [
+    'email',
+    'https://www.googleapis.com/auth/gmail.readonly',
+  ];
+
   void _navToCcxpLogin() {
     Navigator.push(
       context,
@@ -23,10 +27,89 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _emailLoginPlaceholder() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Email login screen coming soon!')),
-    );
+  Future<void> _handleEmailLogin() async {
+    try {
+      final googleSignIn = GoogleSignIn.instance;
+
+      // 1. Initialize with ONLY your Web Client ID. No scopes here!
+      await googleSignIn.initialize(
+        serverClientId:
+            '2500792168-i7vvalt33atk3v1c513felvoe2p6dstl.apps.googleusercontent.com',
+      );
+
+      // 2. Authenticate the user
+      final GoogleSignInAccount? account = await googleSignIn.authenticate();
+
+      if (account != null) {
+        // 3. Request the Server Auth Code and PASS THE SCOPES HERE
+        final GoogleSignInServerAuthorization? serverAuth = await account
+            .authorizationClient
+            .authorizeServer(_scopes);
+
+        final String? serverAuthCode = serverAuth?.serverAuthCode;
+
+        if (serverAuthCode != null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Successfully linked Gmail!')),
+            );
+          }
+
+          print("SUCCESS! Sending this code to Firebase: $serverAuthCode");
+
+          try {
+            // 1. Initialize Firebase Functions
+            final functions = FirebaseFunctions.instance;
+
+            // 2. Call the new backend function
+            final result = await functions
+                .httpsCallable('linkGmailAccount')
+                .call({
+                  'serverAuthCode': serverAuthCode,
+                  'email': account.email,
+                });
+
+            // 3. Handle the server response
+            if (result.data['success'] == true) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Account successfully linked and secured!'),
+                  ),
+                );
+              }
+            } else {
+              print("Backend warning: ${result.data['error']}");
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Warning: No refresh token generated. Check console.',
+                    ),
+                  ),
+                );
+              }
+            }
+          } catch (e) {
+            print("Cloud Function Error: $e");
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Failed to connect to server.')),
+              );
+            }
+          }
+        } else {
+          print("Failed to get server auth code.");
+        }
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Login failed: $error')));
+      }
+      print("Google Sign In Error: $error");
+    }
   }
 
   @override
@@ -45,15 +128,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               btnName: "CCXP Login",
               btnIcon: const Icon(Icons.school, color: Colors.white),
               btnIconBgColor: Colors.purple,
-              onTapFunc:
-                  _navToCcxpLogin, // <-- Updated to navigate to the new screen
+              onTapFunc: _navToCcxpLogin,
             ),
-            const SizedBox(height: 16), // Added spacing between buttons
+            const SizedBox(height: 16),
             ButtonWithIconWidget(
               btnName: "EMAIL Login",
               btnIcon: const Icon(Icons.email, color: Colors.white),
               btnIconBgColor: Colors.red,
-              onTapFunc: _emailLoginPlaceholder, // <-- Updated to placeholder
+              onTapFunc: _handleEmailLogin,
             ),
           ],
         ),
