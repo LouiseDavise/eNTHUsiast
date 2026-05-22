@@ -44,6 +44,8 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Firebase key
+serviceAccountKey.json
 scripts/credentials.json
 scripts/token.json
 scripts/email_parser.py

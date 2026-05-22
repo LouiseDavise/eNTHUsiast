@@ -15,7 +15,7 @@ class PlannerDetailSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
-      initialChildSize: 0.88,
+      initialChildSize: 0.91,
       maxChildSize: 0.94,
       minChildSize: 0.5,
       builder: (context, scrollController) {
@@ -103,7 +103,7 @@ class PlannerDetailSheet extends StatelessWidget {
                         borderRadius: BorderRadius.circular(14),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
+                            color: Colors.black.withValues(alpha: 0.05),
                             blurRadius: 8,
                           ),
                         ],
@@ -183,73 +183,72 @@ class PlannerDetailSheet extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               _CapacityBox(
-                current: course.limit,
-                max: course.limit,
+                limit: course.limit,
               ),
-              const SizedBox(height: 28),
-              const _DetailSectionTitle(
-                icon: Icons.calendar_month_rounded,
-                color: Color(0xFFFF5B6E),
-                title: 'ACADEMIC DEADLINES',
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: _DeadlineBox(
-                      label: 'MIDTERM',
-                      value: course.midtermDate,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _DeadlineBox(
-                      label: 'FINAL',
-                      value: course.finalDate,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _DeadlineBox(
-                label: 'PROJECT FINAL',
-                value: course.projectDate,
-              ),
-              const SizedBox(height: 28),
-              const _DetailSectionTitle(
-                icon: Icons.check_box_outlined,
-                color: Color(0xFF10B981),
-                title: 'GRADING BREAKDOWN',
-              ),
-              const SizedBox(height: 14),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: SizedBox(
-                  height: 12,
-                  child: Row(
-                    children: course.grading.entries.map((entry) {
-                      return Expanded(
-                        flex: entry.value,
-                        child: Container(
-                          color: _gradingColor(entry.key),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 18,
-                runSpacing: 10,
-                children: course.grading.entries.map((entry) {
-                  return _LegendItem(
-                    label: entry.key.toUpperCase(),
-                    percent: entry.value,
-                    color: _gradingColor(entry.key),
-                  );
-                }).toList(),
-              ),
+              // const SizedBox(height: 28),
+              // const _DetailSectionTitle(
+              //   icon: Icons.calendar_month_rounded,
+              //   color: Color(0xFFFF5B6E),
+              //   title: 'ACADEMIC DEADLINES',
+              // ),
+              // const SizedBox(height: 14),
+              // Row(
+              //   children: [
+              //     Expanded(
+              //       child: _DeadlineBox(
+              //         label: 'MIDTERM',
+              //         value: course.midtermDate,
+              //       ),
+              //     ),
+              //     const SizedBox(width: 12),
+              //     Expanded(
+              //       child: _DeadlineBox(
+              //         label: 'FINAL',
+              //         value: course.finalDate,
+              //       ),
+              //     ),
+              //   ],
+              // ),
+              // const SizedBox(height: 12),
+              // _DeadlineBox(
+              //   label: 'PROJECT FINAL',
+              //   value: course.projectDate,
+              // ),
+              // const SizedBox(height: 28),
+              // const _DetailSectionTitle(
+              //   icon: Icons.check_box_outlined,
+              //   color: Color(0xFF10B981),
+              //   title: 'GRADING BREAKDOWN',
+              // ),
+              // const SizedBox(height: 14),
+              // ClipRRect(
+              //   borderRadius: BorderRadius.circular(999),
+              //   child: SizedBox(
+              //     height: 12,
+              //     child: Row(
+              //       children: course.grading.entries.map((entry) {
+              //         return Expanded(
+              //           flex: entry.value,
+              //           child: Container(
+              //             color: _gradingColor(entry.key),
+              //           ),
+              //         );
+              //       }).toList(),
+              //     ),
+              //   ),
+              // ),
+              // const SizedBox(height: 14),
+              // Wrap(
+              //   spacing: 18,
+              //   runSpacing: 10,
+              //   children: course.grading.entries.map((entry) {
+              //     return _LegendItem(
+              //       label: entry.key.toUpperCase(),
+              //       percent: entry.value,
+              //       color: _gradingColor(entry.key),
+              //     );
+              //   }).toList(),
+              // ),
               const SizedBox(height: 28),
               const _DetailSectionTitle(
                 icon: Icons.groups_rounded,
@@ -365,7 +364,7 @@ class _DetailSectionTitle extends StatelessWidget {
           height: 34,
           width: 34,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
+            color: color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon, color: color, size: 18),
@@ -546,17 +545,16 @@ class _ScheduleInfoBox extends StatelessWidget {
 }
 
 class _CapacityBox extends StatelessWidget {
-  final int current;
-  final int max;
+  final int limit;
 
   const _CapacityBox({
-    required this.current,
-    required this.max,
+    required this.limit,
   });
 
   @override
   Widget build(BuildContext context) {
-    final progress = max == 0 ? 0.0 : current / max;
+    final hasLimit = limit >= 0;
+    final limitText = hasLimit ? '$limit STUDENTS' : 'N/A';
 
     return Container(
       width: double.infinity,
@@ -575,18 +573,18 @@ class _CapacityBox extends StatelessWidget {
                 child: Text(
                   'COURSE CAPACITY',
                   style: TextStyle(
-                    fontSize: 10, // Increased from 8
-                    fontWeight: FontWeight.w600, // Reduced from w900
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
                     letterSpacing: 0.5,
                     color: Color(0xFF94A3B8),
                   ),
                 ),
               ),
               Text(
-                '$max STUDENTS',
+                limitText,
                 style: const TextStyle(
-                  fontSize: 11, // Increased from 8
-                  fontWeight: FontWeight.w700, // Reduced from w900
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
                   color: Color(0xFF7E3291),
                 ),
               ),
@@ -596,8 +594,8 @@ class _CapacityBox extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(99),
             child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 6, // Increased slightly
+              value: hasLimit ? 1.0 : 0.0,
+              minHeight: 6,
               backgroundColor: const Color(0xFFE5E7EB),
               valueColor: const AlwaysStoppedAnimation<Color>(
                 Color(0xFF7E3291),
@@ -605,13 +603,15 @@ class _CapacityBox extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Registration is subject to department approval and available space at the time of enrollment.',
-            style: TextStyle(
-              fontSize: 11, // Increased from 9
+          Text(
+            hasLimit
+                ? 'This course has an enrollment limit of $limit students. Registration is subject to department approval and available space at the time of enrollment.'
+                : 'No enrollment limit information is provided. Registration is subject to department approval and available space at the time of enrollment.',
+            style: const TextStyle(
+              fontSize: 11,
               height: 1.5,
-              fontWeight: FontWeight.w500, // Adjusted for readable body text
-              color: Color(0xFF64748B), // Slightly darker for legibility
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF64748B),
             ),
           ),
         ],
