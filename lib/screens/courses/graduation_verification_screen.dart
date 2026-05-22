@@ -1,41 +1,73 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../../models/graduation_verification_model.dart';
+import '../../providers/ccxp_data_provider.dart';
 import 'widgets/graduation_category_card.dart';
 import 'widgets/progress_summary_card.dart';
 
 class GraduationVerificationScreen extends StatelessWidget {
   const GraduationVerificationScreen({super.key});
 
-  /// Now returns a Map containing both 'summary' and 'categories'
-  Future<Map<String, dynamic>> _loadGraduationData() async {
-    final String response = await rootBundle.loadString('assets/graduation_data.json');
-    final Map<String, dynamic> data = json.decode(response);
+  Map<String, dynamic> _summaryFrom(Map<String, dynamic>? graduationData) {
+    return graduationData?['summary'] as Map<String, dynamic>? ?? {};
+  }
 
-    final summary = data['summary'];
-    final List<dynamic> catData = data['categories'];
+  List<GraduationCategory> _buildCategories(dynamic categoryData) {
+    final categories = categoryData as List<dynamic>? ?? [];
 
-    final categories = catData.map((cat) => GraduationCategory(
-      title: cat['title'],
-      earnedCredits: cat['earnedCredits'],
-      requiredCredits: cat['requiredCredits'],
-      records: (cat['records'] as List).map((rec) => GraduationCourseRecord(
-        title: rec['title'],
-        credits: rec['credits'],
-        grade: rec['grade'],
-        status: rec['status'],
-      )).toList(),
-    )).toList();
+    return categories.map((cat) {
+      final records = (cat['records'] as List<dynamic>? ?? []).map((rec) {
+        return GraduationCourseRecord(
+          title: rec['title']?.toString() ?? '',
+          credits: rec['credits'] is int
+              ? rec['credits'] as int
+              : int.tryParse('${rec['credits']}') ?? 0,
+          grade: rec['grade']?.toString() ?? '',
+          status: rec['status']?.toString() ?? '',
+        );
+      }).toList();
 
-    return {
-      'summary': summary,
-      'categories': categories,
-    };
+      return GraduationCategory(
+        title: cat['title']?.toString() ?? '',
+        earnedCredits: cat['earnedCredits'] is int
+            ? cat['earnedCredits'] as int
+            : int.tryParse('${cat['earnedCredits']}') ?? 0,
+        requiredCredits: cat['requiredCredits'] is int
+            ? cat['requiredCredits'] as int
+            : int.tryParse('${cat['requiredCredits']}') ?? 0,
+        records: records,
+      );
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
+    final graduationData = context.watch<CcxpDataProvider>().graduationData;
+
+    if (graduationData == null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        body: const Center(
+          child: Text(
+            'Graduation data is not available. Please login first.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 16),
+          ),
+        ),
+      );
+    }
+
+    final summary = _summaryFrom(graduationData);
+    final categories = _buildCategories(graduationData['categories']);
+    final int totalEarned = categories.fold(
+      0,
+      (sum, item) => sum + item.earnedCredits,
+    );
+    const int graduationRequirement = 128;
+    final semesterCredits =
+        summary['currentSemesterCourses']?.toString() ?? '0';
+    final cumulativeGpa = summary['cumulativeGpa']?.toString() ?? '0.00';
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
@@ -43,42 +75,23 @@ class GraduationVerificationScreen extends StatelessWidget {
           children: [
             _Header(),
             Expanded(
-              child: FutureBuilder<Map<String, dynamic>>(
-                future: _loadGraduationData(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  } else if (snapshot.hasError) {
-                    return Center(child: Text('Error: ${snapshot.error}'));
-                  }
-
-                  final data = snapshot.data!;
-                  final summary = data['summary'];
-                  final categories = data['categories'] as List<GraduationCategory>;
-                  
-                  // Dynamically calculate total earned credits
-                  int totalEarned = categories.fold(0, (sum, item) => sum + item.earnedCredits);
-                  const int graduationRequirement = 128; // Adjust to your department's rule
-
-                  return ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-                    children: [
-                      // Feed the parsed data directly into your widget!
-                      ProgressSummaryCard(
-                        earnedCredits: totalEarned,
-                        totalCredits: graduationRequirement,
-                        semesterCredits: summary['currentSemesterCourses'],
-                        cumulativeGpa: summary['cumulativeGpa'],
-                      ),
-                      const SizedBox(height: 28),
-                      
-                      ...categories.map((category) => Padding(
-                        padding: const EdgeInsets.only(bottom: 18),
-                        child: GraduationCategoryCard(category: category),
-                      )),
-                    ],
-                  );
-                },
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                children: [
+                  ProgressSummaryCard(
+                    earnedCredits: totalEarned,
+                    totalCredits: graduationRequirement,
+                    semesterCredits: semesterCredits,
+                    cumulativeGpa: cumulativeGpa,
+                  ),
+                  const SizedBox(height: 28),
+                  ...categories.map(
+                    (category) => Padding(
+                      padding: const EdgeInsets.only(bottom: 18),
+                      child: GraduationCategoryCard(category: category),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -95,12 +108,7 @@ class _Header extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
       decoration: const BoxDecoration(
         color: Color(0xFFF8FAFC),
-        border: Border(
-          bottom: BorderSide(
-            color: Color(0xFFE5E7EB),
-            width: 1,
-          ),
-        ),
+        border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB), width: 1)),
       ),
       child: Row(
         children: [
