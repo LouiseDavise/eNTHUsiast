@@ -28,6 +28,7 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
 
   Set<String> baoBaoRecommendedCourseIds = {};
   bool showBaoBaoRecommendationsOnly = false;
+  String? baoBaoRecommendationMessage;
 
   final List<PlannerCourse> plannedCourses = [];
 
@@ -254,6 +255,7 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
     setState(() {
       baoBaoRecommendedCourseIds.clear();
       showBaoBaoRecommendationsOnly = false;
+      baoBaoRecommendationMessage = null;
       searchQuery = '';
       selectedType = 'ALL';
       selectedCredits = null;
@@ -280,12 +282,14 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
     }
 
     Set<String> recommendedIds = {};
+    String? recommendationMessage;
 
     if (result is List<String>) {
       recommendedIds = result.toSet();
     } else if (result is Map<String, dynamic>) {
       final ids = result['courseIds'] as List<dynamic>? ?? [];
       recommendedIds = ids.map((id) => id.toString()).toSet();
+      recommendationMessage = result['message']?.toString();
     }
 
     if (recommendedIds.isEmpty) {
@@ -300,6 +304,7 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       selectedDepartment = 'All';
       baoBaoRecommendedCourseIds = recommendedIds;
       showBaoBaoRecommendationsOnly = true;
+      baoBaoRecommendationMessage = recommendationMessage;
     });
   }
 
@@ -346,6 +351,7 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
                                   baoBaoRecommendedCourseIds,
                               showBaoBaoRecommendationsOnly:
                                   showBaoBaoRecommendationsOnly,
+                              baoBaoRecommendationMessage: baoBaoRecommendationMessage,
                               onExitBaoBaoRecommendations:
                                   exitBaoBaoRecommendations,
                               onSearchChanged: (value) {
@@ -577,6 +583,7 @@ class _DiscoverView extends StatefulWidget {
   final ValueChanged<String> onSearchChanged;
   final VoidCallback onFilterTap;
   final VoidCallback onExitBaoBaoRecommendations;
+  final String? baoBaoRecommendationMessage;
   final ValueChanged<PlannerCourse> onCourseTap;
   final ValueChanged<PlannerCourse> onAddCourse;
   final bool Function(PlannerCourse course) hasConflict;
@@ -590,6 +597,7 @@ class _DiscoverView extends StatefulWidget {
     required this.recommendedCourseIds,
     required this.showBaoBaoRecommendationsOnly,
     required this.onExitBaoBaoRecommendations,
+    required this.baoBaoRecommendationMessage,
     required this.onSearchChanged,
     required this.onFilterTap,
     required this.onCourseTap,
@@ -774,6 +782,13 @@ class _DiscoverViewState extends State<_DiscoverView> {
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 18),
+        ],
+        if (widget.showBaoBaoRecommendationsOnly &&
+            widget.baoBaoRecommendationMessage != null) ...[
+          _BaoBaoResultBubble(
+            message: widget.baoBaoRecommendationMessage!,
           ),
           const SizedBox(height: 18),
         ],
@@ -1100,6 +1115,119 @@ class _CourseLoadErrorView extends StatelessWidget {
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.6,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BaoBaoResultBubble extends StatefulWidget {
+  final String message;
+
+  const _BaoBaoResultBubble({
+    required this.message,
+  });
+
+  @override
+  State<_BaoBaoResultBubble> createState() => _BaoBaoResultBubbleState();
+}
+
+class _BaoBaoResultBubbleState extends State<_BaoBaoResultBubble>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final floatY = -3 + (_controller.value * 6);
+
+        return Transform.translate(
+          offset: Offset(0, floatY),
+          child: child,
+        );
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: const Color(0xFFE9D5FF),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF7E3291).withValues(alpha: 0.10),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3E8FF),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFFE9D5FF),
+                      width: 2,
+                    ),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      '🐼',
+                      style: TextStyle(fontSize: 25),
+                    ),
+                  ),
+                ),
+                const Positioned(
+                  right: -4,
+                  top: -4,
+                  child: Icon(
+                    Icons.auto_awesome_rounded,
+                    size: 15,
+                    color: Color(0xFF9333EA),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Text(
+                widget.message,
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF475569),
                 ),
               ),
             ),
