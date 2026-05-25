@@ -401,6 +401,7 @@ class _BulletinWidgetState extends State<BulletinWidget> {
     String? errorMessage,
   }) {
     return AnimatedContainer(
+      key: TutorialTargetRegistry.get('bulletin-board-card'),
       duration: const Duration(milliseconds: 500),
       curve: Curves.easeInOut,
       margin: const EdgeInsets.symmetric(horizontal: 24),
