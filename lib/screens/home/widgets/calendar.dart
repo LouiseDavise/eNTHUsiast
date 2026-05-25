@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../utilities/data.dart';
 import '../utilities/models.dart';
+import 'tutorial.dart';
 
 class CalendarWidget extends StatefulWidget {
   final DateTime currentDate;
@@ -25,6 +26,18 @@ class CalendarWidget extends StatefulWidget {
 class _CalendarWidgetState extends State<CalendarWidget> {
   bool _showFullCalendar = false;
   double _dragDistance = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    TutorialTargetRegistry.forceCalendarWeekView = () {
+      if (mounted && _showFullCalendar) {
+        setState(() {
+          _showFullCalendar = false; 
+        });
+      }
+    };
+  }
 
   // Helper: Format date as YYYY-MM-DD
   String _formatDateKey(DateTime date) {
@@ -181,7 +194,11 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                 ],
               ),
               OutlinedButton(
-                onPressed: () => setState(() => _showFullCalendar = !_showFullCalendar),
+                key: TutorialTargetRegistry.get('calendar-full-view-btn'),
+                onPressed: () {
+                  setState(() => _showFullCalendar = !_showFullCalendar);
+                  TutorialTargetRegistry.fireAction();
+                },
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -240,6 +257,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     final today = DateTime.now();
 
     return GestureDetector(
+      key: TutorialTargetRegistry.get('calendar-week-view'),
       behavior: HitTestBehavior.opaque,
       onHorizontalDragUpdate: (details) {
         _dragDistance += details.primaryDelta!;
@@ -262,7 +280,9 @@ class _CalendarWidgetState extends State<CalendarWidget> {
             final isToday = DateUtils.isSameDay(date, today);
 
             return GestureDetector(
-              onTap: () => widget.onDateSelected(date),
+              onTap: () {
+                widget.onDateSelected(date);
+              },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 width: 42,
@@ -354,8 +374,14 @@ class _CalendarWidgetState extends State<CalendarWidget> {
               return GestureDetector(
                 onTap: () {
                   widget.onDateSelected(date);
+                  
+                  // ── ADD THIS: Tell the tutorial the user clicked the 21st in Month View! ──
+                  if (date.day == 21) {
+                    TutorialTargetRegistry.fireAction();
+                  }
                 },
                 child: AnimatedContainer(
+                  key: (_showFullCalendar && date.day == 21) ? TutorialTargetRegistry.get('calendar-day-21') : null,
                   duration: const Duration(milliseconds: 200),
                   decoration: BoxDecoration(
                     color: isSelected ? nthuPurple : Colors.transparent,

@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'tutorial.dart';
 
 // ── Custom Data Model ────────────────────────────────────────────────────────
 class DynamicBulletin {
@@ -400,6 +401,7 @@ class _BulletinWidgetState extends State<BulletinWidget> {
     String? errorMessage,
   }) {
     return AnimatedContainer(
+      key: TutorialTargetRegistry.get('bulletin-board-card'),
       duration: const Duration(milliseconds: 500),
       curve: Curves.easeInOut,
       margin: const EdgeInsets.symmetric(horizontal: 24),

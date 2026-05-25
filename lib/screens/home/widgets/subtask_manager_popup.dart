@@ -2,13 +2,14 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../utilities/data.dart';
 import '../utilities/models.dart';
+import 'tutorial.dart';
 
 class SubtaskManagerPopup extends StatefulWidget {
   final AppEvent event;
   final List<Subtask> subtasks;
   final Function(String) onToggle;
   final VoidCallback onUpdate;
-  final Function(String) onAddSubtask; // NEW: Callback to add tasks
+  final Function(String) onAddSubtask; 
 
   const SubtaskManagerPopup({
     Key? key, 
@@ -33,18 +34,18 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
     int progress = total > 0 ? ((completed / total) * 100).round() : widget.event.progress;
 
     return BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0), // Background Blur
+      filter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0), 
       child: Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: const EdgeInsets.all(24),
         child: Container(
+          key: TutorialTargetRegistry.get('subtask-modal-content'),
           padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(40)),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header & Close Button
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -71,7 +72,6 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
               ),
               const SizedBox(height: 32),
               
-              // Progress Section
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -92,8 +92,8 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
               ),
               const SizedBox(height: 24),
               
-              // New Subtask Input (Styled like Image 2)
               Row(
+                key: TutorialTargetRegistry.get('subtask-add-row'),
                 children: [
                   Expanded(
                     child: SizedBox(
@@ -132,7 +132,7 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                         }
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.grey.shade300, // Light grey as per image
+                        backgroundColor: nthuPurple, 
                         elevation: 0,
                         padding: EdgeInsets.zero,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
@@ -143,18 +143,24 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                 ],
               ),
               
-              // Existing Subtasks List
               if (widget.subtasks.isNotEmpty) ...[
                 const SizedBox(height: 24),
-                Flexible(
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 220),
                   child: ListView.builder(
                     shrinkWrap: true,
                     itemCount: widget.subtasks.length,
                     itemBuilder: (context, index) {
                       final st = widget.subtasks[index];
                       return GestureDetector(
-                        onTap: () => widget.onToggle(st.id),
+                        onTap: () {
+                          widget.onToggle(st.id);
+                          TutorialTargetRegistry.fireAction(); 
+                        },
                         child: Container(
+                          key: index == widget.subtasks.length - 1 
+                              ? TutorialTargetRegistry.get('subtask-new-item') 
+                              : null,
                           margin: const EdgeInsets.only(bottom: 12),
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(20)),
@@ -192,14 +198,19 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
               
               const SizedBox(height: 32),
               
-              // Update Button
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
+                  key: TutorialTargetRegistry.get('subtask-update-btn'),
                   onPressed: () {
-                    widget.event.progress = progress; // <-- FIX 1: Save progress to the event
+                    widget.event.progress = progress; 
                     widget.onUpdate(); 
+                    
+                    // ✅ YOUR GENIUS FIX! Safely triggers Tip 10 instantly.
+                    TutorialTargetRegistry.fireAction();
+                    
+                    Navigator.pop(context); 
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: nthuPurple, 

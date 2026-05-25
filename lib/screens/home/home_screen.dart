@@ -6,6 +6,8 @@ import 'utilities/models.dart';
 import 'widgets/bulletin.dart';
 import 'widgets/calendar.dart';
 import 'widgets/upcoming.dart';
+import 'widgets/tutorial.dart';
+
 // Popups
 import 'widgets/add_task_popup.dart';
 import 'widgets/day_details_popup.dart';
@@ -19,8 +21,11 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // Layout Target Anchor Keys for Interactive Tutorial Focus Tracking
+
   // Global State
   bool _isBulletinCollapsed = false;
+  bool _showTutorial = true; 
   DateTime _currentDate = DateTime.now();
   DateTime _selectedDate = DateTime.now();
 
@@ -28,16 +33,25 @@ class _HomeScreenState extends State<HomeScreen> {
   List<AppEvent> _customEvents = [];
   Map<String, List<Subtask>> _subtasksMap = Map.from(initialSubtasksMap);
 
-  // Helper to get formatted YYYY-MM-DD
+  @override
+  void initState() {
+    super.initState();
+    TutorialTargetRegistry.forceBulletinOpen = () {
+      if (mounted && _isBulletinCollapsed) {
+        setState(() {
+          _isBulletinCollapsed = false;
+        });
+      }
+    };
+  }
+
   String _formatDateKey(DateTime date) {
     return "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
   }
 
-  // Combine Hardcoded Events + Custom Events for the Upcoming List
   List<AppEvent> get _allUpcomingEvents {
     List<AppEvent> items = [];
 
-    // Add all events from calendar that aren't purely lectures
     initialCalendarEvents.forEach((dateKey, events) {
       for (var event in events) {
         if (event.type != 'Lecture' && event.type != 'TODO') {
@@ -46,10 +60,8 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
 
-    // Add custom events
     items.addAll(_customEvents);
 
-    // Apply live progress from subtasks if they exist
     return items.map((event) {
       final subs = _subtasksMap[event.id] ?? [];
       int currentProgress = event.progress;
@@ -71,7 +83,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }).toList();
   }
 
-  // Handle Event Triggers
   void _openDayDetails(DateTime date) {
     final key = _formatDateKey(date);
     final events = initialCalendarEvents[key] ?? [];
@@ -113,14 +124,12 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() {
             _customEvents.add(newEvent);
 
-            // Add custom subtasks if any
             if (subtaskList.isNotEmpty) {
               _subtasksMap[newEventId] = subtaskList.asMap().entries.map((e) {
                 return Subtask(id: "${newEventId}_${e.key}", text: e.value);
               }).toList();
             }
 
-            // Sync with calendar view by injecting into initialCalendarEvents
             final key = _formatDateKey(date);
             if (initialCalendarEvents[key] == null) {
               initialCalendarEvents[key] = [];
@@ -152,7 +161,6 @@ class _HomeScreenState extends State<HomeScreen> {
             },
             onUpdate: () {
               setState(() {});
-              Navigator.pop(context);
             },
             onAddSubtask: (newText) {
               setState(() {
@@ -178,7 +186,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Sort upcoming events (incomplete first, then by priority/date)
     final displayEvents =
         _allUpcomingEvents
             .where(
@@ -200,6 +207,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Stack(
           children: [
             ListView(
+              
               padding: const EdgeInsets.only(bottom: 100),
               children: [
                 // Header Area
@@ -217,7 +225,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: const Icon(
                           Icons.wb_sunny_rounded,
                           color: Colors.orange,
-                        ), // Spring Icon Placeholder
+                        ),
                       ),
                       const SizedBox(width: 16),
                       Column(
@@ -257,59 +265,112 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ],
                       ),
+                      const Spacer(),
+                      // Tutorial Button inside the scroll view (Moves up/away with page scrolling)
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _showTutorial = true;
+                          });
+                        },
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.12),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.question_mark_rounded,
+                            color: nthuPurple,
+                            size: 20,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
 
-                // Card 1: Bulletin
-                BulletinWidget(
-                  isCollapsed: _isBulletinCollapsed,
-                  onToggleCollapse: () => setState(
-                    () => _isBulletinCollapsed = !_isBulletinCollapsed,
+                // Card 1: Bulletin Container Box
+                Container(
+                  child: BulletinWidget(
+                    isCollapsed: _isBulletinCollapsed,
+                    onToggleCollapse: () => setState(
+                      () => _isBulletinCollapsed = !_isBulletinCollapsed,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 32),
 
-                // Card 2: Calendar
-                CalendarWidget(
-                  currentDate: _currentDate,
-                  selectedDate: _selectedDate,
-                  onDateSelected: (date) {
-                    setState(() {
-                      _selectedDate = date;
-                      _currentDate = date;
-                    });
-                    _openDayDetails(date);
-                  },
-                  onNavigate: (newDate) {
-                    setState(() {
-                      _currentDate = newDate;
-                    });
-                  },
+                // Card 2: Calendar Container Box
+                Container(
+                  child: CalendarWidget(
+                    currentDate: _currentDate,
+                    selectedDate: _selectedDate,
+                    onDateSelected: (date) {
+                      setState(() {
+                        _selectedDate = date;
+                        _currentDate = date;
+                      });
+                      _openDayDetails(date);
+                    },
+                    onNavigate: (newDate) {
+                      setState(() {
+                        _currentDate = newDate;
+                      });
+                    },
+                  ),
                 ),
                 const SizedBox(height: 32),
 
-                // Card 3: Upcoming Tasks
-                UpcomingTasksWidget(onTaskTap: _openSubtaskManager),
+                // Card 3: Upcoming Tasks Container Box
+                Container(
+                  child: UpcomingTasksWidget(onTaskTap: _openSubtaskManager),
+                ),
               ],
             ),
 
-            // Floating Action Button (Custom Positioned)
+            // Floating Action Button (Fixed/Stationary to overlay viewport corner)
             Positioned(
               bottom: 32,
               right: 32,
-              child: FloatingActionButton(
-                onPressed: _openAddTask,
-                backgroundColor: nthuPurple,
-                elevation: 8,
-                shape: const CircleBorder(),
-                child: const Icon(
-                  Icons.add_rounded,
-                  color: Colors.white,
-                  size: 32,
+              child: Container(
+                key: TutorialTargetRegistry.get('fab-button'),
+                child: FloatingActionButton(
+                  onPressed: _openAddTask,
+                  backgroundColor: nthuPurple,
+                  elevation: 8,
+                  shape: const CircleBorder(),
+                  child: const Icon(
+                    Icons.add_rounded,
+                    color: Colors.white,
+                    size: 32,
+                  ),
                 ),
               ),
             ),
+
+            // Interactive Dashboard Tour Overlay Layer
+            if (_showTutorial)
+              TutorialOverlay(
+                onComplete: () {
+                  setState(() {
+                    _showTutorial = false;
+                  });
+                },
+                onSkip: () {
+                  setState(() {
+                    _showTutorial = false;
+                  });
+                },
+              ),
           ],
         ),
       ),
