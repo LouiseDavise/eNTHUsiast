@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'utilities/data.dart';
 import 'utilities/models.dart';
@@ -21,11 +22,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Layout Target Anchor Keys for Interactive Tutorial Focus Tracking
-
   // Global State
   bool _isBulletinCollapsed = false;
-  bool _showTutorial = true; 
+  bool _showTutorial = false; 
   DateTime _currentDate = DateTime.now();
   DateTime _selectedDate = DateTime.now();
 
@@ -36,6 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _checkTutorialStatus();
     TutorialTargetRegistry.forceBulletinOpen = () {
       if (mounted && _isBulletinCollapsed) {
         setState(() {
@@ -43,6 +43,26 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     };
+  }
+
+  Future<void> _checkTutorialStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hasSeenTutorial = prefs.getBool('hasSeenTutorial') ?? false;
+
+    if (!hasSeenTutorial) {
+      setState(() {
+        _showTutorial = true;
+      });
+    }
+  }
+
+  // Add this new method to mark it as complete
+  Future<void> _markTutorialComplete() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('hasSeenTutorial', true);
+    setState(() {
+      _showTutorial = false;
+    });
   }
 
   String _formatDateKey(DateTime date) {
@@ -360,16 +380,8 @@ class _HomeScreenState extends State<HomeScreen> {
             // Interactive Dashboard Tour Overlay Layer
             if (_showTutorial)
               TutorialOverlay(
-                onComplete: () {
-                  setState(() {
-                    _showTutorial = false;
-                  });
-                },
-                onSkip: () {
-                  setState(() {
-                    _showTutorial = false;
-                  });
-                },
+                onComplete: _markTutorialComplete,
+                onSkip: _markTutorialComplete,
               ),
           ],
         ),

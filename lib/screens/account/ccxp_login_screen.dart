@@ -49,26 +49,25 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     try {
       Map<String, dynamic>? graduationData;
       dynamic schedule;
+      // if (!Platform.isLinux) {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('ccxpUsers')
+          .doc(studentId)
+          .get();
 
-      if (!Platform.isLinux) {
-        final userDoc = await FirebaseFirestore.instance
-            .collection('ccxpUsers')
-            .doc(studentId)
-            .get();
-
-        if (userDoc.exists) {
-          final userData = userDoc.data();
-          graduationData = userData?['graduationData'] as Map<String, dynamic>?;
-          schedule = userData?['scheduleData'];
-        }
+      if (userDoc.exists) {
+        final userData = userDoc.data();
+        graduationData = userData?['graduationData'] as Map<String, dynamic>?;
+        schedule = userData?['scheduleData'];
       }
+      // }
 
       if (graduationData == null || schedule == null) {
         final apiResult = await _fetchCcxpDataFromApi(studentId, password);
         graduationData = apiResult['graduationData'] as Map<String, dynamic>?;
         schedule = apiResult['scheduleData'];
 
-        if (graduationData != null && schedule != null && !Platform.isLinux) {
+        if (graduationData != null && schedule != null) {
           await FirebaseFirestore.instance
               .collection('ccxpUsers')
               .doc(studentId)
@@ -114,6 +113,8 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
       '$url/login',
       data: {'uid': studentId, 'pw': password},
     );
+
+    print("login succeed");
 
     if (response.statusCode != 200) {
       throw Exception('Login API failed with status ${response.statusCode}.');

@@ -17,21 +17,19 @@ class UpcomingTasksWidget extends StatefulWidget {
     required this.onTaskTap, 
   }) : super(key: key);
 
-  // Global reactive state stream enabling external additions from popup sheets
   static final ValueNotifier<List<AppEvent>> tasksNotifier = ValueNotifier<List<AppEvent>>([]);
 
-  // Made static so add_task_popup can easily reuse matching task theme color matrices
   static Color getColorForType(String type) {
     switch (type.toLowerCase()) {
       case 'quiz':
       case 'midterm':
       case 'final':
-        return const Color(0xFFFA3B4E); // Red for critical
+        return const Color(0xFFFA3B4E); 
       case 'homework':
       case 'project':
-        return const Color(0xFF02BCA4); // Teal for coursework
+        return const Color(0xFF02BCA4); 
       default:
-        return const Color(0xFF752481); // Purple for todo/other
+        return const Color(0xFF752481); 
     }
   }
 
@@ -44,14 +42,12 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
   List<String> _completedTaskIds = [];
   bool _isLoading = true;
   
-  // State variables for sorting and multi-select filtering
   final Set<String> _selectedFilters = {}; 
   String _selectedSort = 'DEADLINE'; 
 
   @override
   void initState() {
     super.initState();
-    // Register reactive synchronized listener
     UpcomingTasksWidget.tasksNotifier.addListener(_onGlobalTasksChanged);
     _loadTasksFromJson();
   }
@@ -62,7 +58,6 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
     super.dispose();
   }
 
-  // Triggers an isolated UI refresh whenever tasksNotifier values alter
   void _onGlobalTasksChanged() {
     if (mounted) {
       setState(() {
@@ -71,7 +66,6 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
     }
   }
 
-  // Priority hierarchy index weight helper: Critical (1) > Coursework (2) > Todo (3)
   int _getPriorityRank(String type) {
     switch (type.toLowerCase()) {
       case 'quiz':
@@ -86,7 +80,6 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
     }
   }
 
-  // Sorting controller engine
   void _sortTasks(List<AppEvent> tasks) {
     if (_selectedSort == 'DEADLINE') {
       tasks.sort((a, b) => a.dueDate.compareTo(b.dueDate));
@@ -102,9 +95,7 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
     }
   }
 
-  // Restored the previous 12 Computer Science inline dummy data set if not populated
   Future<void> _loadTasksFromJson() async {
-    // If notifier already contains elements from a previous state change, use it directly
     if (UpcomingTasksWidget.tasksNotifier.value.isNotEmpty) {
       setState(() {
         _tasks = UpcomingTasksWidget.tasksNotifier.value;
@@ -116,58 +107,22 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
     setState(() => _isLoading = true);
     await Future.delayed(const Duration(milliseconds: 300));
 
-    List<AppEvent> initialTasks = [
-      // --- CRITICAL (4 Tasks) ---
-      AppEvent(
-        id: 'c1', title: 'OS Midterm Exam', code: 'CS3100', time: '14:00', type: 'midterm',
-        color: UpcomingTasksWidget.getColorForType('midterm'), location: 'Room 101', progress: 0, dueDate: DateTime.now().add(const Duration(days: 2)),
-      ),
-      AppEvent(
-        id: 'c2', title: 'Algorithms Quiz 2', code: 'CS3200', time: '10:00', type: 'quiz',
-        color: UpcomingTasksWidget.getColorForType('quiz'), location: 'Room 202', progress: 0, dueDate: DateTime.now().add(const Duration(days: 4)),
-      ),
-      AppEvent(
-        id: 'c3', title: 'Database Systems Final', code: 'CS3300', time: '09:00', type: 'final',
-        color: UpcomingTasksWidget.getColorForType('final'), location: 'Room 303', progress: 0, dueDate: DateTime.now().add(const Duration(days: 14)),
-      ),
-      AppEvent(
-        id: 'c4', title: 'Comp Arch Pop Quiz', code: 'CS4100', time: '13:00', type: 'quiz',
-        color: UpcomingTasksWidget.getColorForType('quiz'), location: 'Online', progress: 0, dueDate: DateTime.now().add(const Duration(days: 5)),
-      ),
+    final currentYear = DateTime.now().year;
 
-      // --- COURSEWORK (8 Tasks) ---
-      AppEvent(
-        id: 'cw1', title: 'OS Memory Manager PA', code: 'CS3100', time: '23:59', type: 'project',
-        color: UpcomingTasksWidget.getColorForType('project'), location: 'Online', progress: 30, dueDate: DateTime.now().add(const Duration(days: 3)),
-      ),
-      AppEvent(
-        id: 'cw2', title: 'Algo Dynamic Prog HW', code: 'CS3200', time: '23:59', type: 'homework',
-        color: UpcomingTasksWidget.getColorForType('homework'), location: 'Online', progress: 80, dueDate: DateTime.now().add(const Duration(days: 1)),
-      ),
-      AppEvent(
-        id: 'cw3', title: 'Web Dev Frontend Phase', code: 'CS3400', time: '23:59', type: 'project',
-        color: UpcomingTasksWidget.getColorForType('project'), location: 'Online', progress: 10, dueDate: DateTime.now().add(const Duration(days: 7)),
-      ),
-      AppEvent(
-        id: 'cw4', title: 'AI A* Search Assignment', code: 'CS4200', time: '23:59', type: 'homework',
-        color: UpcomingTasksWidget.getColorForType('homework'), location: 'Online', progress: 0, dueDate: DateTime.now().add(const Duration(days: 6)),
-      ),
-      AppEvent(
-        id: 'cw5', title: 'ML Neural Nets Lab', code: 'CS4300', time: '23:59', type: 'homework',
-        color: UpcomingTasksWidget.getColorForType('homework'), location: 'Online', progress: 50, dueDate: DateTime.now().add(const Duration(days: 2)),
-      ),
-      AppEvent(
-        id: 'cw6', title: 'DB Schema Design Proj', code: 'CS3300', time: '23:59', type: 'project',
-        color: UpcomingTasksWidget.getColorForType('project'), location: 'Online', progress: 90, dueDate: DateTime.now().add(const Duration(days: 4)),
-      ),
-      AppEvent(
-        id: 'cw7', title: 'Networks Socket HW', code: 'CS4400', time: '23:59', type: 'homework',
-        color: UpcomingTasksWidget.getColorForType('homework'), location: 'Online', progress: 0, dueDate: DateTime.now().add(const Duration(days: 8)),
-      ),
-      AppEvent(
-        id: 'cw8', title: 'Crypto RSA PA2', code: 'CS4500', time: '23:59', type: 'project',
-        color: UpcomingTasksWidget.getColorForType('project'), location: 'Online', progress: 20, dueDate: DateTime.now().add(const Duration(days: 10)),
-      ),
+    // MOVED ALL DUMMY DATA TO STRICTLY SPECIFIED JUNE DATES 
+    List<AppEvent> initialTasks = [
+      AppEvent(id: 'c1', title: 'OS Midterm Exam', code: 'CS3100', time: '14:00', type: 'midterm', color: UpcomingTasksWidget.getColorForType('midterm'), location: 'Room 101', progress: 0, dueDate: DateTime(currentYear, 6, 21)),
+      AppEvent(id: 'c2', title: 'Algorithms Quiz 2', code: 'CS3200', time: '10:00', type: 'quiz', color: UpcomingTasksWidget.getColorForType('quiz'), location: 'Room 202', progress: 0, dueDate: DateTime(currentYear, 6, 24)),
+      AppEvent(id: 'c3', title: 'Database Systems Final', code: 'CS3300', time: '09:00', type: 'final', color: UpcomingTasksWidget.getColorForType('final'), location: 'Room 303', progress: 0, dueDate: DateTime(currentYear, 6, 28)),
+      AppEvent(id: 'c4', title: 'Comp Arch Pop Quiz', code: 'CS4100', time: '13:00', type: 'quiz', color: UpcomingTasksWidget.getColorForType('quiz'), location: 'Online', progress: 0, dueDate: DateTime(currentYear, 6, 21)),
+      AppEvent(id: 'cw1', title: 'OS Memory Manager PA', code: 'CS3100', time: '23:59', type: 'project', color: UpcomingTasksWidget.getColorForType('project'), location: 'Online', progress: 30, dueDate: DateTime(currentYear, 6, 25)),
+      AppEvent(id: 'cw2', title: 'Algo Dynamic Prog HW', code: 'CS3200', time: '23:59', type: 'homework', color: UpcomingTasksWidget.getColorForType('homework'), location: 'Online', progress: 80, dueDate: DateTime(currentYear, 6, 22)),
+      AppEvent(id: 'cw3', title: 'Web Dev Frontend Phase', code: 'CS3400', time: '23:59', type: 'project', color: UpcomingTasksWidget.getColorForType('project'), location: 'Online', progress: 10, dueDate: DateTime(currentYear, 6, 27)),
+      AppEvent(id: 'cw4', title: 'AI A* Search Assignment', code: 'CS4200', time: '23:59', type: 'homework', color: UpcomingTasksWidget.getColorForType('homework'), location: 'Online', progress: 0, dueDate: DateTime(currentYear, 6, 26)),
+      AppEvent(id: 'cw5', title: 'ML Neural Nets Lab', code: 'CS4300', time: '23:59', type: 'homework', color: UpcomingTasksWidget.getColorForType('homework'), location: 'Online', progress: 50, dueDate: DateTime(currentYear, 6, 23)),
+      AppEvent(id: 'cw6', title: 'DB Schema Design Proj', code: 'CS3300', time: '23:59', type: 'project', color: UpcomingTasksWidget.getColorForType('project'), location: 'Online', progress: 90, dueDate: DateTime(currentYear, 6, 24)),
+      AppEvent(id: 'cw7', title: 'Networks Socket HW', code: 'CS4400', time: '23:59', type: 'homework', color: UpcomingTasksWidget.getColorForType('homework'), location: 'Online', progress: 0, dueDate: DateTime(currentYear, 6, 29)),
+      AppEvent(id: 'cw8', title: 'Crypto RSA PA2', code: 'CS4500', time: '23:59', type: 'project', color: UpcomingTasksWidget.getColorForType('project'), location: 'Online', progress: 20, dueDate: DateTime(currentYear, 6, 21)),
     ];
 
     if (mounted) {
@@ -209,39 +164,6 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
         if (index != -1) _tasks[index].progress = 100;
       }
     });
-  }
-
-  Widget _buildFilterTag(String label, Color baseColor) {
-    bool isActive = _selectedFilters.contains(label);
-    
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          if (isActive) {
-            _selectedFilters.remove(label);
-          } else {
-            _selectedFilters.add(label);
-          }
-        });
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isActive ? baseColor : baseColor.withOpacity(0.06), 
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.0,
-            color: isActive ? Colors.white : baseColor, 
-          ),
-        ),
-      ),
-    );
   }
 
   @override
@@ -323,7 +245,7 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
                   },
                   color: Colors.white,
                   surfaceTintColor: Colors.transparent,
-                  elevation: 4,
+                  elevation: 8, 
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(24),
                   ),
@@ -332,45 +254,17 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
                     PopupMenuItem<String>(
                       value: 'PRIORITY',
                       padding: EdgeInsets.zero,
-                      child: Container(
-                        width: double.infinity,
-                        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: _selectedSort == 'PRIORITY' ? const Color(0xFF752481) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Text(
-                          "PRIORITY",
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            color: _selectedSort == 'PRIORITY' ? Colors.white : Colors.grey.shade600,
-                            letterSpacing: 1.0,
-                          ),
-                        ),
+                      child: _HoverMenuItem(
+                        text: "PRIORITY", 
+                        isSelected: _selectedSort == 'PRIORITY'
                       ),
                     ),
                     PopupMenuItem<String>(
                       value: 'DEADLINE',
                       padding: EdgeInsets.zero,
-                      child: Container(
-                        width: double.infinity,
-                        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: _selectedSort == 'DEADLINE' ? const Color(0xFF752481) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Text(
-                          "DEADLINE",
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            color: _selectedSort == 'DEADLINE' ? Colors.white : Colors.grey.shade600,
-                            letterSpacing: 1.0,
-                          ),
-                        ),
+                      child: _HoverMenuItem(
+                        text: "DEADLINE", 
+                        isSelected: _selectedSort == 'DEADLINE'
                       ),
                     ),
                   ],
@@ -384,9 +278,24 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _buildFilterTag('CRITICAL', const Color(0xFFFA3B4E)),
-              _buildFilterTag('COURSEWORK', const Color(0xFF02BCA4)),
-              _buildFilterTag('TODO', const Color(0xFF752481)),
+              _InteractiveFilterTag(
+                label: 'CRITICAL', 
+                baseColor: const Color(0xFFFA3B4E), 
+                isActive: _selectedFilters.contains('CRITICAL'),
+                onTap: () => setState(() => _selectedFilters.contains('CRITICAL') ? _selectedFilters.remove('CRITICAL') : _selectedFilters.add('CRITICAL')),
+              ),
+              _InteractiveFilterTag(
+                label: 'COURSEWORK', 
+                baseColor: const Color(0xFF02BCA4), 
+                isActive: _selectedFilters.contains('COURSEWORK'),
+                onTap: () => setState(() => _selectedFilters.contains('COURSEWORK') ? _selectedFilters.remove('COURSEWORK') : _selectedFilters.add('COURSEWORK')),
+              ),
+              _InteractiveFilterTag(
+                label: 'TODO', 
+                baseColor: const Color(0xFF752481), 
+                isActive: _selectedFilters.contains('TODO'),
+                onTap: () => setState(() => _selectedFilters.contains('TODO') ? _selectedFilters.remove('TODO') : _selectedFilters.add('TODO')),
+              ),
             ],
           ),
           const SizedBox(height: 24),
@@ -439,9 +348,112 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
   }
 }
 
-// ----------------------------------------------------------------------
-// TASK ITEM WIDGET 
-// ----------------------------------------------------------------------
+class _InteractiveFilterTag extends StatefulWidget {
+  final String label;
+  final Color baseColor;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _InteractiveFilterTag({
+    required this.label,
+    required this.baseColor,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  State<_InteractiveFilterTag> createState() => _InteractiveFilterTagState();
+}
+
+class _InteractiveFilterTagState extends State<_InteractiveFilterTag> {
+  bool _isHovered = false;
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _isPressed = true),
+        onTapUp: (_) {
+          setState(() => _isPressed = false);
+          widget.onTap();
+        },
+        onTapCancel: () => setState(() => _isPressed = false),
+        child: AnimatedScale(
+          scale: _isPressed ? 0.92 : (_isHovered ? 1.05 : 1.0),
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutBack,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: widget.isActive ? widget.baseColor : widget.baseColor.withOpacity(_isHovered ? 0.15 : 0.06), 
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: _isHovered && widget.isActive 
+                ? [BoxShadow(color: widget.baseColor.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))] 
+                : [],
+            ),
+            child: Text(
+              widget.label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.0,
+                color: widget.isActive ? Colors.white : widget.baseColor, 
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HoverMenuItem extends StatefulWidget {
+  final String text;
+  final bool isSelected;
+
+  const _HoverMenuItem({required this.text, required this.isSelected});
+
+  @override
+  State<_HoverMenuItem> createState() => _HoverMenuItemState();
+}
+
+class _HoverMenuItemState extends State<_HoverMenuItem> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: double.infinity,
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: widget.isSelected 
+              ? const Color(0xFF752481) 
+              : (_isHovered ? Colors.grey.shade100 : Colors.transparent),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          widget.text,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+            color: widget.isSelected ? Colors.white : Colors.grey.shade600,
+            letterSpacing: 1.0,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _UpcomingTaskItem extends StatefulWidget {
   final AppEvent task;
   final bool isCompleted;
@@ -464,6 +476,8 @@ class _UpcomingTaskItem extends StatefulWidget {
 
 class _UpcomingTaskItemState extends State<_UpcomingTaskItem> {
   double _swipeProgress = 0.0;
+  bool _isHovered = false;
+  bool _isPressed = false;
 
   Widget _buildCelebrationWidget() {
     double burstProgress = ((_swipeProgress - 0.15) / 0.4).clamp(0.0, 1.0);
@@ -522,112 +536,130 @@ class _UpcomingTaskItemState extends State<_UpcomingTaskItem> {
         },
         onDismissed: (_) {
           widget.onToggleComplete(widget.task.id);
+          TutorialTargetRegistry.fireAction();
         },
         background: swipeBackground,
         secondaryBackground: swipeBackground,
-        child: GestureDetector(
-          onTap: () {
-            if (!widget.isCompleted) widget.onTaskTap(widget.task);
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(24),
-            ),
-            foregroundDecoration: widget.isCompleted
-                ? BoxDecoration(
-                    color: Colors.white.withOpacity(0.5),
-                    backgroundBlendMode: BlendMode.saturation,
-                    borderRadius: BorderRadius.circular(24),
-                  )
-                : null,
-            child: Row(
-              children: [
-                Container(
-                  width: 6,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: widget.task.color,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
+        child: MouseRegion(
+          onEnter: (_) => setState(() => _isHovered = true),
+          onExit: (_) => setState(() => _isHovered = false),
+          child: GestureDetector(
+            onTapDown: (_) { if (!widget.isCompleted) setState(() => _isPressed = true); },
+            onTapUp: (_) {
+              setState(() => _isPressed = false);
+              if (!widget.isCompleted) widget.onTaskTap(widget.task);
+            },
+            onTapCancel: () => setState(() => _isPressed = false),
+            child: AnimatedScale(
+              scale: _isPressed ? 0.97 : (_isHovered && !widget.isCompleted ? 1.02 : 1.0),
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOutBack,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: _isHovered && !widget.isCompleted ? Colors.white : Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: _isHovered && !widget.isCompleted ? Colors.grey.shade200 : Colors.transparent),
+                  boxShadow: _isHovered && !widget.isCompleted
+                    ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]
+                    : [],
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                foregroundDecoration: widget.isCompleted
+                    ? BoxDecoration(
+                        color: Colors.white.withOpacity(0.5),
+                        backgroundBlendMode: BlendMode.saturation,
+                        borderRadius: BorderRadius.circular(24),
+                      )
+                    : null,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        color: widget.task.color,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            widget.task.code.toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1.5,
-                              color: widget.isCompleted ? Colors.grey : const Color(0xFF752481).withOpacity(0.6),
-                            ),
-                          ),
-                          if (!widget.isCompleted)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.shade50,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                widget.countdownStr,
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                widget.task.code.toUpperCase(),
                                 style: TextStyle(
                                   fontSize: 9,
                                   fontWeight: FontWeight.w900,
-                                  letterSpacing: -0.5,
-                                  color: Colors.orange.shade600,
+                                  letterSpacing: 1.5,
+                                  color: widget.isCompleted ? Colors.grey : const Color(0xFF752481).withOpacity(0.6),
                                 ),
                               ),
+                              if (!widget.isCompleted)
+                                AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: _isHovered ? Colors.orange.shade100 : Colors.orange.shade50,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    widget.countdownStr,
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: -0.5,
+                                      color: Colors.orange.shade600,
+                                    ),
+                                  ),
+                                )
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            widget.task.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: widget.isCompleted ? Colors.grey : Colors.black87,
+                              decoration: widget.isCompleted ? TextDecoration.lineThrough : null,
+                            ),
+                          ),
+                          if (!widget.isCompleted) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: LinearProgressIndicator(
+                                      value: widget.task.progress / 100,
+                                      backgroundColor: Colors.grey.shade200,
+                                      valueColor: AlwaysStoppedAnimation<Color>(widget.task.color),
+                                      minHeight: 4,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  "${widget.task.progress}%",
+                                  style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: Colors.grey),
+                                )
+                              ],
                             )
+                          ]
                         ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        widget.task.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: widget.isCompleted ? Colors.grey : Colors.black87,
-                          decoration: widget.isCompleted ? TextDecoration.lineThrough : null,
-                        ),
-                      ),
-                      if (!widget.isCompleted) ...[
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: LinearProgressIndicator(
-                                  value: widget.task.progress / 100,
-                                  backgroundColor: Colors.grey.shade200,
-                                  valueColor: AlwaysStoppedAnimation<Color>(widget.task.color),
-                                  minHeight: 4,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              "${widget.task.progress}%",
-                              style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: Colors.grey),
-                            )
-                          ],
-                        )
-                      ]
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -636,9 +668,6 @@ class _UpcomingTaskItemState extends State<_UpcomingTaskItem> {
   }
 }
 
-// ----------------------------------------------------------------------
-// PARTICLE PAINTER 
-// ----------------------------------------------------------------------
 class _ParticlePainter extends CustomPainter {
   final double progress;
 
@@ -648,12 +677,8 @@ class _ParticlePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final colors = [
-      Colors.white, 
-      Colors.yellowAccent, 
-      Colors.pink.shade200, 
-      Colors.cyanAccent, 
-      Colors.orangeAccent, 
-      Colors.white
+      Colors.white, Colors.yellowAccent, Colors.pink.shade200, 
+      Colors.cyanAccent, Colors.orangeAccent, Colors.white
     ];
     final paint = Paint()..style = PaintingStyle.fill;
 
