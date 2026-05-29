@@ -12,11 +12,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Firebase is not supported on Linux, so only initialize on other platforms
-  if (!Platform.isLinux) {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-  }
+  // if (!Platform.isLinux) {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // }
   print("main started");
   runApp(const MyApp());
   print("runApp called");

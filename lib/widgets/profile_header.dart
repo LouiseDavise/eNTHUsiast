@@ -120,7 +120,9 @@ class ProfileHeaderWidget extends StatelessWidget {
         const SizedBox(height: 14),
 
         Text(
-          'Nathan',
+          graduationData == null
+              ? 'Anonymous'
+              : graduationData['studentInfo']['studentName'],
           style: GoogleFonts.dmSans(
             fontSize: 26, // Slightly larger
             fontWeight: FontWeight.w800,
@@ -135,7 +137,9 @@ class ProfileHeaderWidget extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              '113006200',
+              graduationData == null
+                  ? 'Anonymous'
+                  : graduationData['studentInfo']['studentId'],
               style: GoogleFonts.dmSans(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
@@ -160,7 +164,9 @@ class ProfileHeaderWidget extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                'INTERACTION DESIGN',
+                graduationData == null
+                    ? 'Anonymous'
+                    : graduationData['studentInfo']['studentDepartment'],
                 style: GoogleFonts.dmSans(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
