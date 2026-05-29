@@ -10,7 +10,7 @@ import 'theme/app_theme.dart';
 
 // 1. Import your screens f+or the Gatekeeper
 import 'screens/main_screen.dart'; // Adjust path if necessary
-import 'screens/preference_screen.dart';   // Adjust path if necessary
+import 'screens/preference/preference_screen.dart';   // Adjust path if necessary
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'main_screen.dart';
+import '../main_screen.dart';
 
 // Global variable that resets to false on every Hot Restart
 bool hasShownPreferencesThisSession = false;
