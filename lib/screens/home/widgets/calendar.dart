@@ -305,7 +305,6 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                 events: dailyEvents,
                 onTap: () {
                   widget.onDateSelected(date);
-                  // Added the DayDetailsPopup call back in
                   showDialog(
                     context: context,
                     builder: (context) => DayDetailsPopup(date: date, events: dailyEvents),
