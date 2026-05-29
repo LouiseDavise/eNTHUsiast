@@ -1,8 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../utilities/data.dart';
-import '../utilities/models.dart'; // Added to recognize AppEvent
-import 'upcoming.dart'; // Added to recognize UpcomingTasksWidget
+import '../utilities/models.dart';
+import 'upcoming.dart'; 
 
 class AddTaskPopup extends StatefulWidget {
   final Function(String title, DateTime date, List<String> subtasks) onSave;
@@ -31,26 +31,23 @@ class _AddTaskPopupState extends State<AddTaskPopup> {
       return;
     }
 
-    // 1. Create the new AppEvent object using the text field input data
     final newTodoTask = AppEvent(
-      id: UniqueKey().toString(), // Generates a unique ID
+      id: UniqueKey().toString(), 
       title: _titleCtrl.text.trim(),
-      code: 'TODO', // Fallback tag code
+      code: 'TODO',
       time: '23:59',
-      type: 'todo', // Categorizes it into the TODO purple filter tag
-      color: UpcomingTasksWidget.getColorForType('todo'), // Maps to 0xFF752481
+      type: 'todo', 
+      color: UpcomingTasksWidget.getColorForType('todo'), 
       location: 'Online',
       progress: 0,
       dueDate: _selectedDate!,
     );
 
-    // 2. Push it into the reactive tasksNotifier list to immediately update the view
     UpcomingTasksWidget.tasksNotifier.value = [
       ...UpcomingTasksWidget.tasksNotifier.value,
       newTodoTask,
     ];
 
-    // 3. Keep your original callback in case other components depend on it
     widget.onSave(_titleCtrl.text.trim(), _selectedDate!, _subtasks);
     
     Navigator.pop(context);
@@ -63,7 +60,7 @@ class _AddTaskPopupState extends State<AddTaskPopup> {
   @override
   Widget build(BuildContext context) {
     return BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0), // Creates the background blur
+      filter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0), 
       child: Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: const EdgeInsets.all(24),
