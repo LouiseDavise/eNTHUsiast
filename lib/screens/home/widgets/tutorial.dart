@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart'; 
 
 // ── 1. GLOBAL REGISTRY ───────────────────────────────────────────────────────
 class TutorialTargetRegistry {
@@ -17,15 +16,15 @@ class TutorialTargetRegistry {
 
   static VoidCallback? forceBulletinOpen;
   static VoidCallback? forceCalendarWeekView;
+  static VoidCallback? forceCalendarToJune; 
 }
 
 // ── 2. TUTORIAL ACTIONS & MODELS ─────────────────────────────────────────────
 enum TutorialAction { 
-  swipe,             
+  actionTrigger,     
   button,            
   waitForDisappear,  
-  waitForNextAppear,
-  passive // ✅ Action type that relies strictly on dynamic context triggers without a NEXT button
+  waitForNextAppear, 
 }
 
 class TutorialStep {
@@ -61,31 +60,34 @@ class TutorialOverlay extends StatefulWidget {
   State<TutorialOverlay> createState() => _TutorialOverlayState();
 }
 
-class _TutorialOverlayState extends State<TutorialOverlay> {
+class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderStateMixin {
   OverlayEntry? _overlayEntry;
   int _currentStep = 0;
   Rect? _highlightRect;
+  Rect? _lastHighlightRect; 
   Timer? _positionTimer;
   bool _isAdvancing = false;
   
   String? _feedbackTitle;
   String? _feedbackContent;
-  Offset? _dragStart;
+  Completer<void>? _feedbackCompleter; 
+
+  late AnimationController _pulseController;
 
   late final List<TutorialStep> _steps = const [
     TutorialStep(
       targetId: 'bulletin-board-card',
       title: 'Bulletin Board',
       content: 'Swipe left or right to see news.',
-      action: TutorialAction.swipe,
+      action: TutorialAction.actionTrigger,
       padding: 0,
       borderRadius: 30,
     ),
     TutorialStep(
       targetId: 'calendar-week-view',
       title: 'Week View',
-      content: 'Swipe left or right to navigate upcoming days.',
-      action: TutorialAction.swipe,
+      content: 'Swipe left or right to navigate upcoming weeks.',
+      action: TutorialAction.actionTrigger,
     ),
     TutorialStep(
       targetId: 'calendar-full-view-btn',
@@ -98,7 +100,7 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
     TutorialStep(
       targetId: 'calendar-day-21', 
       title: 'Check Assignments',
-      content: 'Tap the 21st! The dots below the dates indicate assignments and their priority.',
+      content: 'Take a look at your schedule for June 21st.',
       action: TutorialAction.waitForNextAppear, 
       padding: 4,
       borderRadius: 16,
@@ -120,7 +122,7 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
     TutorialStep(
       targetId: 'subtask-add-row',
       title: 'Create a subtask',
-      content: 'Tap here or the + sign to add a new subtask.',
+      content: 'Create a subtask to help finish your goal.',
       action: TutorialAction.waitForNextAppear, 
       padding: 0,
       borderRadius: 16,
@@ -129,7 +131,7 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
       targetId: 'subtask-new-item',
       title: 'Check it as done',
       content: 'Tap the checkbox to mark your new task as complete.',
-      action: TutorialAction.passive, // ✅ Set to passive to remove manual next button constraint
+      action: TutorialAction.actionTrigger, 
       padding: -4,
       borderRadius: 24,
     ),
@@ -145,7 +147,7 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
       targetId: 'upcoming-item-0',
       title: 'Clear Completed',
       content: 'Swipe the exam left or right to clear it from the list!',
-      action: TutorialAction.swipe,
+      action: TutorialAction.actionTrigger,
     ),
   ];
 
@@ -153,13 +155,17 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
   void initState() {
     super.initState();
 
-    // ✅ Enforce correct UI layout state right before the tutorial starts tracking positions
+    _pulseController = AnimationController(
+      vsync: this, 
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       TutorialTargetRegistry.forceBulletinOpen?.call();
+      TutorialTargetRegistry.forceCalendarToJune?.call(); 
       TutorialTargetRegistry.forceCalendarWeekView?.call();
     });
 
-    GestureBinding.instance.pointerRouter.addGlobalRoute(_handlePointerEvent);
     _positionTimer = Timer.periodic(const Duration(milliseconds: 30), (_) => _calcTargetPosition());
     
     TutorialTargetRegistry.onActionTriggered = () {
@@ -171,12 +177,13 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
       Overlay.of(context, rootOverlay: true).insert(_overlayEntry!);
     });
   }
+
   @override
   void dispose() {
-    GestureBinding.instance.pointerRouter.removeGlobalRoute(_handlePointerEvent);
     _positionTimer?.cancel();
     TutorialTargetRegistry.onActionTriggered = null;
     
+    _pulseController.dispose();
     _overlayEntry?.remove();
     super.dispose();
   }
@@ -185,25 +192,6 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
     if (mounted) {
       setState(fn);
       _overlayEntry?.markNeedsBuild();
-    }
-  }
-
-  void _handlePointerEvent(PointerEvent event) {
-    if (_highlightRect == null || _isAdvancing || _feedbackTitle != null) return;
-    final stepInfo = _steps[_currentStep];
-    
-    if (stepInfo.action != TutorialAction.swipe) return;
-    if (!_highlightRect!.contains(event.position)) return;
-
-    if (event is PointerDownEvent) {
-      _dragStart = event.position;
-    } else if (event is PointerMoveEvent) {
-      if (_dragStart != null && (event.position.dx - _dragStart!.dx).abs() > 30) {
-        _dragStart = null;
-        Future.delayed(const Duration(milliseconds: 300), _nextStep);
-      }
-    } else if (event is PointerUpEvent || event is PointerCancelEvent) {
-      _dragStart = null;
     }
   }
 
@@ -234,11 +222,11 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
     }
 
     final renderObject = targetKey.currentContext!.findRenderObject();
+    
     if (renderObject == null || !renderObject.attached) {
       if (_highlightRect != null) _rebuildOverlay(() => _highlightRect = null);
       return;
     }
-
     final RenderBox renderBox = renderObject as RenderBox;
     if (!renderBox.hasSize) return; 
 
@@ -252,6 +240,24 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
   Future<void> _nextStep() async {
     if (_isAdvancing) return;
     _isAdvancing = true;
+
+    _lastHighlightRect = _highlightRect;
+
+    if (mounted) {
+      _rebuildOverlay(() {
+        _highlightRect = null;
+      });
+    }
+
+    // Delay 1.5s ONLY for specific requested steps (swipes and dynamic changes)
+    final needsDelay = [0, 1, 7, 9].contains(_currentStep);
+    
+    if (needsDelay) {
+      await Future.delayed(const Duration(milliseconds: 1500));
+    } else {
+      // Tiny 50ms buffer just to let Flutter render the next frame seamlessly
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
 
     int nextStepIndex = _currentStep + 1;
 
@@ -296,6 +302,8 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
     if (_isAdvancing) return;
     _isAdvancing = true;
 
+    _lastHighlightRect = _highlightRect;
+
     await _showFeedback(
       title: "You're all set!", 
       content: "Now you're ready to explore on your own! Good luck 😉.", 
@@ -306,13 +314,15 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
   }
 
   Future<void> _showFeedback({required String title, String? content, VoidCallback? onDone}) async {
+    _feedbackCompleter = Completer<void>();
+    
     _rebuildOverlay(() {
       _feedbackTitle = title;
       _feedbackContent = content;
       _highlightRect = null;
     });
     
-    await Future.delayed(const Duration(milliseconds: 2500));
+    await _feedbackCompleter!.future; 
     
     if (mounted) {
       _rebuildOverlay(() {
@@ -334,88 +344,197 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
 
     final currentStepInfo = _steps[_currentStep];
     const Color localPurple = Color(0xFF7A1B7B);
-    final rect = _highlightRect?.inflate(currentStepInfo.padding);
 
-    return Stack(
-      children: [
-        ClipPath(
-          clipper: HoleClipper(holeRect: rect, radius: currentStepInfo.borderRadius),
-          child: GestureDetector(
-            onTap: () {}, 
-            onPanDown: (_) {}, 
-            child: Container(
-              color: Colors.black.withOpacity(0.70), 
-              width: double.infinity, 
-              height: double.infinity
-            ),
-          ),
-        ),
+    return AnimatedBuilder(
+      animation: _pulseController,
+      builder: (context, child) {
+        final pulseExpansion = _pulseController.value * 8.0; 
+        final rect = _highlightRect?.inflate(currentStepInfo.padding + pulseExpansion);
+        
+        final borderWidth = 2.0 + (_pulseController.value * 3.0);
+        final borderColor = localPurple.withOpacity(0.5 + (_pulseController.value * 0.5));
 
-        if (rect != null)
-          Positioned.fromRect(
-            rect: rect,
-            child: IgnorePointer(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(currentStepInfo.borderRadius), 
-                  border: Border.all(color: localPurple, width: 4)
+        return Stack(
+          children: [
+            ClipPath(
+              clipper: HoleClipper(holeRect: rect, radius: currentStepInfo.borderRadius + (pulseExpansion / 2)),
+              child: GestureDetector(
+                onTap: () {}, 
+                onPanDown: (_) {}, 
+                child: TweenAnimationBuilder<double>(
+                  key: ValueKey('dimming_$_currentStep'),
+                  duration: const Duration(milliseconds: 800),
+                  curve: Curves.easeOutCubic,
+                  tween: Tween<double>(begin: 3.0, end: 1.2), 
+                  builder: (context, scaleVal, child) {
+                    return Container(
+                      width: double.infinity,
+                      height: double.infinity,
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          center: Alignment.center,
+                          radius: scaleVal,
+                          colors: [
+                            Colors.black.withOpacity(0.4),
+                            Colors.black.withOpacity(0.85),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
-          ),
 
-        // ✅ Intercepts and blocks all click/tap gestures completely over the targets on swipe steps
-        // This stops users from accidentally tapping the bulletin or week view calendar cards, 
-        // while perfectly allowing the underlying horizontal scroll view drag recognition to execute.
-        if (rect != null && currentStepInfo.action == TutorialAction.swipe)
-          Positioned.fromRect(
-            rect: rect,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {}, 
-            ),
-          ),
+            if (rect != null)
+              Positioned.fromRect(
+                rect: rect,
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(currentStepInfo.borderRadius + (pulseExpansion / 2)), 
+                      border: Border.all(color: borderColor, width: borderWidth)
+                    ),
+                  ),
+                ),
+              ),
 
-        _buildTooltip(context, currentStepInfo, rect),
-      ],
+            if (_highlightRect != null)
+              _buildTooltip(context, currentStepInfo, rect),
+          ],
+        );
+      },
     );
   }
 
   Widget _buildFeedbackOverlay(BuildContext context) {
+    const Color localPurple = Color(0xFF7A1B7B);
+    final size = MediaQuery.of(context).size;
+    final padding = MediaQuery.of(context).padding;
+    double? top, bottom;
+
+    if (_lastHighlightRect != null) {
+      double spaceAbove = _lastHighlightRect!.top;
+      double spaceBelow = size.height - _lastHighlightRect!.bottom;
+
+      if (spaceAbove > spaceBelow && spaceAbove > 200) {
+        bottom = size.height - _lastHighlightRect!.top + 12;
+        double maxBottom = size.height - padding.top - 210; 
+        if (bottom > maxBottom) bottom = maxBottom;
+      } else if (spaceBelow > 200) {
+        top = _lastHighlightRect!.bottom + 12;
+        double maxTop = size.height - padding.bottom - 210;
+        if (top > maxTop) top = maxTop;
+      } else {
+        top = size.height / 2 - 90;
+      }
+    } else {
+      top = size.height / 2 - 90;
+    }
+
     return Stack(
       children: [
         GestureDetector(
-          onTap: () {}, 
-          child: Container(color: Colors.black.withOpacity(0.70), width: double.infinity, height: double.infinity)
-        ),
-        Center(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 290), 
-            padding: const EdgeInsets.all(20),
-            margin: const EdgeInsets.symmetric(horizontal: 24),
-            decoration: BoxDecoration(
-              color: Colors.white, 
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 25, offset: const Offset(0, 10))],
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                    child: const Text("TIP", style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0)),
+          onTap: () {
+            if (_feedbackCompleter != null && !_feedbackCompleter!.isCompleted) {
+              _feedbackCompleter!.complete();
+            }
+          }, 
+          child: TweenAnimationBuilder<double>(
+            key: ValueKey('feedback_dimming_$_feedbackTitle'),
+            duration: const Duration(milliseconds: 800),
+            curve: Curves.easeOutCubic,
+            tween: Tween<double>(begin: 3.0, end: 1.2),
+            builder: (context, scaleVal, child) {
+              return Container(
+                width: double.infinity,
+                height: double.infinity,
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment.center,
+                    radius: scaleVal,
+                    colors: [
+                      Colors.black.withOpacity(0.4),
+                      Colors.black.withOpacity(0.85),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  Text(_feedbackTitle!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: Colors.black)),
-                  if (_feedbackContent != null) ...[
-                    const SizedBox(height: 10),
-                    Text(_feedbackContent!, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Colors.grey.shade600, height: 1.4)),
-                  ]
-                ],
+                ),
+              );
+            },
+          ),
+        ),
+        
+        Positioned(
+          top: top, bottom: bottom, left: 0, right: 0,
+          child: Center(
+            child: TweenAnimationBuilder<double>(
+              key: ValueKey(_feedbackTitle),
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeOutBack,
+              tween: Tween<double>(begin: 0.0, end: 1.0),
+              builder: (context, scale, child) {
+                return Transform.scale(
+                  scale: scale,
+                  child: Opacity(
+                    opacity: scale.clamp(0.0, 1.0),
+                    child: child,
+                  ),
+                );
+              },
+              child: GestureDetector(
+                 onTap: () {
+                  if (_feedbackCompleter != null && !_feedbackCompleter!.isCompleted) {
+                    _feedbackCompleter!.complete();
+                  }
+                },
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 290), 
+                  padding: const EdgeInsets.all(24),
+                  margin: const EdgeInsets.symmetric(horizontal: 24),
+                  decoration: BoxDecoration(
+                    color: Colors.white, 
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 25, offset: const Offset(0, 10))],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(color: localPurple.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                          child: const Text("TUTORIAL GUIDE", style: TextStyle(color: localPurple, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0)),
+                        ),
+                        const SizedBox(height: 20),
+                        Text(_feedbackTitle!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black)),
+                        if (_feedbackContent != null) ...[
+                          const SizedBox(height: 12),
+                          Text(_feedbackContent!, textAlign: TextAlign.center, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.grey.shade700, height: 1.4)),
+                        ],
+                        const SizedBox(height: 24),
+                        
+                        AnimatedBuilder(
+                          animation: _pulseController,
+                          builder: (context, child) {
+                            return Opacity(
+                              opacity: 0.4 + (_pulseController.value * 0.6),
+                              child: Text(
+                                "Tap anywhere to continue...", 
+                                style: TextStyle(
+                                  color: Colors.grey.shade500, 
+                                  fontSize: 12, 
+                                  fontStyle: FontStyle.italic,
+                                  fontWeight: FontWeight.bold
+                                ),
+                              ),
+                            );
+                          }
+                        )
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -425,9 +544,7 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
   }
 
   Widget _buildTooltip(BuildContext context, TutorialStep stepInfo, Rect? targetRect) {
-    if (_currentStep == 4) {
-      return const SizedBox.shrink();
-    }
+    if (_currentStep == 4) return const SizedBox.shrink();
 
     const Color localPurple = Color(0xFF7A1B7B);
     final size = MediaQuery.of(context).size;
@@ -458,71 +575,53 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
 
     return Positioned(
       top: top, bottom: bottom, left: 0, right: 0,
-      child: Center( 
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 290), 
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 25, offset: const Offset(0, 10))],
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(color: localPurple.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                  child: Text("TIP $displayIndex OF $totalVisibleTips", style: const TextStyle(color: localPurple, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0)),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  stepInfo.title, 
-                  textAlign: TextAlign.center, 
-                  style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: Colors.black)
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  stepInfo.content, 
-                  textAlign: TextAlign.center, 
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600, height: 1.3)
-                ),
-                
-                if (stepInfo.action == TutorialAction.button) ...[
+      child: TweenAnimationBuilder<double>(
+        key: ValueKey('tooltip_$_currentStep'), 
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeOutBack, 
+        tween: Tween<double>(begin: 0.0, end: 1.0),
+        builder: (context, scale, child) {
+          return Transform.scale(scale: scale, child: Opacity(opacity: scale.clamp(0.0, 1.0), child: child));
+        },
+        child: Center( 
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 290), 
+            padding: const EdgeInsets.all(24), 
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 25, offset: const Offset(0, 10))],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(color: localPurple.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                    child: Text("TIP $displayIndex OF $totalVisibleTips", style: const TextStyle(color: localPurple, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0)),
+                  ),
                   const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _nextStep,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: localPurple,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: const Text("NEXT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    ),
-                  )
-                ] else ...[
-                   const SizedBox(height: 14),
-                   Align(
-                     alignment: Alignment.centerRight,
-                     child: GestureDetector(
-                       onTap: _skipTutorial,
-                       child: Row(
-                         mainAxisSize: MainAxisSize.min,
-                         children: [
-                           Text("Skip tutorial", style: TextStyle(color: Colors.grey.shade400, fontSize: 12, decoration: TextDecoration.underline)),
-                           const SizedBox(width: 4),
-                           Icon(Icons.keyboard_double_arrow_right_rounded, color: Colors.grey.shade400, size: 14),
-                         ],
-                       ),
-                     ),
-                   )
-                ]
-              ],
+                  Text(
+                    stepInfo.content, 
+                    textAlign: TextAlign.center, 
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Colors.black87, height: 1.4)
+                  ),
+                  
+                  if (stepInfo.action == TutorialAction.button) ...[
+                    const SizedBox(height: 16),
+                    _InteractiveTutorialButton(text: "NEXT", color: localPurple, onPressed: _nextStep)
+                  ] else ...[
+                     const SizedBox(height: 14),
+                     Align(
+                       alignment: Alignment.centerRight,
+                       child: _InteractiveSkipButton(onTap: _skipTutorial),
+                     )
+                  ]
+                ],
+              ),
             ),
           ),
         ),
@@ -534,19 +633,98 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
 class HoleClipper extends CustomClipper<Path> {
   final Rect? holeRect;
   final double radius;
-  
   HoleClipper({this.holeRect, this.radius = 16});
 
   @override
   Path getClip(Size size) {
     final path = Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
-    if (holeRect != null) {
-      path.addRRect(RRect.fromRectAndRadius(holeRect!, Radius.circular(radius)));
-    }
+    if (holeRect != null) path.addRRect(RRect.fromRectAndRadius(holeRect!, Radius.circular(radius)));
     path.fillType = PathFillType.evenOdd; 
     return path;
   }
-
   @override
   bool shouldReclip(covariant HoleClipper oldClipper) => oldClipper.holeRect != holeRect || oldClipper.radius != radius;
+}
+
+class _InteractiveTutorialButton extends StatefulWidget {
+  final String text;
+  final Color color;
+  final VoidCallback onPressed;
+
+  const _InteractiveTutorialButton({required this.text, required this.color, required this.onPressed});
+
+  @override
+  State<_InteractiveTutorialButton> createState() => _InteractiveTutorialButtonState();
+}
+
+class _InteractiveTutorialButtonState extends State<_InteractiveTutorialButton> {
+  bool _isHovered = false;
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _isPressed = true),
+        onTapUp: (_) {
+          setState(() => _isPressed = false);
+          widget.onPressed();
+        },
+        onTapCancel: () => setState(() => _isPressed = false),
+        child: AnimatedScale(
+          scale: _isPressed ? 0.95 : (_isHovered ? 1.03 : 1.0),
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutBack,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: widget.color,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: _isHovered ? [BoxShadow(color: widget.color.withOpacity(0.4), blurRadius: 12, offset: const Offset(0, 4))] : [],
+            ),
+            child: Text(widget.text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InteractiveSkipButton extends StatefulWidget {
+  final VoidCallback onTap;
+  const _InteractiveSkipButton({required this.onTap});
+
+  @override
+  State<_InteractiveSkipButton> createState() => _InteractiveSkipButtonState();
+}
+
+class _InteractiveSkipButtonState extends State<_InteractiveSkipButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _isHovered ? 1.05 : 1.0,
+          duration: const Duration(milliseconds: 150),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text("Skip tutorial", style: TextStyle(color: _isHovered ? Colors.grey.shade600 : Colors.grey.shade400, fontSize: 12, decoration: TextDecoration.underline)),
+              const SizedBox(width: 4),
+              Icon(Icons.keyboard_double_arrow_right_rounded, color: _isHovered ? Colors.grey.shade600 : Colors.grey.shade400, size: 14),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
