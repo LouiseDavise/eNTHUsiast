@@ -17,7 +17,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // Define the scopes we need
   final List<String> _scopes = [
     'email',
-    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/gmail.modify',
   ];
 
   void _navToCcxpLogin() {
@@ -60,13 +60,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           try {
             // 1. Initialize Firebase Functions
             final functions = FirebaseFunctions.instance;
-
+            final String currentStudentId = '113000265';
             // 2. Call the new backend function
             final result = await functions
                 .httpsCallable('linkGmailAccount')
                 .call({
                   'serverAuthCode': serverAuthCode,
                   'email': account.email,
+                  'studentId': currentStudentId, // <--- ADDED THIS LINE
                 });
 
             // 3. Handle the server response
