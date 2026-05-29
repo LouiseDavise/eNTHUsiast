@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+
+import '../providers/language_provider.dart';
+import 'account/account_screen.dart';
+import 'courses/courses_screen.dart';
 import 'home/home_screen.dart';
 import 'social_screen.dart';
-import 'courses/courses_screen.dart';
-import 'account/account_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -14,19 +16,19 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
 
-  // List of your empty pages
-  final List<Widget> _pages = [
-    const HomeScreen(),
-    const SocialScreen(),
-    const CoursesScreen(),
-    const AccountScreen(),
+  final List<Widget> _pages = const [
+    HomeScreen(),
+    SocialScreen(),
+    CoursesScreen(),
+    AccountScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final isChinese = LanguageScope.isChinese(context);
+
     return Scaffold(
       body: _pages[_currentIndex],
-      // Bottom Navigation Bar
       bottomNavigationBar: Container(
         height: 100,
         padding: const EdgeInsets.only(bottom: 10, top: 10),
@@ -44,22 +46,41 @@ class _MainScreenState extends State<MainScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            _buildNavItem(0, Icons.home_outlined, "HOME"),
-            _buildNavItem(1, Icons.near_me_outlined, "SOCIAL"),
-            _buildNavItem(2, Icons.menu_book_outlined, "COURSES"),
-            _buildNavItem(3, Icons.person_outline, "ACCOUNT"),
+            _buildNavItem(
+              index: 0,
+              icon: Icons.home_outlined,
+              label: isChinese ? '首頁' : 'HOME',
+            ),
+            _buildNavItem(
+              index: 1,
+              icon: Icons.near_me_outlined,
+              label: isChinese ? '社群' : 'SOCIAL',
+            ),
+            _buildNavItem(
+              index: 2,
+              icon: Icons.menu_book_outlined,
+              label: isChinese ? '課程' : 'COURSES',
+            ),
+            _buildNavItem(
+              index: 3,
+              icon: Icons.person_outline,
+              label: isChinese ? '我的' : 'ACCOUNT',
+            ),
           ],
         ),
       ),
     );
   }
 
-  // Individual nav Widget
-  Widget _buildNavItem(int index, IconData icon, String label) {
-    bool isActive = _currentIndex == index;
+  Widget _buildNavItem({
+    required int index,
+    required IconData icon,
+    required String label,
+  }) {
+    final bool isActive = _currentIndex == index;
 
-    Color primaryColor = const Color(0xFF7A3392); // Deep Purple
-    Color inactiveColor = const Color(0xFFB0B3C7); // Grey-blue
+    const Color primaryColor = Color(0xFF7A3392);
+    const Color inactiveColor = Color(0xFFB0B3C7);
 
     return GestureDetector(
       onTap: () {
@@ -95,14 +116,13 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          // Label
           Text(
             label,
             style: TextStyle(
               color: isActive ? primaryColor : inactiveColor,
               fontSize: 10,
               fontWeight: FontWeight.w800,
-              letterSpacing: 1.2,
+              letterSpacing: LanguageScope.isChinese(context) ? 0.4 : 1.2,
             ),
           ),
         ],
