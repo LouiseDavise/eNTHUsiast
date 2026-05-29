@@ -56,7 +56,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Add this new method to mark it as complete
   Future<void> _markTutorialComplete() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('hasSeenTutorial', true);

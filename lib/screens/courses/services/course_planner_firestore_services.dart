@@ -4,97 +4,133 @@ import 'package:flutter/material.dart';
 import '../../../models/courses_planner_model.dart';
 
 class CoursePlannerFirestoreService {
-  final CollectionReference<Map<String, dynamic>> _coursesRef =
-      FirebaseFirestore.instance.collection('courses');
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   Future<List<PlannerCourse>> fetchCourses() async {
-    final snapshot = await _coursesRef.orderBy('courseNo').get();
+    final snapshot = await _firestore.collection('courses').get();
 
-    return snapshot.docs.map(_mapDocToPlannerCourse).toList();
+    final courses = snapshot.docs.map((doc) {
+      final data = doc.data();
+
+      return _courseFromFirestore(
+        docId: doc.id,
+        data: data,
+      );
+    }).toList();
+
+    courses.sort((a, b) => a.code.compareTo(b.code));
+
+    return courses;
   }
 
-  PlannerCourse _mapDocToPlannerCourse(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
-    final data = doc.data();
+  PlannerCourse _courseFromFirestore({
+    required String docId,
+    required Map<String, dynamic> data,
+  }) {
+    final courseNo = _firstString(data, [
+      'courseNo',
+      'courseNumber',
+      'code',
+      '課號',
+    ]);
 
-    final courseNo = _stringValue(
-      data['courseNo'] ??
-          data['Course Number'] ??
-          data['科號'],
-      fallback: doc.id,
-    );
+    final code = courseNo.isNotEmpty ? courseNo : docId.replaceAll('_', ' ');
 
-    final titleZh = _stringValue(
-      data['titleZh'] ??
-          data['Course Chinese Name'] ??
-          data['課程中文名稱'],
-    );
+    final titleEn = _firstString(data, [
+      'titleEn',
+      'courseEnglishName',
+      'courseNameEn',
+      'englishName',
+      '課程英文名稱',
+    ]);
 
-    final titleEn = _stringValue(
-      data['titleEn'] ??
-          data['Course English Name'] ??
-          data['課程英文名稱'],
-    );
+    final titleZh = _firstString(data, [
+      'titleZh',
+      'courseChineseName',
+      'courseNameZh',
+      'chineseName',
+      '課程中文名稱',
+    ]);
 
-    final credits = _intValue(
-      data['credits'] ??
-          data['Credits'] ??
-          data['學分數'],
-    );
+    final professor = _firstString(data, [
+      'professor',
+      'instructor',
+      'teacher',
+      '授課教師',
+    ]);
 
-    final enrollmentLimit = _nullableIntValue(
-      data['enrollmentLimit'] ??
-          data['capacity'] ??
-          data['Enrollment Limit'] ??
-          data['人限'],
-    );
+    final rawSchedule = _firstString(data, [
+      'classroomAndClassTime',
+      'classTime',
+      'timeSlot',
+      'slotCode',
+      '教室上課時間',
+    ]);
 
-    final teacher = _stringValue(
-      data['teacher'] ??
-          data['instructor'] ??
-          data['Instructor'] ??
-          data['授課教師'],
-      fallback: 'TBA',
-    );
+    final location = _firstNonEmpty([
+      _firstString(data, [
+        'location',
+        'classroom',
+        '教室',
+      ]),
+      _parseLocationFromSchedule(rawSchedule),
+    ]);
 
-    final rawTimeLocation = _stringValue(
-      data['rawTimeLocation'] ??
-          data['Classroom and Class Time'] ??
-          data['教室與上課時間'],
-    );
+    final slotCode = _firstNonEmpty([
+      _firstString(data, [
+        'slotCode',
+        'timeSlot',
+      ]),
+      _parseSlotCodeFromSchedule(rawSchedule),
+    ]);
 
-    final storedLocation = _stringValue(data['location']);
-    final storedSlotCode = _stringValue(data['slotCode']);
+    final department = _firstNonEmpty([
+      _firstString(data, [
+        'departmentCode',
+        'department',
+        'deptCode',
+      ]),
+      _departmentFromCourseNo(code),
+    ]).toUpperCase();
 
-    final parsedTimeLocation = _parseTimeLocation(rawTimeLocation);
-
-    final location = storedLocation.isNotEmpty
-        ? storedLocation
-        : parsedTimeLocation.location;
-
-    final slotCode = storedSlotCode.isNotEmpty
-        ? storedSlotCode
-        : parsedTimeLocation.slotCode;
-
-    final departmentCode = _stringValue(
-      data['departmentCode'],
-      fallback: _extractDepartmentCode(courseNo),
-    );
-
-    final parsedSlot = _parseSlotCode(slotCode);
+    final courseType = _parseCourseType(data, code);
 
     return PlannerCourse(
-      id: doc.id,
-      code: courseNo,
+      id: docId,
+      code: code,
       title: titleEn.isNotEmpty ? titleEn : titleZh,
-      professor: teacher,
-      credits: credits,
-      type: _guessCourseType(data),
-      department: departmentCode,
-      limit: enrollmentLimit ?? -1,
-      rating: 0.0,
-      reviews: 0,
+      professor: professor,
+      credits: _firstInt(data, [
+        'credits',
+        'credit',
+        '學分',
+      ]),
+      type: courseType,
+      department: department,
+      slotCode: slotCode,
+      timeSlot: slotCode,
+      location: location,
+      language: _firstString(data, [
+        'language',
+        'instructionLanguage',
+        'languageOfInstruction',
+        '授課語言',
+      ]),
+      rating: _firstDouble(data, [
+        'rating',
+      ]),
+      reviews: _firstInt(data, [
+        'reviews',
+      ]),
+      limit: _firstInt(data, [
+        'limit',
+        'enrollmentLimit',
+        'capacity',
+        '人限',
+      ]),
+      day: _parseDay(slotCode),
+      startSlot: _parseStartSlot(slotCode),
+      duration: _parseDuration(slotCode),
       midtermDate: 'TBA',
       finalDate: 'TBA',
       projectDate: 'TBA',
@@ -102,246 +138,301 @@ class CoursePlannerFirestoreService {
       syllabus: const [
         'Course information is loaded from Firebase.',
       ],
-
-      // Show only the slot code in detail sheet, like R7R8R9.
-      timeSlot: slotCode.isNotEmpty ? slotCode : 'TBA',
-
-      slotCode: slotCode,
-      location: location.isNotEmpty ? location : 'TBA',
-      day: parsedSlot.day,
-      startSlot: parsedSlot.startSlot,
-      duration: parsedSlot.duration,
-      color: _courseColor(doc.id),
+      color: _courseColor(courseType),
     );
   }
 
-  String _stringValue(dynamic value, {String fallback = ''}) {
-    if (value == null) return fallback;
-    return value.toString().trim();
-  }
+  String _parseCourseType(Map<String, dynamic> data, String courseNo) {
+    final existingType = _firstString(data, [
+      'type',
+      'courseType',
+    ]).toUpperCase();
 
-  int _intValue(dynamic value) {
-    if (value == null) return 0;
+    final upperCourseNo = courseNo.replaceAll(' ', '').toUpperCase();
 
-    if (value is int) return value;
+    final geCategory = _firstString(data, [
+      'geCategory',
+      'generalEducationCategory',
+      'General Education Category',
+      '通識類別',
+    ]);
 
-    if (value is double) return value.round();
+    final geTarget = _firstString(data, [
+      'geTarget',
+      'generalEducationTarget',
+      'General Education Target Audience',
+      '通識對象',
+    ]);
 
-    if (value is num) return value.round();
-
-    return int.tryParse(value.toString()) ?? 0;
-  }
-
-  int? _nullableIntValue(dynamic value) {
-    if (value == null) return null;
-
-    if (value is int) return value;
-
-    if (value is double) return value.round();
-
-    if (value is num) return value.round();
-
-    final text = value.toString().trim();
-
-    if (text.isEmpty) return null;
-
-    return int.tryParse(text);
-  }
-
-  String _guessCourseType(Map<String, dynamic> data) {
-    final requiredElectiveNote = _stringValue(
-      data['requiredElectiveNote'] ??
-          data['Required/Elective Course Description'] ??
-          data['必選修說明'],
-    );
-
-    final geCategory = _stringValue(
-      data['geCategory'] ??
-          data['General Education Category'] ??
-          data['通識類別'],
-    );
-
-    final title = _stringValue(
-      data['titleEn'] ??
-          data['Course English Name'] ??
-          data['課程英文名稱'],
-    ).toLowerCase();
-
-    if (geCategory.isNotEmpty) {
+    // 1. GE first, because GE text may contain "Core GE courses".
+    if (existingType == 'GE' ||
+        upperCourseNo.contains('GE') ||
+        geCategory.trim().isNotEmpty ||
+        geTarget.trim().isNotEmpty) {
       return 'GE';
     }
 
-    if (title.contains('lab') || title.contains('laboratory')) {
-      return 'LAB';
-    }
+    final requiredText = _firstString(data, [
+      'requiredElectiveDescription',
+      'requiredElectiveNote',
+      'requiredOrElective',
+      'requiredElective',
+      'requiredElectiveCourseDescription',
+      'requiredElectiveCourse',
+      'Required/Elective Course Description',
+      'Required Elective Course Description',
+      'Required/Elective',
+      '必選修說明',
+      '必修/選修',
+      '必選修',
+    ]);
 
-    if (requiredElectiveNote.contains('必修')) {
+    final lowerRequiredText = requiredText.toLowerCase();
+
+    // 2. CORE before trusting existing ELECTIVE.
+    if (existingType == 'CORE' ||
+        requiredText.contains('必修') ||
+        requiredText.contains('校定必修') ||
+        requiredText.contains('院定必修') ||
+        requiredText.contains('系定必修') ||
+        lowerRequiredText.contains('required') ||
+        lowerRequiredText.contains('compulsory') ||
+        lowerRequiredText.contains('core')) {
       return 'CORE';
     }
 
-    if (requiredElectiveNote.contains('選修')) {
+    // 3. ELECTIVE last.
+    if (existingType == 'ELECTIVE' ||
+        requiredText.contains('選修') ||
+        lowerRequiredText.contains('elective')) {
       return 'ELECTIVE';
     }
 
     return 'ELECTIVE';
   }
+  Map<String, int> _parseGrading(Map<String, dynamic> data) {
+    final raw = data['grading'];
 
-  String _extractDepartmentCode(String courseNo) {
-    final text = courseNo.trim();
+    if (raw is Map) {
+      return raw.map(
+        (key, value) => MapEntry(
+          key.toString(),
+          _intValue(value),
+        ),
+      );
+    }
 
-    // Example:
-    // 11420AES 470100 -> AES
-    // 11420AIA 100100 -> AIA
-    final match = RegExp(r'11420([A-Z]+)').firstMatch(text);
+    return {
+      'Exams': 40,
+      'Projects': 40,
+      'Participation': 20,
+    };
+  }
+
+  Color _courseColor(String type) {
+    switch (type.toUpperCase()) {
+      case 'CORE':
+        return const Color(0xFFFF2D55);
+      case 'GE':
+        return const Color(0xFFFF6B2C);
+      case 'ELECTIVE':
+        return const Color(0xFF7E3291);
+      default:
+        return const Color(0xFF64748B);
+    }
+  }
+
+  String _departmentFromCourseNo(String courseNo) {
+    final compact = courseNo.replaceAll(' ', '').toUpperCase();
+    final match = RegExp(r'^[0-9]+([A-Z]+)').firstMatch(compact);
 
     if (match == null) {
-      return 'NTHU';
+      return 'UNKNOWN';
     }
 
-    return match.group(1) ?? 'NTHU';
+    return match.group(1) ?? 'UNKNOWN';
   }
 
-  _ParsedTimeLocation _parseTimeLocation(String raw) {
-    if (raw.trim().isEmpty) {
-      return const _ParsedTimeLocation(
-        location: '',
-        slotCode: '',
-      );
+  String _parseLocationFromSchedule(String raw) {
+    if (raw.trim().isEmpty) return '';
+
+    final slotMatch = RegExp(
+      r'[MTWRFSU][1-9ABCDN]',
+      caseSensitive: false,
+    ).firstMatch(raw);
+
+    if (slotMatch == null) {
+      return raw.trim();
     }
 
-    final text = raw.trim();
-    final parts = text.split(RegExp(r'\s+'));
-
-    if (parts.length <= 1) {
-      return _ParsedTimeLocation(
-        location: text,
-        slotCode: '',
-      );
-    }
-
-    return _ParsedTimeLocation(
-      location: parts.sublist(0, parts.length - 1).join(' '),
-      slotCode: parts.last,
-    );
+    return raw.substring(0, slotMatch.start).trim();
   }
 
-  _ParsedSlot _parseSlotCode(String slotCode) {
-    if (slotCode.trim().isEmpty) {
-      return const _ParsedSlot(
-        day: 1,
-        startSlot: 0,
-        duration: 1,
-      );
-    }
+  String _parseSlotCodeFromSchedule(String raw) {
+    if (raw.trim().isEmpty) return '';
 
-    const dayMap = {
-      'M': 1,
-      'T': 2,
-      'W': 3,
-      'R': 4,
-      'F': 5,
-    };
-
-    const periodMap = {
-      '1': 0,
-      '2': 1,
-      '3': 2,
-      '4': 3,
-      'n': 4,
-      '5': 5,
-      '6': 6,
-      '7': 7,
-      '8': 8,
-      '9': 9,
-      'a': 10,
-      'b': 11,
-      'c': 12,
-      'd': 13,
-    };
-
-    final matches = RegExp(r'([MTWRF])([1234n56789abcd])')
-        .allMatches(slotCode)
+    final matches = RegExp(
+      r'[MTWRFSU][1-9ABCDN]',
+      caseSensitive: false,
+    )
+        .allMatches(raw)
+        .map((match) => match.group(0) ?? '')
+        .where((value) => value.isNotEmpty)
         .toList();
 
-    if (matches.isEmpty) {
-      return const _ParsedSlot(
-        day: 1,
-        startSlot: 0,
-        duration: 1,
-      );
-    }
-
-    final firstDayCode = matches.first.group(1) ?? 'M';
-    final firstDay = dayMap[firstDayCode] ?? 1;
-
-    final sameDayPeriods = matches
-        .where((match) => match.group(1) == firstDayCode)
-        .map((match) {
-          final periodCode = match.group(2) ?? '1';
-          return periodMap[periodCode] ?? 0;
-        })
-        .toList()
-      ..sort();
-
-    if (sameDayPeriods.isEmpty) {
-      return _ParsedSlot(
-        day: firstDay,
-        startSlot: 0,
-        duration: 1,
-      );
-    }
-
-    final startSlot = sameDayPeriods.first;
-    final endSlot = sameDayPeriods.last;
-
-    return _ParsedSlot(
-      day: firstDay,
-      startSlot: startSlot,
-      duration: (endSlot - startSlot + 1).clamp(1, 14),
-    );
+    return matches.join('').toUpperCase();
   }
 
-  Color _courseColor(String id) {
-    const colors = [
-      Color(0xFF60A5FA),
-      Color(0xFFA855F7),
-      Color(0xFF14B8A6),
-      Color(0xFFF472B6),
-      Color(0xFFFBBF24),
-      Color(0xFF34D399),
-      Color(0xFFFB7185),
-      Color(0xFFF97316),
-      Color(0xFF818CF8),
-      Color(0xFF2DD4BF),
-    ];
+  int _parseDay(String slotCode) {
+    if (slotCode.trim().isEmpty) return 0;
 
-    final hash = id.codeUnits.fold<int>(
-      0,
-      (previousValue, element) => previousValue + element,
-    );
+    final firstDay = slotCode.trim().toUpperCase()[0];
 
-    return colors[hash % colors.length];
+    switch (firstDay) {
+      case 'M':
+        return 1;
+      case 'T':
+        return 2;
+      case 'W':
+        return 3;
+      case 'R':
+        return 4;
+      case 'F':
+        return 5;
+      case 'S':
+        return 6;
+      case 'U':
+        return 7;
+      default:
+        return 0;
+    }
   }
-}
 
-class _ParsedTimeLocation {
-  final String location;
-  final String slotCode;
+  int _parseStartSlot(String slotCode) {
+    final firstSlot = RegExp(
+      r'[MTWRFSU]([1-9ABCDN])',
+      caseSensitive: false,
+    ).firstMatch(slotCode);
 
-  const _ParsedTimeLocation({
-    required this.location,
-    required this.slotCode,
-  });
-}
+    if (firstSlot == null) return 0;
 
-class _ParsedSlot {
-  final int day;
-  final int startSlot;
-  final int duration;
+    return _slotValue(firstSlot.group(1) ?? '');
+  }
 
-  const _ParsedSlot({
-    required this.day,
-    required this.startSlot,
-    required this.duration,
-  });
+  int _parseDuration(String slotCode) {
+    final firstDayMatch = RegExp(
+      r'([MTWRFSU])[1-9ABCDN]',
+      caseSensitive: false,
+    ).firstMatch(slotCode);
+
+    if (firstDayMatch == null) return 1;
+
+    final firstDay = firstDayMatch.group(1)?.toUpperCase();
+
+    final sameDaySlots = RegExp(
+      r'([MTWRFSU])([1-9ABCDN])',
+      caseSensitive: false,
+    )
+        .allMatches(slotCode)
+        .where((match) => match.group(1)?.toUpperCase() == firstDay)
+        .length;
+
+    if (sameDaySlots <= 0) return 1;
+
+    return sameDaySlots;
+  }
+
+  int _slotValue(String rawSlot) {
+    final slot = rawSlot.toUpperCase();
+
+    switch (slot) {
+      case 'N':
+        return 5;
+      case 'A':
+        return 10;
+      case 'B':
+        return 11;
+      case 'C':
+        return 12;
+      case 'D':
+        return 13;
+      default:
+        return int.tryParse(slot) ?? 0;
+    }
+  }
+
+  String _firstString(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+
+      if (value == null) continue;
+
+      final text = value.toString().trim();
+
+      if (text.isNotEmpty && text.toLowerCase() != 'null') {
+        return text;
+      }
+    }
+
+    return '';
+  }
+
+  String _firstNonEmpty(List<String> values) {
+    for (final value in values) {
+      if (value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+
+    return '';
+  }
+
+  int _firstInt(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+      final parsed = _intValue(value);
+
+      if (parsed != 0) {
+        return parsed;
+      }
+    }
+
+    return 0;
+  }
+
+  int _intValue(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.round();
+    if (value is num) return value.round();
+
+    final raw = value.toString().trim();
+    final match = RegExp(r'\d+').firstMatch(raw);
+
+    if (match == null) return 0;
+
+    return int.tryParse(match.group(0) ?? '') ?? 0;
+  }
+
+  double _firstDouble(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+      final parsed = _doubleValue(value);
+
+      if (parsed != 0.0) {
+        return parsed;
+      }
+    }
+
+    return 0.0;
+  }
+
+  double _doubleValue(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+
+    return double.tryParse(value.toString()) ?? 0.0;
+  }
 }

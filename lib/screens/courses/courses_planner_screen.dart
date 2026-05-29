@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../models/courses_planner_model.dart';
+import 'services/course_planner_firestore_services.dart';
+import 'widgets/course_planner_ai_button.dart';
+import 'widgets/course_planner_ai_chat_dialog.dart';
 import 'widgets/course_planner_card.dart';
 import 'widgets/course_planner_detail_sheet.dart' as detail;
 import 'widgets/course_planner_filter_sheet.dart';
-import 'widgets/course_planner_schedule_grid.dart' as schedule;
-import 'widgets/course_planned_course_card.dart';
-import 'widgets/course_planner_enroll_card.dart';
-import 'widgets/course_planner_ai_button.dart';
-import 'widgets/course_planner_ai_chat_dialog.dart';
-import 'services/course_planner_firestore_services.dart';
 
 class CoursePlannerScreen extends StatefulWidget {
   const CoursePlannerScreen({super.key});
@@ -19,7 +16,7 @@ class CoursePlannerScreen extends StatefulWidget {
 }
 
 class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
-  int selectedTab = 0; // 0 = Discover, 1 = My Plan
+  int selectedTab = 0;
 
   String searchQuery = '';
   String selectedType = 'ALL';
@@ -27,6 +24,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
   int? selectedCredits;
 
   Set<String> baoBaoRecommendedCourseIds = {};
+  bool showBaoBaoRecommendationsOnly = false;
+  String? baoBaoRecommendationMessage;
 
   final List<PlannerCourse> plannedCourses = [];
 
@@ -78,6 +77,19 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
     return total;
   }
 
+  List<String> get departmentOptions {
+    final departments = allCourses
+        .map((course) => course.department.trim().toUpperCase())
+        .where((department) => department.isNotEmpty)
+        .where((department) => department != 'UNKNOWN')
+        .toSet()
+        .toList();
+
+    departments.sort();
+
+    return ['All', ...departments];
+  }
+
   List<PlannerCourse> get filteredCourses {
     final query = searchQuery.trim().toLowerCase();
 
@@ -93,7 +105,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
           course.department.toLowerCase().contains(query) ||
           course.type.toLowerCase().contains(query) ||
           course.slotCode.toLowerCase().contains(query) ||
-          course.location.toLowerCase().contains(query);
+          course.location.toLowerCase().contains(query) ||
+          course.language.toLowerCase().contains(query);
 
       final matchesType =
           selectedType == 'ALL' || course.type.toUpperCase() == selectedType;
@@ -101,14 +114,18 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       final matchesCredits =
           selectedCredits == null || course.credits == selectedCredits;
 
-      final matchesDepartment =
-          selectedDepartment == 'All' || course.department == selectedDepartment;
+      final matchesDepartment = selectedDepartment == 'All' ||
+          course.department.toUpperCase() == selectedDepartment.toUpperCase();
+
+      final matchesBaoBaoRecommendation = !showBaoBaoRecommendationsOnly ||
+          baoBaoRecommendedCourseIds.contains(course.id);
 
       return !alreadyPlanned &&
           matchesSearch &&
           matchesType &&
           matchesCredits &&
-          matchesDepartment;
+          matchesDepartment &&
+          matchesBaoBaoRecommendation;
     }).toList();
 
     result.sort((a, b) {
@@ -131,9 +148,9 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       return;
     }
 
-    final hasConflict = hasScheduleConflict(course);
+    final conflict = hasScheduleConflict(course);
 
-    if (hasConflict) {
+    if (conflict) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -176,8 +193,16 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
   }
 
   bool hasScheduleConflict(PlannerCourse course) {
+    if (course.day == 0 || course.startSlot == 0) {
+      return false;
+    }
+
     for (final plannedCourse in plannedCourses) {
       if (plannedCourse.id == course.id) {
+        continue;
+      }
+
+      if (plannedCourse.day == 0 || plannedCourse.startSlot == 0) {
         continue;
       }
 
@@ -191,10 +216,7 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       final courseStart = course.startSlot;
       final courseEnd = course.startSlot + course.duration;
 
-      final isOverlapping =
-          plannedStart < courseEnd && courseStart < plannedEnd;
-
-      if (isOverlapping) {
+      if (plannedStart < courseEnd && courseStart < plannedEnd) {
         return true;
       }
     }
@@ -229,25 +251,45 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
           initialType: selectedType,
           initialCredits: selectedCredits,
           initialDepartment: selectedDepartment,
+          departmentOptions: departmentOptions,
         );
       },
     );
 
     if (result != null) {
       setState(() {
-        selectedType = result['type'];
-        selectedCredits = result['credits'];
-        selectedDepartment = result['department'];
+        selectedType = result['type']?.toString() ?? 'ALL';
+        selectedCredits = result['credits'] as int?;
+        selectedDepartment = result['department']?.toString() ?? 'All';
+
+        showBaoBaoRecommendationsOnly = false;
+        baoBaoRecommendedCourseIds.clear();
+        baoBaoRecommendationMessage = null;
       });
     }
+  }
+
+  void exitBaoBaoRecommendations() {
+    setState(() {
+      baoBaoRecommendedCourseIds.clear();
+      showBaoBaoRecommendationsOnly = false;
+      baoBaoRecommendationMessage = null;
+      searchQuery = '';
+      selectedType = 'ALL';
+      selectedCredits = null;
+      selectedDepartment = 'All';
+    });
   }
 
   Future<void> openBaoBaoChat() async {
     final result = await showDialog<dynamic>(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.45),
+      barrierColor: Colors.transparent,
       builder: (_) {
-        return const CoursePlannerAiChatDialog();
+        return CoursePlannerAiChatDialog(
+          allCourses: allCourses,
+          plannedCourses: plannedCourses,
+        );
       },
     );
 
@@ -258,12 +300,14 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
     }
 
     Set<String> recommendedIds = {};
+    String? recommendationMessage;
 
     if (result is List<String>) {
       recommendedIds = result.toSet();
     } else if (result is Map<String, dynamic>) {
       final ids = result['courseIds'] as List<dynamic>? ?? [];
       recommendedIds = ids.map((id) => id.toString()).toSet();
+      recommendationMessage = result['message']?.toString();
     }
 
     if (recommendedIds.isEmpty) {
@@ -277,6 +321,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       selectedCredits = null;
       selectedDepartment = 'All';
       baoBaoRecommendedCourseIds = recommendedIds;
+      showBaoBaoRecommendationsOnly = true;
+      baoBaoRecommendationMessage = recommendationMessage;
     });
   }
 
@@ -321,9 +367,21 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
                               selectedDepartment: selectedDepartment,
                               recommendedCourseIds:
                                   baoBaoRecommendedCourseIds,
+                              showBaoBaoRecommendationsOnly:
+                                  showBaoBaoRecommendationsOnly,
+                              baoBaoRecommendationMessage:
+                                  baoBaoRecommendationMessage,
+                              onExitBaoBaoRecommendations:
+                                  exitBaoBaoRecommendations,
                               onSearchChanged: (value) {
                                 setState(() {
                                   searchQuery = value;
+
+                                  if (value.trim().isNotEmpty) {
+                                    showBaoBaoRecommendationsOnly = false;
+                                    baoBaoRecommendedCourseIds.clear();
+                                    baoBaoRecommendationMessage = null;
+                                  }
                                 });
                               },
                               onFilterTap: openFilter,
@@ -352,7 +410,9 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
 class _Header extends StatelessWidget {
   final int totalCredits;
 
-  const _Header({required this.totalCredits});
+  const _Header({
+    required this.totalCredits,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -540,9 +600,12 @@ class _DiscoverView extends StatefulWidget {
   final String selectedType;
   final String selectedDepartment;
   final Set<String> recommendedCourseIds;
+  final bool showBaoBaoRecommendationsOnly;
+  final String? baoBaoRecommendationMessage;
   final int? selectedCredits;
   final ValueChanged<String> onSearchChanged;
   final VoidCallback onFilterTap;
+  final VoidCallback onExitBaoBaoRecommendations;
   final ValueChanged<PlannerCourse> onCourseTap;
   final ValueChanged<PlannerCourse> onAddCourse;
   final bool Function(PlannerCourse course) hasConflict;
@@ -554,6 +617,9 @@ class _DiscoverView extends StatefulWidget {
     required this.selectedDepartment,
     required this.selectedCredits,
     required this.recommendedCourseIds,
+    required this.showBaoBaoRecommendationsOnly,
+    required this.baoBaoRecommendationMessage,
+    required this.onExitBaoBaoRecommendations,
     required this.onSearchChanged,
     required this.onFilterTap,
     required this.onCourseTap,
@@ -566,7 +632,32 @@ class _DiscoverView extends StatefulWidget {
 }
 
 class _DiscoverViewState extends State<_DiscoverView> {
+  late final TextEditingController searchController;
   bool isFocused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    searchController = TextEditingController(text: widget.searchQuery);
+  }
+
+  @override
+  void didUpdateWidget(covariant _DiscoverView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (widget.searchQuery != searchController.text) {
+      searchController.text = widget.searchQuery;
+      searchController.selection = TextSelection.collapsed(
+        offset: searchController.text.length,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -622,6 +713,7 @@ class _DiscoverViewState extends State<_DiscoverView> {
                     });
                   },
                   child: TextField(
+                    controller: searchController,
                     onChanged: widget.onSearchChanged,
                     cursorColor: const Color(0xFF9333EA),
                     decoration: const InputDecoration(
@@ -683,27 +775,93 @@ class _DiscoverViewState extends State<_DiscoverView> {
             ],
           ),
         ),
-        const SizedBox(height: 24),
-        const Row(
-          children: [
-            Icon(
-              Icons.auto_awesome_rounded,
-              size: 16,
-              color: Color(0xFF7E3291),
-            ),
-            SizedBox(width: 8),
-            Text(
-              'RECOMMENDED FOR YOU',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.8,
-                color: Color(0xFF94A3B8),
+        const SizedBox(height: 18),
+        if (widget.showBaoBaoRecommendationsOnly) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3E8FF),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: const Color(0xFFD8B4FE),
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 14),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 18,
+                  color: Color(0xFF7E3291),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Showing Bao-Bao recommendations',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF7E3291),
+                    ),
+                  ),
+                ),
+                InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: widget.onExitBaoBaoRecommendations,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Text(
+                      'SHOW ALL',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.7,
+                        color: Color(0xFF7E3291),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+        ],
+        if (widget.showBaoBaoRecommendationsOnly &&
+            widget.baoBaoRecommendationMessage != null) ...[
+          _BaoBaoResultBubble(
+            message: widget.baoBaoRecommendationMessage!,
+          ),
+          const SizedBox(height: 18),
+        ],
+        if (widget.showBaoBaoRecommendationsOnly) ...[
+          const Row(
+            children: [
+              Icon(
+                Icons.auto_awesome_rounded,
+                size: 16,
+                color: Color(0xFF7E3291),
+              ),
+              SizedBox(width: 8),
+              Text(
+                'RECOMMENDED BY BAO-BAO',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: Color(0xFF94A3B8),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+        ],
         if (widget.courses.isEmpty)
           Container(
             padding: const EdgeInsets.all(24),
@@ -762,6 +920,119 @@ class _DiscoverViewState extends State<_DiscoverView> {
   }
 }
 
+class _BaoBaoResultBubble extends StatefulWidget {
+  final String message;
+
+  const _BaoBaoResultBubble({
+    required this.message,
+  });
+
+  @override
+  State<_BaoBaoResultBubble> createState() => _BaoBaoResultBubbleState();
+}
+
+class _BaoBaoResultBubbleState extends State<_BaoBaoResultBubble>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final floatY = -3 + (_controller.value * 6);
+
+        return Transform.translate(
+          offset: Offset(0, floatY),
+          child: child,
+        );
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: const Color(0xFFE9D5FF),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF7E3291).withValues(alpha: 0.10),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3E8FF),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFFE9D5FF),
+                      width: 2,
+                    ),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      '🐼',
+                      style: TextStyle(fontSize: 25),
+                    ),
+                  ),
+                ),
+                const Positioned(
+                  right: -4,
+                  top: -4,
+                  child: Icon(
+                    Icons.auto_awesome_rounded,
+                    size: 15,
+                    color: Color(0xFF9333EA),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Text(
+                widget.message,
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF475569),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _MyPlanView extends StatelessWidget {
   final List<PlannerCourse> plannedCourses;
   final int totalCredits;
@@ -778,142 +1049,229 @@ class _MyPlanView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (plannedCourses.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(28, 0, 28, 80),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 84,
-                height: 84,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF3E8FF),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: const Color(0xFFE9D5FF),
-                    width: 3,
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(28, 20, 28, 100),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(26),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(
+                color: const Color(0xFFE5E7EB),
+              ),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 68,
+                  height: 68,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF3E8FF),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.calendar_month_rounded,
+                    color: Color(0xFF7E3291),
+                    size: 34,
                   ),
                 ),
-                child: const Icon(
-                  Icons.assignment_outlined,
-                  color: Color(0xFFB78BC4),
-                  size: 36,
-                ),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Your plan is empty',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF020617),
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Search and add courses to start planning your\nacademic journey.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.5,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF94A3B8),
-                ),
-              ),
-              const SizedBox(height: 28),
-              ElevatedButton(
-                onPressed: onBrowse,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF7E3291),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 34,
-                    vertical: 18,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                child: const Text(
-                  'BROWSE COURSES',
+                const SizedBox(height: 18),
+                const Text(
+                  'Your plan is empty',
                   style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                const Text(
+                  'Browse courses and add them to build your semester plan.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.4,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: onBrowse,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF7E3291),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 26,
+                      vertical: 14,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Text(
+                    'BROWSE COURSES',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.7,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       );
     }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(28, 0, 28, 100),
       children: [
-        const Row(
-          children: [
-            Icon(
-              Icons.calendar_month_outlined,
-              size: 16,
-              color: Color(0xFF7E3291),
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3E8FF),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: const Color(0xFFD8B4FE),
             ),
-            SizedBox(width: 8),
-            Text(
-              'WEEKLY SCHEDULE',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.8,
-                color: Color(0xFF94A3B8),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.workspace_premium_rounded,
+                color: Color(0xFF7E3291),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        schedule.PlannerScheduleGrid(
-          courses: plannedCourses,
-          onRemove: onRemove,
-        ),
-        const SizedBox(height: 32),
-        const Row(
-          children: [
-            Icon(
-              Icons.assignment_outlined,
-              size: 16,
-              color: Color(0xFF7E3291),
-            ),
-            SizedBox(width: 8),
-            Text(
-              'COURSE LIST',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.8,
-                color: Color(0xFF94A3B8),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '${plannedCourses.length} courses selected',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF7E3291),
+                  ),
+                ),
               ),
-            ),
-          ],
+              Text(
+                '$totalCredits credits',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF7E3291),
+                ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 14),
-        ...plannedCourses.map((course) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: PlannedCourseCard(
+        const SizedBox(height: 18),
+        ...plannedCourses.map(
+          (course) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _PlannedCourseTile(
               course: course,
               onRemove: () => onRemove(course),
             ),
-          );
-        }),
-        const SizedBox(height: 12),
-        PlannerEnrollCard(
-          courseCount: plannedCourses.length,
-          totalCredits: totalCredits,
+          ),
         ),
       ],
+    );
+  }
+}
+
+class _PlannedCourseTile extends StatelessWidget {
+  final PlannerCourse course;
+  final VoidCallback onRemove;
+
+  const _PlannedCourseTile({
+    required this.course,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFFE5E7EB),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.035),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: const BoxDecoration(
+              color: Color(0xFFF3E8FF),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.menu_book_rounded,
+              color: Color(0xFF7E3291),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  course.code,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.7,
+                    color: Color(0xFF94A3B8),
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  course.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    height: 1.2,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  '${course.credits} credits • ${course.slotCode.isEmpty ? 'No time' : course.slotCode}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: onRemove,
+            icon: const Icon(
+              Icons.close_rounded,
+              color: Color(0xFFFF2D55),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -942,74 +1300,73 @@ class _CourseLoadErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 74,
-              height: 74,
-              decoration: const BoxDecoration(
-                color: Color(0xFFFFF1F2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.cloud_off_rounded,
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(28, 30, 28, 100),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: const Color(0xFFFFCDD7),
+            ),
+          ),
+          child: Column(
+            children: [
+              const Icon(
+                Icons.error_outline_rounded,
                 color: Color(0xFFFF2D55),
-                size: 34,
+                size: 42,
               ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Failed to load courses',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              error,
-              textAlign: TextAlign.center,
-              maxLines: 5,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 12,
-                height: 1.4,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF94A3B8),
-              ),
-            ),
-            const SizedBox(height: 22),
-            ElevatedButton(
-              onPressed: onRetry,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF7E3291),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 28,
-                  vertical: 14,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              child: const Text(
-                'RETRY',
+              const SizedBox(height: 14),
+              const Text(
+                'Failed to load courses',
                 style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.6,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0F172A),
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                error,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 12,
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 18),
+              ElevatedButton(
+                onPressed: onRetry,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7E3291),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 13,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: const Text(
+                  'RETRY',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.7,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }

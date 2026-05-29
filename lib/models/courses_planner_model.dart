@@ -20,6 +20,7 @@ class PlannerCourse {
   final String timeSlot;
   final String location;
   final String slotCode;
+  final String language;
 
   final int day;
   final int startSlot;
@@ -45,6 +46,7 @@ class PlannerCourse {
     required this.timeSlot,
     required this.location,
     required this.slotCode,
+    required this.language,
     required this.day,
     required this.startSlot,
     required this.duration,
