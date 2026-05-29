@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'home/home_screen.dart';
-import 'social_screen.dart';
+import 'social/social_screen.dart';
 import 'courses/courses_screen.dart';
 import 'account/account_screen.dart';
 
