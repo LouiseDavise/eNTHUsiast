@@ -1,4 +1,14 @@
 ﻿{
+  "functions": {
+    "source": "functions",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "firebase-debug.log",
+      "firebase-debug.*.log",
+      "*.local"
+    ]
+  },
   "flutter": {
     "platforms": {
       "android": {
@@ -13,13 +23,18 @@
           "projectId": "enthusiast-e3429",
           "configurations": {
             "android": "1:2500792168:android:b021f17bf6cb0b6fa6d0dd",
-            "web": "1:2500792168:web:8f437cb52907a584a6d0dd"
+            "ios": "1:2500792168:ios:fe75e3b4afdaf26da6d0dd",
+            "macos": "1:2500792168:ios:fe75e3b4afdaf26da6d0dd",
+            "web": "1:2500792168:web:8f437cb52907a584a6d0dd",
+            "windows": "1:2500792168:web:887020709eb9cab9a6d0dd"
           }
         }
       }
     }
   },
   "firestore": {
+    "database": "(default)",
+    "location": "asia-east1",
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   }

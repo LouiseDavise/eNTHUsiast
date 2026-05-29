@@ -23,25 +23,13 @@ class DefaultFirebaseOptions {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.iOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for ios - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return ios;
       case TargetPlatform.macOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for macos - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return macos;
       case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return windows;
       case TargetPlatform.linux:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for linux - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return android;
       default:
         throw UnsupportedError(
           'DefaultFirebaseOptions are not supported for this platform.',
@@ -65,6 +53,34 @@ class DefaultFirebaseOptions {
     authDomain: 'enthusiast-e3429.firebaseapp.com',
     storageBucket: 'enthusiast-e3429.firebasestorage.app',
     measurementId: 'G-HEYVW1H020',
+  );
+
+  static const FirebaseOptions macos = FirebaseOptions(
+    apiKey: 'AIzaSyCOFkJr3dY1sagCfzpwpy6kQiCdxPmfLx4',
+    appId: '1:2500792168:ios:fe75e3b4afdaf26da6d0dd',
+    messagingSenderId: '2500792168',
+    projectId: 'enthusiast-e3429',
+    storageBucket: 'enthusiast-e3429.firebasestorage.app',
+    iosBundleId: 'com.example.enthusiast',
+  );
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyCOFkJr3dY1sagCfzpwpy6kQiCdxPmfLx4',
+    appId: '1:2500792168:ios:fe75e3b4afdaf26da6d0dd',
+    messagingSenderId: '2500792168',
+    projectId: 'enthusiast-e3429',
+    storageBucket: 'enthusiast-e3429.firebasestorage.app',
+    iosBundleId: 'com.example.enthusiast',
+  );
+
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyCLJ53L3Qtln1fflAhyfG0Tbt6ph3mL0Y4',
+    appId: '1:2500792168:web:887020709eb9cab9a6d0dd',
+    messagingSenderId: '2500792168',
+    projectId: 'enthusiast-e3429',
+    authDomain: 'enthusiast-e3429.firebaseapp.com',
+    storageBucket: 'enthusiast-e3429.firebasestorage.app',
+    measurementId: 'G-C0DDTESVJ4',
   );
 
 }

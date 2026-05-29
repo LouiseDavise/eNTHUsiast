@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import '../../../models/courses_model.dart';
-import 'utilities/schedule_data.dart';
 import './widgets/timetable_grid.dart';
 import './widgets/menu_square_button.dart';
 import './widgets/menu_wide_button.dart';

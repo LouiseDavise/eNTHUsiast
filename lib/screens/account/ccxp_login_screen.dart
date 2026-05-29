@@ -1,6 +1,12 @@
+import 'package:enthusiast/providers/ccxp_data_provider.dart';
+import 'package:enthusiast/routes/app_routes.dart';
+import 'package:enthusiast/widgets/button_circle_back.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../theme/app_theme.dart';
+import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:dio/dio.dart';
+import 'dart:convert';
 
 class CcxpLoginScreen extends StatefulWidget {
   const CcxpLoginScreen({super.key});
@@ -12,6 +18,7 @@ class CcxpLoginScreen extends StatefulWidget {
 class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
   final _studentIdController = TextEditingController();
   final _passwordController = TextEditingController();
+  final dio = Dio();
   bool _isPasswordVisible = false;
   bool _isLoading = false;
 
@@ -26,21 +33,125 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     // Basic validation
     if (_studentIdController.text.isEmpty || _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter both Student ID and Password')),
+        const SnackBar(
+          content: Text('Please enter both Student ID and Password'),
+        ),
       );
       return;
     }
 
     setState(() => _isLoading = true);
+    final studentId = _studentIdController.text.trim();
+    final password = _passwordController.text;
 
-    // TODO: Implement actual CCXP authentication logic here
-    await Future.delayed(const Duration(seconds: 2)); // Simulating network request
+    try {
+      Map<String, dynamic>? graduationData;
+      dynamic schedule;
+      // if (!Platform.isLinux) {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('ccxpUsers')
+          .doc(studentId)
+          .get();
 
-    if (mounted) {
-      setState(() => _isLoading = false);
-      // Navigate to the main app (replace '/home' with your actual root route)
-      Navigator.pushReplacementNamed(context, '/home');
+      if (userDoc.exists) {
+        final userData = userDoc.data();
+        graduationData = userData?['graduationData'] as Map<String, dynamic>?;
+        schedule = userData?['scheduleData'];
+      }
+      // }
+
+      if (graduationData == null || schedule == null) {
+        final apiResult = await _fetchCcxpDataFromApi(studentId, password);
+        graduationData = apiResult['graduationData'] as Map<String, dynamic>?;
+        schedule = apiResult['scheduleData'];
+
+        if (graduationData != null && schedule != null) {
+          await FirebaseFirestore.instance
+              .collection('ccxpUsers')
+              .doc(studentId)
+              .set({
+                'graduationData': graduationData,
+                'scheduleData': schedule,
+                'lastUpdatedAt': FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true));
+        }
+      }
+
+      if (graduationData != null && schedule != null) {
+        if (mounted) {
+          Provider.of<CcxpDataProvider>(
+            context,
+            listen: false,
+          ).setData(graduationData: graduationData, scheduleData: schedule);
+        }
+      } else {
+        throw Exception('Unable to retrieve CCXP data.');
+      }
+
+      if (mounted) {
+        setState(() => _isLoading = false);
+        Navigator.pushReplacementNamed(context, AppRoutes.mainScreen);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Login failed: ${e.toString()}')),
+        );
+      }
     }
+  }
+
+  Future<Map<String, dynamic>> _fetchCcxpDataFromApi(
+    String studentId,
+    String password,
+  ) async {
+    const url = 'https://prowler-underpaid-smudgy.ngrok-free.dev';
+    final response = await dio.post(
+      '$url/login',
+      data: {'uid': studentId, 'pw': password},
+    );
+
+    print("login succeed");
+
+    if (response.statusCode != 200) {
+      throw Exception('Login API failed with status ${response.statusCode}.');
+    }
+
+    final loginData = _parseResponseData(response.data);
+    if (loginData is! Map<String, dynamic> || loginData['sessKey'] == null) {
+      throw Exception('Invalid login response from API.');
+    }
+
+    final sessKey = loginData['sessKey'];
+    final gradResponse = await dio.post(
+      '$url/graduationData',
+      data: {'sessKey': sessKey},
+    );
+    final scheduleResponse = await dio.post(
+      '$url/schedule',
+      data: {'sessKey': sessKey},
+    );
+
+    if (gradResponse.statusCode != 200 || scheduleResponse.statusCode != 200) {
+      throw Exception('Failed to fetch graduation or schedule data.');
+    }
+
+    final graduationData = _parseResponseData(gradResponse.data);
+    final scheduleData = _parseResponseData(scheduleResponse.data);
+
+    if (graduationData is! Map<String, dynamic>) {
+      throw Exception('Invalid graduationData format from API.');
+    }
+
+    return {'graduationData': graduationData, 'scheduleData': scheduleData};
+  }
+
+  dynamic _parseResponseData(dynamic data) {
+    if (data is String) {
+      return jsonDecode(data);
+    }
+    return data;
   }
 
   @override
@@ -78,8 +189,15 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 24.0),
                   child: Column(
                     children: [
+                      Align(
+                        alignment: Alignment.topLeft,
+                        child: CircleBackButton(
+                          onTap: () => Navigator.pop(context),
+                        ),
+                      ),
+
                       const SizedBox(height: 40),
-                      
+
                       // ── App Branding ───────────────────────────────────────
                       Container(
                         padding: const EdgeInsets.all(16),
@@ -113,7 +231,7 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
                         ),
                         textAlign: TextAlign.center,
                       ),
-                      
+
                       const SizedBox(height: 48),
 
                       // ── Login Form Card ────────────────────────────────────
@@ -148,17 +266,28 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
                               controller: _studentIdController,
                               keyboardType: TextInputType.number,
                               textInputAction: TextInputAction.next,
+                              style: GoogleFonts.dmSans(color: Colors.black),
                               decoration: InputDecoration(
                                 labelText: 'Student ID',
-                                labelStyle: GoogleFonts.dmSans(color: const Color(0xFF6B7280)),
-                                prefixIcon: const Icon(Icons.badge_outlined, color: Color(0xFF9CA3AF)),
+                                labelStyle: GoogleFonts.dmSans(
+                                  color: const Color(0xFF6B7280),
+                                ),
+                                prefixIcon: const Icon(
+                                  Icons.badge_outlined,
+                                  color: Color(0xFF9CA3AF),
+                                ),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFE5E7EB),
+                                  ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFF7E22CE), width: 2),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFF7E22CE),
+                                    width: 2,
+                                  ),
                                 ),
                                 filled: true,
                                 fillColor: const Color(0xFFF9FAFB),
@@ -172,26 +301,42 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
                               obscureText: !_isPasswordVisible,
                               textInputAction: TextInputAction.done,
                               onSubmitted: (_) => _handleLogin(),
+                              style: GoogleFonts.dmSans(color: Colors.black),
                               decoration: InputDecoration(
                                 labelText: 'Password',
-                                labelStyle: GoogleFonts.dmSans(color: const Color(0xFF6B7280)),
-                                prefixIcon: const Icon(Icons.lock_outline_rounded, color: Color(0xFF9CA3AF)),
+                                labelStyle: GoogleFonts.dmSans(
+                                  color: const Color(0xFF6B7280),
+                                ),
+                                prefixIcon: const Icon(
+                                  Icons.lock_outline_rounded,
+                                  color: Color(0xFF9CA3AF),
+                                ),
                                 suffixIcon: IconButton(
                                   icon: Icon(
-                                    _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
+                                    _isPasswordVisible
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
                                     color: const Color(0xFF9CA3AF),
                                   ),
                                   onPressed: () {
-                                    setState(() => _isPasswordVisible = !_isPasswordVisible);
+                                    setState(
+                                      () => _isPasswordVisible =
+                                          !_isPasswordVisible,
+                                    );
                                   },
                                 ),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFE5E7EB),
+                                  ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFF7E22CE), width: 2),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFF7E22CE),
+                                    width: 2,
+                                  ),
                                 ),
                                 filled: true,
                                 fillColor: const Color(0xFFF9FAFB),
@@ -232,9 +377,9 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
                           ],
                         ),
                       ),
-                      
+
                       const SizedBox(height: 24),
-                      
+
                       // ── Helpful Links ──────────────────────────────────────
                       TextButton(
                         onPressed: () {

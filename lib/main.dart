@@ -1,28 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 
 import 'firebase_options.dart';
+import 'providers/ccxp_data_provider.dart';
 import 'providers/language_provider.dart';
 import 'routes/app_routes.dart';
 import 'theme/app_theme.dart';
 
+// 1. Import your screens f+or the Gatekeeper
+import 'screens/main_screen.dart'; // Adjust path if necessary
+import 'screens/preference/preference_screen.dart';   // Adjust path if necessary
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Firebase is not supported on Linux, so only initialize on other platforms
+  // if (!Platform.isLinux) {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
-  await _signInAnonymouslyIfNeeded();
-
-  runApp(const LanguageProviderScope(child: MyApp()));
-}
-
-Future<void> _signInAnonymouslyIfNeeded() async {
-  final FirebaseAuth auth = FirebaseAuth.instance;
-
-  if (auth.currentUser == null) {
-    await auth.signInAnonymously();
-  }
+  // }
+  print("main started");
+  runApp(const MyApp());
+  print("runApp called");
 }
 
 class MyApp extends StatelessWidget {
@@ -30,18 +29,36 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final language = LanguageScope.watch(context);
+    return LanguageProviderScope(
+      child: ChangeNotifierProvider(
+        create: (_) => CcxpDataProvider(),
+        child: MaterialApp(
+          title: 'eNTHUsiast App',
+          debugShowCheckedModeBanner: false,
 
-    return MaterialApp(
-      title: 'eNTHUsiast App',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      locale: language.isChinese
-          ? const Locale('zh', 'TW')
-          : const Locale('en', 'US'),
-      initialRoute: AppRoutes.mainScreen,
-      routes: AppRoutes.routes,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+
+          // 2. Remove initialRoute and use the Gatekeeper as the home widget
+          home: const GatekeeperScreen(),
+
+          // 3. Keep your named routes intact for navigation later
+          routes: AppRoutes.routes,
+        ),
+      ),
     );
+  }
+}
+
+// 4. The Gatekeeper Widget
+class GatekeeperScreen extends StatelessWidget {
+  const GatekeeperScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // Check the global variable from preference_screen.dart
+    return hasShownPreferencesThisSession 
+        ? const MainScreen() 
+        : const PreferenceScreen();
   }
 }

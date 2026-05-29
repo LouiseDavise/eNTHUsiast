@@ -9,7 +9,6 @@ class SettingsScreen extends StatelessWidget {
   static const Color _purple = Color(0xFF7B2F8E);
   static const Color _background = Color(0xFFF9F9F8);
   static const Color _textDark = Color(0xFF111827);
-  static const Color _textMuted = Color(0xFF9CA3AF);
 
   @override
   Widget build(BuildContext context) {

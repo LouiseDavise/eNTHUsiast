@@ -1,47 +1,47 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import '../../../theme/app_theme.dart';
 import 'custom_image_widget.dart';
+import 'package:enthusiast/providers/ccxp_data_provider.dart';
 
 class ProfileHeaderWidget extends StatelessWidget {
   const ProfileHeaderWidget({super.key});
 
-  Future<Map<String, String>> _loadAcademicStats() async {
-    try {
-      final String response = await rootBundle.loadString('assets/graduation_data.json');
-      final data = json.decode(response);
-
-      final summary = data['summary'];
-      final categories = data['categories'] as List<dynamic>;
-
-      String gpa = summary['cumulativeGpa'] ?? "0.00";
-      int totalEarned = 0;
-      int currentCredits = 0;
-
-      for (var cat in categories) {
-        totalEarned += (cat['earnedCredits'] ?? 0) as int;
-        final records = cat['records'] as List<dynamic>;
-        for (var rec in records) {
-          if (rec['status'] == 'inProgress') {
-            currentCredits += (rec['credits'] ?? 0) as int;
-          }
-        }
-      }
-
-      return {
-        'gpa': gpa,
-        'current': currentCredits.toString(),
-        'total': totalEarned.toString(),
-      };
-    } catch (e) {
+  Map<String, String> _buildAcademicStats(Map<String, dynamic>? data) {
+    if (data == null) {
       return {'gpa': '-', 'current': '-', 'total': '-'};
     }
+
+    final summary = data['summary'] as Map<String, dynamic>? ?? {};
+    final categories = data['categories'] as List<dynamic>? ?? [];
+
+    final gpa = summary['cumulativeGpa']?.toString() ?? '0.00';
+    int totalEarned = 0;
+    int currentCredits = 0;
+
+    for (final cat in categories) {
+      totalEarned += (cat['earnedCredits'] ?? 0) as int;
+      final records = cat['records'] as List<dynamic>? ?? [];
+      for (final rec in records) {
+        if (rec['status'] == 'inProgress') {
+          currentCredits += (rec['credits'] ?? 0) as int;
+        }
+      }
+    }
+
+    return {
+      'gpa': gpa,
+      'current': currentCredits.toString(),
+      'total': totalEarned.toString(),
+    };
   }
 
   @override
   Widget build(BuildContext context) {
+    final graduationData = context.watch<CcxpDataProvider>().graduationData;
+    final academicStats = _buildAcademicStats(graduationData);
+
     return Column(
       children: [
         // ── 1. Banner & Overlapping Avatar ──────────────────────────────────
@@ -61,7 +61,7 @@ class ProfileHeaderWidget extends StatelessWidget {
               ),
               // Optional: Add a subtle pattern or logo here if you have one
             ),
-            
+
             // The Avatar
             Positioned(
               bottom: 0, // Pulls the avatar down to overlap the banner
@@ -74,7 +74,10 @@ class ProfileHeaderWidget extends StatelessWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: Colors.white,
-                      border: Border.all(color: Colors.white, width: 4), // Crisp white border
+                      border: Border.all(
+                        color: Colors.white,
+                        width: 4,
+                      ), // Crisp white border
                       boxShadow: [
                         BoxShadow(
                           color: AppTheme.primary.withOpacity(0.15),
@@ -85,7 +88,8 @@ class ProfileHeaderWidget extends StatelessWidget {
                     ),
                     child: ClipOval(
                       child: CustomImageWidget(
-                        imageUrl: 'https://images.pexels.com/photos/8617741/pexels-photo-8617741.jpeg',
+                        imageUrl:
+                            'https://images.pexels.com/photos/8617741/pexels-photo-8617741.jpeg',
                         width: 120,
                         height: 120,
                         fit: BoxFit.cover,
@@ -112,11 +116,13 @@ class ProfileHeaderWidget extends StatelessWidget {
             ),
           ],
         ),
-        
-        const SizedBox(height: 14), 
+
+        const SizedBox(height: 14),
 
         Text(
-          'Nathan G.',
+          graduationData == null
+              ? 'Anonymous'
+              : graduationData['studentInfo']['studentName'],
           style: GoogleFonts.dmSans(
             fontSize: 26, // Slightly larger
             fontWeight: FontWeight.w800,
@@ -125,13 +131,15 @@ class ProfileHeaderWidget extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
-        
+
         // ID & Major Row with a "Chip" for visual interest
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              '113006200',
+              graduationData == null
+                  ? 'Anonymous'
+                  : graduationData['studentInfo']['studentId'],
               style: GoogleFonts.dmSans(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
@@ -156,7 +164,9 @@ class ProfileHeaderWidget extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                'INTERACTION DESIGN',
+                graduationData == null
+                    ? 'Anonymous'
+                    : graduationData['studentInfo']['studentDepartment'],
                 style: GoogleFonts.dmSans(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
@@ -176,60 +186,57 @@ class ProfileHeaderWidget extends StatelessWidget {
             color: const Color(0xFF4B5563),
           ),
         ),
-        
+
         const SizedBox(height: 32),
 
         // ── 3. Academic Stats Bar ───────────────────────────────────────────
-        FutureBuilder<Map<String, String>>(
-          future: _loadAcademicStats(),
-          builder: (context, snapshot) {
-            String gpa = "-";
-            String current = "-";
-            String total = "-";
-
-            if (snapshot.hasData) {
-              gpa = snapshot.data!['gpa']!;
-              current = snapshot.data!['current']!;
-              total = snapshot.data!['total']!;
-            }
-
-            return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20),
-              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: const Color(0xFFF3F4F6), width: 1.5),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.02),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFFF3F4F6), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.02),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
               ),
-              child: IntrinsicHeight(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildStatColumn('CUM. GPA', gpa, const Color(0xFF7E22CE)),
-                    const VerticalDivider(
-                      color: Color(0xFFF3F4F6),
-                      thickness: 2,
-                      width: 32,
-                    ),
-                    _buildStatColumn('CURRENT CR.', current, const Color(0xFF3B82F6)),
-                    const VerticalDivider(
-                      color: Color(0xFFF3F4F6),
-                      thickness: 2,
-                      width: 32,
-                    ),
-                    _buildStatColumn('TOTAL CR.', total, const Color(0xFF10B981)),
-                  ],
+            ],
+          ),
+          child: IntrinsicHeight(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildStatColumn(
+                  'CUM. GPA',
+                  academicStats['gpa']!,
+                  const Color(0xFF7E22CE),
                 ),
-              ),
-            );
-          },
+                const VerticalDivider(
+                  color: Color(0xFFF3F4F6),
+                  thickness: 2,
+                  width: 32,
+                ),
+                _buildStatColumn(
+                  'CURRENT CR.',
+                  academicStats['current']!,
+                  const Color(0xFF3B82F6),
+                ),
+                const VerticalDivider(
+                  color: Color(0xFFF3F4F6),
+                  thickness: 2,
+                  width: 32,
+                ),
+                _buildStatColumn(
+                  'TOTAL CR.',
+                  academicStats['total']!,
+                  const Color(0xFF10B981),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );

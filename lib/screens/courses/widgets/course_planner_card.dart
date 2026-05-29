@@ -5,6 +5,7 @@ import '../../../models/courses_planner_model.dart';
 class PlannerCourseCard extends StatelessWidget {
   final PlannerCourse course;
   final bool hasConflict;
+  final bool recommendedByBaoBao;
   final VoidCallback onTap;
   final VoidCallback onAdd;
 
@@ -12,6 +13,7 @@ class PlannerCourseCard extends StatelessWidget {
     super.key,
     required this.course,
     required this.hasConflict,
+    this.recommendedByBaoBao = false,
     required this.onTap,
     required this.onAdd,
   });
@@ -27,15 +29,20 @@ class PlannerCourseCard extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: hasConflict
-                ? const Color(0xFFFECACA)
-                : const Color(0xFFF1F5F9),
+            color: recommendedByBaoBao
+                ? const Color(0xFFD8B4FE)
+                : hasConflict
+                    ? const Color(0xFFFECACA)
+                    : const Color(0xFFF1F5F9),
+            width: recommendedByBaoBao ? 1.3 : 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: hasConflict
-                  ? const Color(0xFFFF2D55).withValues(alpha: 0.08)
-                  : Colors.black.withValues(alpha: 0.055),
+              color: recommendedByBaoBao
+                  ? const Color(0xFF7E3291).withValues(alpha: 0.10)
+                  : hasConflict
+                      ? const Color(0xFFFF2D55).withValues(alpha: 0.08)
+                      : Colors.black.withValues(alpha: 0.055),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -56,9 +63,7 @@ class PlannerCourseCard extends StatelessWidget {
                       color: Color(0xFF64748B),
                     ),
                   ),
-
                   const SizedBox(height: 6),
-
                   Text(
                     course.title,
                     style: const TextStyle(
@@ -67,9 +72,7 @@ class PlannerCourseCard extends StatelessWidget {
                       color: Color(0xFF020617),
                     ),
                   ),
-
                   const SizedBox(height: 10),
-
                   Wrap(
                     spacing: 6,
                     runSpacing: 6,
@@ -89,11 +92,16 @@ class PlannerCourseCard extends StatelessWidget {
                         label: course.slotCode,
                       ),
                       _Tag(
-                        label: 'LIMIT: ${course.limit}',
+                        label: course.limit < 0 ? 'LIMIT: N/A' : 'LIMIT: ${course.limit}',
                         bgColor: const Color(0xFFF1F5F9),
                         textColor: const Color(0xFF64748B),
                       ),
-
+                      if (recommendedByBaoBao)
+                        _Tag(
+                          label: '★ RECOMMENDED BY BAO-BAO',
+                          bgColor: const Color(0xFFF3E8FF),
+                          textColor: const Color(0xFF7E3291),
+                        ),
                       if (hasConflict)
                         _Tag(
                           label: '× CONFLICT',
@@ -105,9 +113,7 @@ class PlannerCourseCard extends StatelessWidget {
                 ],
               ),
             ),
-
             const SizedBox(width: 12),
-
             InkWell(
               borderRadius: BorderRadius.circular(16),
               onTap: onAdd,
@@ -117,15 +123,17 @@ class PlannerCourseCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: hasConflict
                       ? const Color(0xFFFEE2E2)
-                      : const Color(0xFFF3E8FF),
+                      : recommendedByBaoBao
+                          ? const Color(0xFFF3E8FF)
+                          : const Color(0xFFF3E8FF),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(
-                  Icons.add_rounded,
+                  hasConflict ? Icons.block_rounded : Icons.add_rounded,
                   color: hasConflict
                       ? const Color(0xFFFF2D55)
                       : const Color(0xFF7E3291),
-                  size: 28,
+                  size: hasConflict ? 22 : 28,
                 ),
               ),
             ),

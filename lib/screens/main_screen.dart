@@ -4,7 +4,7 @@ import '../providers/language_provider.dart';
 import 'account/account_screen.dart';
 import 'courses/courses_screen.dart';
 import 'home/home_screen.dart';
-import 'social_screen.dart';
+import 'social/social_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
