@@ -232,12 +232,16 @@ exports.parseCurriculumPdfFromBytes = onCall(
 
         const userProfileDoc = await db.collection("users").doc(uid).get();
         const userProfile = userProfileDoc.data() || {};
-        const studentId = userProfile.studentId || userProfile.accountStudentId || null;
 
-        if (!pdfBase64 || typeof pdfBase64 !== "string") {
+        const studentId =
+            userProfile.studentId ||
+            userProfile.accountStudentId ||
+            null;
+
+        if (!studentId) {
             throw new HttpsError(
-                "invalid-argument",
-                "Missing PDF data."
+                "failed-precondition",
+                "Cannot find student ID for this Firebase user."
             );
         }
 
@@ -249,8 +253,8 @@ exports.parseCurriculumPdfFromBytes = onCall(
         }
 
         const curriculumRef = db
-            .collection("users")
-            .doc(uid)
+            .collection("ccxpUsers")
+            .doc(studentId)
             .collection("curriculum")
             .doc("current");
 

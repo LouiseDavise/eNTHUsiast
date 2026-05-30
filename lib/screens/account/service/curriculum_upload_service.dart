@@ -22,8 +22,25 @@ class CurriculumUploadService {
     return user.uid;
   }
 
-  Future<bool> pickAndUploadCurriculumPdf() async {
+  Future<String> _getCurrentStudentId() async {
     final uid = _uid;
+
+    final userDoc = await _firestore.collection('users').doc(uid).get();
+    final data = userDoc.data();
+
+    final studentId =
+        data?['studentId']?.toString() ??
+        data?['accountStudentId']?.toString();
+
+    if (studentId == null || studentId.isEmpty) {
+      throw Exception('Cannot find student ID for current user.');
+    }
+
+    return studentId;
+  }
+
+  Future<bool> pickAndUploadCurriculumPdf() async {
+    final studentId = await _getCurrentStudentId();
 
     final FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.custom,
@@ -50,12 +67,13 @@ class CurriculumUploadService {
     }
 
     final curriculumRef = _firestore
-        .collection('users')
-        .doc(uid)
+        .collection('ccxpUsers')
+        .doc(studentId)
         .collection('curriculum')
         .doc('current');
 
     await curriculumRef.set({
+      'studentId': studentId,
       'status': 'uploading',
       'fileName': fileName,
       'updatedAt': FieldValue.serverTimestamp(),
@@ -84,23 +102,23 @@ class CurriculumUploadService {
     throw Exception('Curriculum parser did not return success.');
   }
 
-  Stream<DocumentSnapshot<Map<String, dynamic>>> watchCurriculumStatus() {
-    final uid = _uid;
+  Stream<DocumentSnapshot<Map<String, dynamic>>> watchCurriculumStatus() async* {
+    final studentId = await _getCurrentStudentId();
 
-    return _firestore
-        .collection('users')
-        .doc(uid)
+    yield* _firestore
+        .collection('ccxpUsers')
+        .doc(studentId)
         .collection('curriculum')
         .doc('current')
         .snapshots();
   }
 
   Future<Map<String, dynamic>?> fetchCurriculum() async {
-    final uid = _uid;
+    final studentId = await _getCurrentStudentId();
 
     final doc = await _firestore
-        .collection('users')
-        .doc(uid)
+        .collection('ccxpUsers')
+        .doc(studentId)
         .collection('curriculum')
         .doc('current')
         .get();

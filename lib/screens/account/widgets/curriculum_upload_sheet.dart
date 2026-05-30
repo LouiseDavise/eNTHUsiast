@@ -258,7 +258,11 @@ class _CurriculumUploadSheetState extends State<CurriculumUploadSheet> {
                           )
                         : const Icon(Icons.upload_file_rounded),
                     label: Text(
-                      isUploading ? 'Parsing...' : 'Upload Curriculum PDF',
+                      isUploading
+                          ? 'Parsing...'
+                          : status == 'ready'
+                              ? 'Replace Curriculum PDF'
+                              : 'Upload Curriculum PDF',
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF7E3291),

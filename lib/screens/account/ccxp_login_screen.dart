@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
 import 'dart:io';
 import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class CcxpLoginScreen extends StatefulWidget {
   const CcxpLoginScreen({super.key});
@@ -29,6 +30,27 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     _studentIdController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _prepareFirebaseUserForCcxpLogin(String studentId) async {
+    await FirebaseAuth.instance.signOut();
+
+    final credential = await FirebaseAuth.instance.signInAnonymously();
+    final uid = credential.user?.uid;
+
+    if (uid == null) {
+      throw Exception('Failed to create Firebase user session.');
+    }
+
+    await FirebaseFirestore.instance.collection('users').doc(uid).set({
+      'accountStudentId': studentId,
+      'studentId': studentId,
+      'authUid': uid,
+      'loginSource': 'ccxp',
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    debugPrint('Firebase UID for CCXP $studentId: $uid');
   }
 
   void _handleLogin() async {
@@ -89,6 +111,8 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
       } else {
         throw Exception('Unable to retrieve CCXP data.');
       }
+
+      await _prepareFirebaseUserForCcxpLogin(studentId);
 
       if (mounted) {
         setState(() => _isLoading = false);
