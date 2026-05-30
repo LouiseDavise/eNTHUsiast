@@ -1,12 +1,18 @@
 import 'package:enthusiast/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../theme/app_theme.dart';
+
+import '../theme/app_theme.dart';
 
 class SettingsMenuWidget extends StatelessWidget {
   final VoidCallback onLogout;
+  final VoidCallback onCurriculumTap;
 
-  const SettingsMenuWidget({super.key, required this.onLogout});
+  const SettingsMenuWidget({
+    super.key,
+    required this.onLogout,
+    required this.onCurriculumTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -21,21 +27,31 @@ class SettingsMenuWidget extends StatelessWidget {
       _MenuItem(
         icon: Icons.description_outlined,
         iconColor: AppTheme.orange,
-        iconBg: Color(0xFFFFEDD5),
+        iconBg: const Color(0xFFFFEDD5),
         label: 'Transcript',
         onTap: () => Navigator.pushNamed(context, AppRoutes.transcriptScreen),
       ),
+
+      // NEW: Curriculum upload row
+      _MenuItem(
+        icon: Icons.description_rounded,
+        iconColor:  const Color(0xFF2E7D32),
+        iconBg: const Color(0xFFE8F5E9),
+        label: 'Curriculum Upload',
+        onTap: onCurriculumTap,
+      ),
+
       _MenuItem(
         icon: Icons.language_rounded,
-        iconColor: Color(0xFF1D4ED8),
-        iconBg: Color(0xFFDBEAFE),
+        iconColor: const Color(0xFF1D4ED8),
+        iconBg: const Color(0xFFDBEAFE),
         label: 'Language',
         onTap: () => Navigator.pushNamed(context, AppRoutes.languageScreen),
       ),
       _MenuItem(
         icon: Icons.settings_outlined,
-        iconColor: Color(0xFF6B7280),
-        iconBg: Color(0xFFF3F4F6),
+        iconColor: const Color(0xFF6B7280),
+        iconBg: const Color(0xFFF3F4F6),
         label: 'Settings',
         onTap: () => _showComingSoon(context, 'Settings'),
       ),
@@ -83,14 +99,21 @@ class _SettingsRowState extends State<_SettingsRow>
   @override
   void initState() {
     super.initState();
+
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 120),
     );
+
     _scale = Tween<double>(
       begin: 1.0,
       end: 0.97,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOutCubic,
+      ),
+    );
   }
 
   @override
@@ -146,11 +169,11 @@ class _SettingsRowState extends State<_SettingsRow>
                   style: GoogleFonts.dmSans(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF1A1A2E),
+                    color: const Color(0xFF1A1A2E),
                   ),
                 ),
               ),
-              Icon(
+              const Icon(
                 Icons.arrow_forward_ios_rounded,
                 color: Color(0xFF9CA3AF),
                 size: 16,
@@ -180,14 +203,21 @@ class _LogoutButtonState extends State<_LogoutButton>
   @override
   void initState() {
     super.initState();
+
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 120),
     );
+
     _scale = Tween<double>(
       begin: 1.0,
       end: 0.97,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOutCubic,
+      ),
+    );
   }
 
   @override
@@ -228,7 +258,11 @@ class _LogoutButtonState extends State<_LogoutButton>
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.logout_rounded, color: Colors.white, size: 20),
+              const Icon(
+                Icons.logout_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
               const SizedBox(width: 10),
               Text(
                 'Log Out',
