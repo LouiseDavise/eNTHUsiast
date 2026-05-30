@@ -1,9 +1,11 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../theme/app_theme.dart';
 import '../../widgets/profile_header.dart';
 import '../../widgets/settings_menu.dart';
+import 'widgets/curriculum_upload_sheet.dart';
 
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
@@ -13,6 +15,28 @@ class AccountScreen extends StatefulWidget {
 }
 
 class _AccountScreenState extends State<AccountScreen> {
+  void _openCurriculumSheet() {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please login again before uploading curriculum.'),
+        ),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) {
+        return const CurriculumUploadSheet();
+      },
+    );
+  }
+
   void _onLogout() {
     showDialog(
       context: context,
@@ -78,7 +102,11 @@ class _AccountScreenState extends State<AccountScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton(
-                    onPressed: () {
+                    onPressed: () async {
+                      await FirebaseAuth.instance.signOut();
+
+                      if (!context.mounted) return;
+
                       Navigator.pop(ctx);
                       Navigator.pushNamedAndRemoveUntil(
                         context,
@@ -129,7 +157,10 @@ class _AccountScreenState extends State<AccountScreen> {
         children: [
           const ProfileHeaderWidget(),
           const SizedBox(height: 32),
-          SettingsMenuWidget(onLogout: _onLogout),
+          SettingsMenuWidget(
+            onLogout: _onLogout,
+            onCurriculumTap: _openCurriculumSheet,
+          ),
         ],
       ),
     );
@@ -145,7 +176,10 @@ class _AccountScreenState extends State<AccountScreen> {
             children: [
               const ProfileHeaderWidget(),
               const SizedBox(height: 32),
-              SettingsMenuWidget(onLogout: _onLogout),
+              SettingsMenuWidget(
+                onLogout: _onLogout,
+                onCurriculumTap: _openCurriculumSheet,
+              ),
             ],
           ),
         ),
