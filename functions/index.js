@@ -6,15 +6,21 @@ const fs = require('fs').promises;
 const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { defineSecret } = require('firebase-functions/params');
+const pdfParse = require("pdf-parse");
 
 // Define the secret parameter
 const geminiApiKey = defineSecret('GEMINI_API_KEY');
 
 // 1. Initialize Firebase Admin
-const serviceAccount = require("./serviceAccountKey.json");
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-});
+// const serviceAccount = require("./serviceAccountKey.json");
+// admin.initializeApp({
+//     credential: admin.credential.cert(serviceAccount)
+// });
+// const db = admin.firestore();
+if (!admin.apps.length) {
+    admin.initializeApp();
+}
+
 const db = admin.firestore();
 
 // 2. Configuration
@@ -180,3 +186,209 @@ exports.linkGmailAccount = onCall(async (request) => {
         throw new HttpsError('internal', 'Failed to securely link Gmail account.');
     }
 });
+
+// --- CLOUD FUNCTION 3: Parse Curriculum PDF Without Saving PDF ---
+// Flutter sends PDF bytes as base64.
+// Function parses the PDF.
+// Function saves only parsed curriculum JSON to Firestore:
+// users/{uid}/curriculum/current
+
+function extractCurriculumJsonObject(text) {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+
+    if (start === -1 || end === -1 || end <= start) {
+        throw new Error("No JSON object found in Gemini response.");
+    }
+
+    return text.substring(start, end + 1);
+}
+
+function cleanCurriculumGeminiText(text) {
+    return text
+        .replace(/```json/g, "")
+        .replace(/```/g, "")
+        .trim();
+}
+
+exports.parseCurriculumPdfFromBytes = onCall(
+    {
+        region: "us-central1",
+        memory: "1GiB",
+        timeoutSeconds: 300,
+        secrets: [geminiApiKey],
+    },
+    async (request) => {
+        if (!request.auth) {
+            throw new HttpsError(
+                "unauthenticated",
+                "You must be logged in before uploading curriculum."
+            );
+        }
+
+        const uid = request.auth.uid;
+        const fileName = request.data.fileName || "curriculum.pdf";
+        const pdfBase64 = request.data.pdfBase64 || "";
+
+        const userProfileDoc = await db.collection("users").doc(uid).get();
+        const userProfile = userProfileDoc.data() || {};
+        const studentId = userProfile.studentId || userProfile.accountStudentId || null;
+
+        if (!pdfBase64 || typeof pdfBase64 !== "string") {
+            throw new HttpsError(
+                "invalid-argument",
+                "Missing PDF data."
+            );
+        }
+
+        if (!fileName.toLowerCase().endsWith(".pdf")) {
+            throw new HttpsError(
+                "invalid-argument",
+                "Only PDF files are supported."
+            );
+        }
+
+        const curriculumRef = db
+            .collection("users")
+            .doc(uid)
+            .collection("curriculum")
+            .doc("current");
+
+        try {
+            await curriculumRef.set(
+                {
+                    accountStudentId: studentId,
+                    studentId: studentId,
+                    authUid: uid,
+                    status: "processing",
+                    fileName: fileName,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                },
+                { merge: true }
+            );
+
+            const buffer = Buffer.from(pdfBase64, "base64");
+
+            if (buffer.length === 0) {
+                throw new Error("PDF file is empty.");
+            }
+
+            const maxPdfBytes = 8 * 1024 * 1024;
+
+            if (buffer.length > maxPdfBytes) {
+                throw new Error(
+                    "PDF is too large. Please upload a smaller curriculum PDF."
+                );
+            }
+
+            const parsedPdf = await pdfParse(buffer);
+            const pdfText = parsedPdf.text || "";
+
+            if (!pdfText.trim()) {
+                throw new Error(
+                    "PDF text is empty. This file may be scanned/image-only, so Bao-Bao cannot read it yet."
+                );
+            }
+
+            const genAI = new GoogleGenerativeAI(geminiApiKey.value());
+            const model = genAI.getGenerativeModel({
+                model: "gemini-2.5-flash",
+            });
+
+            const prompt = `
+You convert university curriculum PDF text into clean JSON.
+
+Return JSON only. No markdown.
+
+Schema:
+{
+  "programName": "",
+  "department": "",
+  "entryYear": "",
+  "minimumGraduationCredits": 0,
+  "requirementGroups": [
+    {
+      "category": "",
+      "requiredCredits": 0,
+      "description": "",
+      "courses": [
+        {
+          "name": "",
+          "credits": 0,
+          "acceptedCodes": [],
+          "type": "",
+          "remarks": ""
+        }
+      ]
+    }
+  ],
+  "notes": []
+}
+
+Rules:
+- Keep course names exactly when possible.
+- acceptedCodes should include course codes like MATH1040, CS1356, EECS2080.
+- If one requirement allows multiple course codes, put all codes in acceptedCodes.
+- If credits are not clear, use 0.
+- Do not invent courses that are not in the text.
+- Preserve categories such as GE, required courses, basic core, professional electives, labs, free electives, and graduation credits.
+- If there are Chinese course names, preserve them.
+- If the PDF has tables, extract the course names, credits, categories, and notes as accurately as possible.
+
+PDF text:
+${pdfText.slice(0, 45000)}
+`;
+
+            const result = await model.generateContent(prompt);
+            const responseText = result.response.text();
+
+            const cleanedText = cleanCurriculumGeminiText(responseText);
+            const jsonText = extractCurriculumJsonObject(cleanedText);
+            const curriculum = JSON.parse(jsonText);
+
+            await curriculumRef.set(
+                {
+                    accountStudentId: studentId,
+                    studentId: studentId,
+                    authUid: uid,
+                    status: "ready",
+                    fileName: fileName,
+                    curriculum: curriculum,
+                    parsedTextPreview: pdfText.slice(0, 3000),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                },
+                { merge: true }
+            );
+
+            console.log("Curriculum parsed successfully", {
+                uid: uid,
+                fileName: fileName,
+            });
+
+            return {
+                ok: true,
+                message: "Curriculum parsed successfully.",
+            };
+        } catch (error) {
+            console.error("Curriculum parsing failed:", error);
+
+            await curriculumRef.set(
+                {
+                    accountStudentId: studentId,
+                    studentId: studentId,
+                    authUid: uid,
+                    status: "error",
+                    fileName: fileName,
+                    errorMessage: error.message || String(error),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                },
+                { merge: true }
+            );
+
+            throw new HttpsError(
+                "internal",
+                error.message || "Curriculum parsing failed."
+            );
+        }
+    }
+);
