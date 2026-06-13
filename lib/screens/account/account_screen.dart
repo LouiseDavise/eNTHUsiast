@@ -6,6 +6,9 @@ import '../../theme/app_theme.dart';
 import '../../widgets/profile_header.dart';
 import '../../widgets/settings_menu.dart';
 import 'widgets/curriculum_upload_sheet.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:enthusiast/main.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
@@ -102,17 +105,27 @@ class _AccountScreenState extends State<AccountScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton(
+                    // await FirebaseAuth.instance.signOut();
+                    // if (context.mounted) {
+                    //   Navigator.pop(ctx);
+                    //   Navigator.pushNamedAndRemoveUntil(
+                    //     context,
+                    //     '/login',
+                    //     (route) => false,
+                    //   );
                     onPressed: () async {
-                      await FirebaseAuth.instance.signOut();
+                      // await FirebaseAuth.instance.signOut();
+                      deleteCcxpAccount();
 
-                      if (!context.mounted) return;
-
-                      Navigator.pop(ctx);
-                      Navigator.pushNamedAndRemoveUntil(
-                        context,
-                        '/login',
-                        (route) => false,
-                      );
+                      if (context.mounted) {
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const GatekeeperScreen(),
+                          ),
+                          (route) => false,
+                        );
+                      }
                     },
                     style: FilledButton.styleFrom(
                       backgroundColor: AppTheme.critical,
@@ -185,5 +198,22 @@ class _AccountScreenState extends State<AccountScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> deleteCcxpAccount() async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) return;
+
+    final uid = user.uid;
+
+    // Delete Firestore data
+    await FirebaseFirestore.instance.collection('ccxpUsers').doc(uid).delete();
+
+    // Delete Firebase Auth account
+    await user.delete();
+
+    // Sign out
+    await FirebaseAuth.instance.signOut();
   }
 }
