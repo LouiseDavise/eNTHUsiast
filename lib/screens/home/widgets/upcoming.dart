@@ -37,7 +37,7 @@ class UpcomingTasksWidget extends StatefulWidget {
 
 class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
   List<AppEvent> _tasks = [];
-  List<String> _completedTaskIds = [];
+  Set<String> _completedTaskIds = {};
   bool _isLoading = true;
 
   final Set<String> _selectedFilters = {};
@@ -192,56 +192,113 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
     return parts.join(" ");
   }
 
-  void _completeTask(String taskId) async {
+  /// Toggles a task between completed and active.
+  /// Completed tasks sink to the bottom as faded/strikethrough cards.
+  /// If the task is overdue AND being marked complete, delete it from Firebase.
+  void _toggleTaskCompletion(String taskId) async {
+    final task = _tasks.firstWhere((t) => t.id == taskId, orElse: () => throw StateError('not found'));
+    final bool nowCompleting = !_completedTaskIds.contains(taskId);
+    final bool isOverdue = DateTime.now().isAfter(
+      DateTime(task.dueDate.year, task.dueDate.month, task.dueDate.day, 23, 59, 59),
+    );
+
+    if (nowCompleting && isOverdue) {
+      // Overdue + completing → permanently delete from Firebase and local list
+      await _deleteTaskFromFirebase(taskId);
+      setState(() {
+        _tasks.removeWhere((t) => t.id == taskId);
+        _completedTaskIds.remove(taskId);
+      });
+      return;
+    }
+
     setState(() {
-      _tasks.removeWhere((t) => t.id == taskId);
-      _completedTaskIds.remove(taskId);
+      if (nowCompleting) {
+        _completedTaskIds.add(taskId);
+      } else {
+        _completedTaskIds.remove(taskId);
+      }
     });
 
+    // Keep Firebase in sync with completion status (non-destructive)
     try {
-      final ccxpData = Provider.of<CcxpDataProvider>(context, listen: false);
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) return;
-
       await FirebaseFirestore.instance
           .collection('ccxpUsers')
           .doc(uid)
           .collection('upcoming')
           .doc(taskId)
           .update({
-            'status': 'Completed',
-            'progress': 100,
-            'completedAt':
-                FieldValue.serverTimestamp(),
+            'status': nowCompleting ? 'Completed' : 'Pending',
+            if (nowCompleting) 'progress': 100,
+            if (nowCompleting) 'completedAt': FieldValue.serverTimestamp(),
           });
     } catch (e) {
-      print("Failed to mark task as completed: $e");
+      print("Failed to update task completion: $e");
+    }
+  }
+
+  Future<void> _deleteTaskFromFirebase(String taskId) async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      await FirebaseFirestore.instance
+          .collection('ccxpUsers')
+          .doc(uid)
+          .collection('upcoming')
+          .doc(taskId)
+          .delete();
+    } catch (e) {
+      print("Failed to delete overdue task: $e");
+    }
+  }
+
+  /// After fetching, remove any overdue tasks from Firebase automatically.
+  void _purgeOverdueTasks(List<AppEvent> tasks) async {
+    final now = DateTime.now();
+    for (final task in tasks) {
+      final deadline = DateTime(
+        task.dueDate.year, task.dueDate.month, task.dueDate.day, 23, 59, 59,
+      );
+      if (now.isAfter(deadline)) {
+        await _deleteTaskFromFirebase(task.id);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final displayTasks = _tasks
-        .where((t) => !_completedTaskIds.contains(t.id) && t.progress < 100)
+    // Active tasks: not completed by swipe
+    final activeTasks = _tasks
+        .where((t) => !_completedTaskIds.contains(t.id))
         .toList();
 
-    _sortTasks(displayTasks);
+    _sortTasks(activeTasks);
 
-    final filteredDisplayTasks = displayTasks.where((task) {
+    bool _matchesFilter(AppEvent task) {
       if (_selectedFilters.isEmpty) return true;
-
       final type = task.type.toLowerCase();
       bool matchesCritical = ['quiz', 'midterm', 'final'].contains(type);
       bool matchesCoursework = ['homework', 'project'].contains(type);
       bool matchesTodo = !matchesCritical && !matchesCoursework;
-
       if (_selectedFilters.contains('CRITICAL') && matchesCritical) return true;
-      if (_selectedFilters.contains('COURSEWORK') && matchesCoursework)
-        return true;
+      if (_selectedFilters.contains('COURSEWORK') && matchesCoursework) return true;
       if (_selectedFilters.contains('TODO') && matchesTodo) return true;
-
       return false;
-    }).toList();
+    }
+
+    final filteredActiveTasks = activeTasks.where(_matchesFilter).toList();
+
+    // Completed tasks: swiped-to-complete, shown at the bottom faded/strikethrough
+    final completedTasks = _tasks
+        .where((t) => _completedTaskIds.contains(t.id))
+        .toList();
+
+    final filteredDisplayTasks = [
+      ...filteredActiveTasks,
+      ...completedTasks,
+    ];
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 24),
@@ -415,8 +472,7 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
               separatorBuilder: (_, __) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
                 final task = filteredDisplayTasks[index];
-
-                final isCompleted = false;
+                final isCompleted = _completedTaskIds.contains(task.id);
 
                 return _UpcomingTaskItem(
                   key: index == 0
@@ -425,8 +481,7 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
                   task: task,
                   isCompleted: isCompleted,
                   countdownStr: _formatCountdown(task.dueDate),
-                  onToggleComplete:
-                      _completeTask,
+                  onToggleComplete: _toggleTaskCompletion,
                   onTaskTap: widget.onTaskTap,
                 );
               },

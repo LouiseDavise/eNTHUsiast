@@ -86,89 +86,118 @@ class _TutorialOverlayState extends State<TutorialOverlay>
 
   late AnimationController _pulseController;
 
-  late final List<TutorialStep> _steps = const [
+  late final List<TutorialStep> _steps;
+
+  // The two emergency steps inserted when user has no upcoming tasks
+  static const List<TutorialStep> _emergencySteps = [
     TutorialStep(
-      targetId: 'bulletin-board-card',
-      title: 'Bulletin Board',
-      content: 'Swipe left or right to see news.',
-      action: TutorialAction.actionTrigger,
-      padding: 0,
-      borderRadius: 30,
-      swipeOnly: true,
-    ),
-    TutorialStep(
-      targetId: 'calendar-week-view',
-      title: 'Week View',
-      content: 'Swipe left or right to navigate upcoming weeks.',
-      action: TutorialAction.actionTrigger,
-      swipeOnly: true,
-    ),
-    TutorialStep(
-      targetId: 'calendar-full-view-btn',
-      title: 'Full View',
-      content: 'Tap here to expand to full calendar.',
+      targetId: 'fab-button',
+      title: 'Add a Task',
+      content: 'Tap the + button to create your first task — you\'ll need one for the next part of the tour.',
       action: TutorialAction.waitForNextAppear,
-      padding: 0,
-      borderRadius: 16,
+      padding: 8,
+      borderRadius: 999,
     ),
     TutorialStep(
-      targetId: 'calendar-day-21',
-      title: 'Check Assignments',
-      content: 'Take a look at your schedule for June 21st.',
-      action: TutorialAction.waitForNextAppear,
-      padding: 4,
-      borderRadius: 16,
-    ),
-    TutorialStep(
-      targetId: 'calendar-details-popup-content',
-      title: '',
-      content: '',
+      targetId: 'add-task-popup',
+      title: 'Fill in the Details',
+      content: 'Give your task a title and a due date, then tap SAVE.',
       action: TutorialAction.waitForDisappear,
       padding: 0,
-      borderRadius: 48,
-    ),
-    TutorialStep(
-      targetId: 'upcoming-item-0',
-      title: 'Upcoming Events',
-      content: 'Tap an exam to manage its subtasks and progress.',
-      action: TutorialAction.waitForNextAppear,
-    ),
-    TutorialStep(
-      targetId: 'subtask-add-row',
-      title: 'Create a subtask',
-      content: 'Create a subtask to help finish your goal.',
-      action: TutorialAction.waitForNextAppear,
-      padding: 0,
-      borderRadius: 16,
-    ),
-    TutorialStep(
-      targetId: 'subtask-new-item',
-      title: 'Check it as done',
-      content: 'Tap the checkbox to mark your new task as complete.',
-      action: TutorialAction.actionTrigger,
-      padding: -4,
-      borderRadius: 24,
-    ),
-    TutorialStep(
-      targetId: 'subtask-update-btn',
-      title: 'Save Changes',
-      content: 'Tap update to save your changes.',
-      action: TutorialAction.waitForDisappear,
-      padding: 0,
-      borderRadius: 16,
-    ),
-    TutorialStep(
-      targetId: 'upcoming-item-0',
-      title: 'Clear Completed',
-      content: 'Swipe the exam left or right to clear it from the list!',
-      action: TutorialAction.actionTrigger,
-      swipeOnly: true,
+      borderRadius: 40,
     ),
   ];
+
+  // Whether we took the emergency branch (used to adjust displayIndex)
+  bool _tookEmergencyBranch = false;
 
   @override
   void initState() {
     super.initState();
+
+    // Build the base step list (without emergency branch — that's injected later
+    // in _nextStep if needed when we reach the upcoming-item-0 decision point).
+    _steps = [
+      const TutorialStep(
+        targetId: 'bulletin-board-card',
+        title: 'Bulletin Board',
+        content: 'Swipe left or right to see news.',
+        action: TutorialAction.actionTrigger,
+        padding: -10,
+        borderRadius: 30,
+        swipeOnly: true,
+      ),
+      const TutorialStep(
+        targetId: 'calendar-week-view',
+        title: 'Week View',
+        content: 'Swipe left or right to navigate upcoming weeks.',
+        action: TutorialAction.actionTrigger,
+        swipeOnly: true,
+      ),
+      const TutorialStep(
+        targetId: 'calendar-full-view-btn',
+        title: 'Full View',
+        content: 'Tap here to expand to full calendar.',
+        action: TutorialAction.waitForNextAppear,
+        padding: 0,
+        borderRadius: 16,
+      ),
+      const TutorialStep(
+        targetId: 'calendar-day-21',
+        title: 'Check Assignments',
+        content: 'Take a look at your schedule for June 21st.',
+        action: TutorialAction.waitForNextAppear,
+        padding: 4,
+        borderRadius: 16,
+      ),
+      const TutorialStep(
+        targetId: 'calendar-details-popup-content',
+        title: '',
+        content: '',
+        action: TutorialAction.waitForDisappear,
+        padding: 0,
+        borderRadius: 48,
+      ),
+      // Index 5: upcoming-item-0 — or the emergency branch if no tasks exist.
+      // The branch is decided dynamically in _nextStep when _currentStep == 4.
+      const TutorialStep(
+        targetId: 'upcoming-item-0',
+        title: 'Upcoming Events',
+        content: 'Tap an event to manage its subtasks and progress.',
+        action: TutorialAction.waitForNextAppear,
+      ),
+      const TutorialStep(
+        targetId: 'subtask-add-row',
+        title: 'Create a subtask',
+        content: 'Create a subtask to help finish your goal.',
+        action: TutorialAction.waitForNextAppear,
+        padding: 0,
+        borderRadius: 16,
+      ),
+      const TutorialStep(
+        targetId: 'subtask-new-item',
+        title: 'Check it as done',
+        content: 'Tap the checkbox to mark your new task as complete.',
+        action: TutorialAction.actionTrigger,
+        padding: -4,
+        borderRadius: 24,
+      ),
+      const TutorialStep(
+        targetId: 'subtask-update-btn',
+        title: 'Save Changes',
+        content: 'Tap update to save your changes.',
+        action: TutorialAction.waitForDisappear,
+        padding: 0,
+        borderRadius: 16,
+      ),
+      const TutorialStep(
+        targetId: 'upcoming-item-0',
+        title: 'Clear Completed',
+        content: 'Swipe the exam left or right to clear it from the list!',
+        action: TutorialAction.actionTrigger,
+        swipeOnly: true,
+      ),
+    ];
 
     _pulseController = AnimationController(
       vsync: this,
@@ -270,19 +299,47 @@ class _TutorialOverlayState extends State<TutorialOverlay>
     if (_highlightRect != rect) _rebuildOverlay(() => _highlightRect = rect);
   }
 
+  /// Returns true if upcoming-item-0 is currently mounted (user has a task).
+  bool _hasUpcomingTask() {
+    final key = TutorialTargetRegistry.get('upcoming-item-0');
+    return key.currentContext != null && key.currentContext!.mounted;
+  }
+
   Future<void> _nextStep() async {
     if (_isAdvancing) return;
     _isAdvancing = true;
 
     _lastHighlightRect = _highlightRect;
 
-    // Delay 1.5s ONLY for specific requested steps (swipes and dynamic changes)
-    final needsDelay = [0, 1, 7, 9].contains(_currentStep);
+    // ── Emergency branch injection ──────────────────────────────────────────
+    // We're about to leave the calendar-details-popup step (index 4).
+    // If upcoming-item-0 doesn't exist yet, splice in the two emergency steps
+    // RIGHT BEFORE the upcoming-item-0 step so the tutorial teaches the user
+    // to create a task first.
+    if (_currentStep == 4 && !_hasUpcomingTask() && !_tookEmergencyBranch) {
+      _tookEmergencyBranch = true;
+      // Insert emergency steps at position 5 (just before upcoming-item-0).
+      _steps.insertAll(5, _emergencySteps);
+    }
+
+    // Steps that need a longer settling delay before the next tooltip appears.
+    // We use the actual step targetId rather than hardcoded indices so the list
+    // stays correct regardless of emergency-branch injection.
+    final currentTargetId = _steps[_currentStep].targetId;
+    final needsDelay = {
+      'bulletin-board-card',   // swipe gesture settle
+      'calendar-week-view',    // swipe gesture settle
+      'subtask-new-item',      // checkbox animation
+      'upcoming-item-0',       // swipe-to-dismiss settle (last occurrence)
+    }.contains(currentTargetId) &&
+        // Only the LAST upcoming-item-0 (swipe step) needs the delay,
+        // not the first one (tap step).
+        !(_steps[_currentStep].targetId == 'upcoming-item-0' &&
+            _steps[_currentStep].action == TutorialAction.waitForNextAppear);
 
     if (needsDelay) {
       await Future.delayed(const Duration(milliseconds: 1000));
     } else {
-      // Tiny 50ms buffer just to let Flutter render the next frame seamlessly
       await Future.delayed(const Duration(milliseconds: 50));
     }
 
@@ -297,15 +354,29 @@ class _TutorialOverlayState extends State<TutorialOverlay>
       return;
     }
 
-    if (nextStepIndex == 1) {
+    // ── Feedback cards between major sections ───────────────────────────────
+    final nextTargetId = _steps[nextStepIndex].targetId;
+
+    if (nextTargetId == 'calendar-week-view') {
       await _showFeedback(
         title: "Great!",
         content: "Now let's take a look at the Calendar feature!",
       );
-    } else if (nextStepIndex == 5) {
+    } else if (nextTargetId == 'fab-button') {
+      // Transitioning into the emergency branch
       await _showFeedback(
-        title: "Nice.",
-        content: "Next, let's view our upcoming events.",
+        title: "One more thing.",
+        content: "You need at least one task to continue. Let's create one now!",
+      );
+    } else if (nextTargetId == 'upcoming-item-0' &&
+        _steps[nextStepIndex].action == TutorialAction.waitForNextAppear) {
+      // Arriving at upcoming-item-0 for the first time (tap step),
+      // whether via normal path or after emergency branch
+      await _showFeedback(
+        title: _tookEmergencyBranch ? "Task added!" : "Nice.",
+        content: _tookEmergencyBranch
+            ? "Now let's explore your new task."
+            : "Next, let's view our upcoming events.",
       );
     }
 
@@ -646,15 +717,137 @@ class _TutorialOverlayState extends State<TutorialOverlay>
     TutorialStep stepInfo,
     Rect? targetRect,
   ) {
-    if (_currentStep == 4) return const SizedBox.shrink();
+    // The calendar-details-popup step has empty title/content — no tooltip card.
+    if (stepInfo.targetId == 'calendar-details-popup-content') return const SizedBox.shrink();
 
     const Color localPurple = Color(0xFF7A1B7B);
     final size = MediaQuery.of(context).size;
     final padding = MediaQuery.of(context).padding;
     double? top, bottom;
 
-    final int displayIndex = _currentStep < 4 ? _currentStep + 1 : _currentStep;
-    final int totalVisibleTips = _steps.length - 1;
+    // Count only visible tip steps (skip the silent popup-wait step) for the
+    // progress counter. This stays correct whether or not the emergency branch
+    // was injected.
+    final int totalVisibleTips = _steps
+        .where((s) => s.targetId != 'calendar-details-popup-content')
+        .length;
+
+    // displayIndex = position among visible steps only (1-based).
+    int displayIndex = 0;
+    for (int i = 0; i <= _currentStep; i++) {
+      if (_steps[i].targetId != 'calendar-details-popup-content') {
+        displayIndex++;
+      }
+    }
+
+    // ── add-task-popup: compact bar above popup, never touching its edges ─────
+    if (stepInfo.targetId == 'add-task-popup') {
+      final popupTop = targetRect?.top ?? (size.height * 0.18);
+      // Card is ~90 px tall; sit 12 px above the popup with a 24 px side margin.
+      final barTop = (popupTop - 102).clamp(padding.top + 12, size.height - 120);
+
+      return Positioned(
+        top: barTop.toDouble(),
+        left: 24,
+        right: 24,
+        child: TweenAnimationBuilder<double>(
+          key: ValueKey('tooltip_$_currentStep'),
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeOutBack,
+          tween: Tween<double>(begin: 0.0, end: 1.0),
+          builder: (context, scale, child) {
+            return Transform.scale(
+              scale: scale,
+              child: Opacity(opacity: scale.clamp(0.0, 1.0), child: child),
+            );
+          },
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.22),
+                    blurRadius: 16,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: localPurple.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          "TIP $displayIndex OF $totalVisibleTips",
+                          style: const TextStyle(
+                            color: localPurple,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 9,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: LinearProgressIndicator(
+                            minHeight: 4,
+                            value: displayIndex / totalVisibleTips,
+                            backgroundColor: localPurple.withOpacity(0.12),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              localPurple,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    stepInfo.content,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                      height: 1.3,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  GestureDetector(
+                    onTap: _skipTutorial,
+                    child: Text(
+                      "Skip tutorial »",
+                      style: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontSize: 10,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     if (targetRect != null) {
       double spaceAbove = targetRect.top;

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../../providers/ccxp_data_provider.dart'; // To get the studentId
 import '../utilities/data.dart';
 import '../utilities/models.dart';
+import 'tutorial.dart';
 import 'upcoming.dart';
 
 class AddTaskPopup extends StatefulWidget {
@@ -140,6 +141,7 @@ class _AddTaskPopupState extends State<AddTaskPopup> {
         backgroundColor: Colors.transparent,
         insetPadding: const EdgeInsets.all(24),
         child: Container(
+          key: TutorialTargetRegistry.get('add-task-popup'),
           padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(
             color: Colors.white,
