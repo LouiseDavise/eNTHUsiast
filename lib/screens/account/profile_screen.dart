@@ -5,6 +5,7 @@ import 'widgets/header_menu_widget.dart';
 import 'ccxp_login_screen.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../providers/ccxp_data_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -77,10 +78,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _callLinkFunction(Map<String, dynamic> payload) async {
+    // uid is the Firebase Auth UID — this is the Firestore doc key in ccxpUsers
+    // Uid adalah Firebase Auth UID — ini adalah kunci doc Firestore di ccxpUsers
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error: Not logged in to Firebase. Please log in to CCXP first.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Merge uid into the payload before sending to Cloud Function
+    // Gabungkan uid ke payload sebelum dikirim ke Cloud Function
+    final fullPayload = {...payload, 'uid': uid};
+
     try {
       final result = await FirebaseFunctions.instance
           .httpsCallable('linkGmailAccount')
-          .call(payload);
+          .call(fullPayload);
 
       if (!mounted) return;
 

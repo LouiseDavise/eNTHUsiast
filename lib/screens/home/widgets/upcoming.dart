@@ -4,12 +4,10 @@ import 'package:flutter/services.dart';
 import '../utilities/models.dart';
 import 'tutorial.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/ccxp_data_provider.dart';
 
-// ----------------------------------------------------------------------
-// UPCOMING TASKS WIDGET
-// ----------------------------------------------------------------------
 class UpcomingTasksWidget extends StatefulWidget {
   final Function(AppEvent) onTaskTap;
 
@@ -96,25 +94,16 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
   }
 
   Future<void> _fetchTasksFromFirestore() async {
-    // TODO: Replace with your actual state management for the logged-in user
-    // 1. Safely grab the provider data
-    final ccxpData = Provider.of<CcxpDataProvider>(context, listen: false);
-
-    // 2. Fallback check just in case the data dropped
-    if (ccxpData.graduationData == null ||
-        ccxpData.graduationData!["studentInfo"] == null) {
-      print("Error: Could not find Student ID for Firestore stream.");
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      print("错误：用户未登录 Firebase，无法加载任务。");
+      setState(() => _isLoading = false);
       return;
     }
 
-    // 3. Extract the dynamic student ID
-    final String studentId = ccxpData
-        .graduationData!["studentInfo"]["studentId"]
-        .toString();
-
     FirebaseFirestore.instance
-        .collection('ccxpUsers') // <--- Changed
-        .doc(studentId) // <--- Changed
+        .collection('ccxpUsers')
+        .doc(uid)
         .collection('upcoming')
         .snapshots()
         .listen((snapshot) {
@@ -123,7 +112,6 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
             List<Subtask> parsedSubtasks = [];
             if (data['subtasks'] != null) {
               parsedSubtasks = (data['subtasks'] as List<dynamic>).map((st) {
-                // 1. Handle NEW format (Map/Dictionary)
                 if (st is Map<String, dynamic>) {
                   return Subtask(
                     id: st['id']?.toString() ?? UniqueKey().toString(),
@@ -131,7 +119,6 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
                     completed: st['completed'] ?? false,
                   );
                 }
-                // 2. Handle OLD format (Simple String fallback)
                 else if (st is String) {
                   return Subtask(
                     id: UniqueKey().toString(),
@@ -139,7 +126,6 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
                     completed: false,
                   );
                 }
-                // 3. Fallback for completely corrupted data
                 return Subtask(
                   id: UniqueKey().toString(),
                   text: 'Unknown task',
@@ -147,7 +133,6 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
                 );
               }).toList();
             }
-            // Parse the date (adjust based on how your Node.js saves dates)
             DateTime parsedDate = DateTime.now();
             if (data['dueDate'] is Timestamp) {
               parsedDate = (data['dueDate'] as Timestamp).toDate();
@@ -208,7 +193,6 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
   }
 
   void _completeTask(String taskId) async {
-    // 1. Remove locally immediately for a snappy UI
     setState(() {
       _tasks.removeWhere((t) => t.id == taskId);
       _completedTaskIds.remove(taskId);
@@ -216,23 +200,19 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
 
     try {
       final ccxpData = Provider.of<CcxpDataProvider>(context, listen: false);
-      if (ccxpData.graduationData == null) return;
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
 
-      final String studentId = ccxpData
-          .graduationData!["studentInfo"]["studentId"]
-          .toString();
-
-      // 2. UPDATE instead of DELETE
       await FirebaseFirestore.instance
           .collection('ccxpUsers')
-          .doc(studentId)
+          .doc(uid)
           .collection('upcoming')
           .doc(taskId)
           .update({
             'status': 'Completed',
-            'progress': 100, // Optionally force progress to 100%
+            'progress': 100,
             'completedAt':
-                FieldValue.serverTimestamp(), // Track when they finished it
+                FieldValue.serverTimestamp(),
           });
     } catch (e) {
       print("Failed to mark task as completed: $e");
@@ -245,10 +225,8 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
         .where((t) => !_completedTaskIds.contains(t.id) && t.progress < 100)
         .toList();
 
-    // 2. Sort the remaining active tasks
     _sortTasks(displayTasks);
 
-    // 3. Apply the critical/coursework/todo filter tags
     final filteredDisplayTasks = displayTasks.where((task) {
       if (_selectedFilters.isEmpty) return true;
 
@@ -438,7 +416,6 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
               itemBuilder: (context, index) {
                 final task = filteredDisplayTasks[index];
 
-                // Since we filtered completed tasks out above, this is always false!
                 final isCompleted = false;
 
                 return _UpcomingTaskItem(
@@ -449,7 +426,7 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
                   isCompleted: isCompleted,
                   countdownStr: _formatCountdown(task.dueDate),
                   onToggleComplete:
-                      _completeTask, // <-- Your soft-delete function
+                      _completeTask,
                   onTaskTap: widget.onTaskTap,
                 );
               },
