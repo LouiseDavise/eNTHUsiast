@@ -10,6 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:dio/dio.dart';
 import 'dart:io';
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
 
 class CcxpLoginScreen extends StatefulWidget {
   const CcxpLoginScreen({super.key});
@@ -33,12 +34,13 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
   }
 
   Future<void> registerFirebase({
-    required String studentId,
+    required String email,
     required String password,
     required final graduationData,
     required final schedule,
+    // required final pw,
   }) async {
-    String email = "$studentId@school.edu";
+    // String email = "$studentId@school.edu";
 
     try {
       // STEP 1: Create the user account in Firebase Authentication
@@ -73,53 +75,64 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     required String password,
   }) async {
     final String email = "$studentId@school.edu";
-    final String custPass = "$studentId@passqwert";
     String? uid;
-    bool check = await _isCredentialCorrect(studentId, password);
-    if (!check) {
-      throw Exception("Wrong credentials");
-    }
-    try {
-      // 1. Try signing into Firebase Auth
-      UserCredential credential = await FirebaseAuth.instance
-          .signInWithEmailAndPassword(email: email, password: custPass);
-      uid = credential.user?.uid;
-      print("Login successful via Firebase Auth!");
-    } on FirebaseAuthException catch (e) {
-      // 2. If user doesn't exist in Firebase Auth, fetch from API and register them
-      if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
-        print("User not found in Firebase. Fetching from API...");
+    dynamic userDoc = null;
+    dynamic userData = null;
+    // bool check = await _isCredentialCorrect(studentId, password);
+    // if (!check) {
+    //   throw Exception("Wrong credentials");
+    // }
 
-        final apiData = await _fetchCcxpDataFromApi(studentId, password);
+    // 1. Try signing into Firebase Auth
+    final snapshot = await FirebaseFirestore.instance
+        .collection('ccxpUsers')
+        .where('graduationData.studentInfo.studentId', isEqualTo: studentId)
+        .limit(1)
+        .get();
+    print(snapshot.docs.isEmpty);
+    if (snapshot.docs.isEmpty) {
+      print("User not found in Firebase. Fetching from API...");
 
-        // This registers them AND uploads their API data to Firestore using their new UID
-        await registerFirebase(
-          studentId: studentId,
-          password: custPass,
-          graduationData: apiData['graduationData'],
-          schedule: apiData['scheduleData'],
-        );
+      final apiData = await _fetchCcxpDataFromApi(studentId, password);
 
-        // After successful registration, the user is already signed in by registerFirebase.
-        // We just grab the current user UID.
-        uid = FirebaseAuth.instance.currentUser?.uid;
-      } else {
-        // Rethrow other auth errors (e.g., wrong-password) directly
+      // final newPw = hashPassword(password);
+      // This registers them AND uploads their API data to Firestore using their new UID
+      await registerFirebase(
+        email: email,
+        password: hashPassword(password),
+        graduationData: apiData['graduationData'],
+        schedule: apiData['scheduleData'],
+        // pw: newPw,
+      );
+
+      // After successful registration, the user is already signed in by registerFirebase.
+      // We just grab the current user UID.
+      uid = FirebaseAuth.instance.currentUser?.uid;
+    } else {
+      try {
+        UserCredential credential = await FirebaseAuth.instance
+            .signInWithEmailAndPassword(
+              email: email,
+              password: hashPassword(password),
+            );
+        uid = credential.user?.uid;
+        userDoc = await FirebaseFirestore.instance
+            .collection('ccxpUsers')
+            .doc(uid)
+            .get();
+        userData = userDoc.data();
+      } on FirebaseAuthException catch (e) {
         rethrow;
       }
     }
 
-    if (uid == null) {
-      throw Exception('Authentication yielded an invalid user token.');
-    }
-
     // 3. Fetch the student profile from Firestore using the UID
-    final userDoc = await FirebaseFirestore.instance
+    userDoc = await FirebaseFirestore.instance
         .collection('ccxpUsers')
         .doc(uid)
         .get();
 
-    final userData = userDoc.data();
+    userData = userDoc.data();
     if (userData == null) {
       throw Exception('Student database profile could not be found.');
     }
@@ -145,6 +158,101 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     try {
       // Run our robust firebase login orchestrator
       final userData = await loginFirebase(
+        studentId: studentId,
+        password: password,
+      );
+      print(userData);
+
+      final graduationData =
+          userData['graduationData'] as Map<String, dynamic>?;
+      final schedule = userData['scheduleData'];
+
+      // Send the data down to your global state provider
+      if (graduationData != null && schedule != null) {
+        if (mounted) {
+          Provider.of<CcxpDataProvider>(
+            context,
+            listen: false,
+          ).setData(graduationData: graduationData, scheduleData: schedule);
+        }
+      } else {
+        throw Exception('Unable to parse retrieved CCXP data structure.');
+      }
+
+      if (mounted) {
+        setState(() => _isLoading = false);
+        Navigator.pushReplacementNamed(context, AppRoutes.mainScreen);
+      }
+    } catch (e) {
+      // if (e is FirebaseAuthException && e.code == 'wrong-password') {
+      //   await FirebaseAuth.instance.signOut();
+
+      //   if (!mounted) return;
+      //   // print("inside catch block");
+
+      //   ScaffoldMessenger.of(context).showSnackBar(
+      //     const SnackBar(
+      //       content: Text("Incorrect password. Please try again."),
+      //     ),
+      //   );
+      //   return;
+      // }
+      if (mounted) {
+        print("not logged in");
+        setState(() => _isLoading = false);
+
+        // Friendly error messages depending on what broke
+        String errorMsg = e.toString();
+        if (e is FirebaseAuthException && e.code == 'wrong-password') {
+          errorMsg = "Incorrect password. Please try again.";
+        }
+
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Login failed: $errorMsg')));
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> refreshData({
+    required String studentId,
+    required String password,
+  }) async {
+    final apiData = await _fetchCcxpDataFromApi(studentId, password);
+    final graduationData = apiData['graduationData'];
+    final schedule = apiData['schedule'];
+
+    final String email = "$studentId@school.edu";
+    final String custPass = "$studentId@passqwert";
+    UserCredential credential = await FirebaseAuth.instance
+        .signInWithEmailAndPassword(email: email, password: custPass);
+    final uid = credential.user?.uid;
+    await FirebaseFirestore.instance.collection('ccxpUsers').doc(uid).set({
+      'graduationData': graduationData,
+      'scheduleData': schedule,
+      'lastUpdatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    final userDoc = await FirebaseFirestore.instance
+        .collection('ccxpUsers')
+        .doc(uid)
+        .get();
+
+    final userData = userDoc.data();
+    if (userData == null) {
+      throw Exception('Student database profile could not be found.');
+    }
+
+    return userData;
+  }
+
+  void _handleRefresh() async {
+    setState(() => _isLoading = true);
+    final studentId = _studentIdController.text.trim();
+    final password = _passwordController.text;
+    try {
+      // Run our robust firebase login orchestrator
+      final userData = await refreshData(
         studentId: studentId,
         password: password,
       );
@@ -186,19 +294,23 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     }
   }
 
-  Future<bool> _isCredentialCorrect(String studentId, String password) async {
-    const url = 'https://prowler-underpaid-smudgy.ngrok-free.dev';
-    final response = await dio.post(
-      '$url/login',
-      data: {'uid': studentId, 'pw': password},
-    );
+  // Future<bool> _isCredentialCorrect(String studentId, String password) async {
+  //   const url = 'https://prowler-underpaid-smudgy.ngrok-free.dev';
+  //   final response = await dio.post(
+  //     '$url/login',
+  //     data: {'uid': studentId, 'pw': password},
+  //   );
 
-    if (response.statusCode == 200) {
-      if (response.data['sessKey'] != null) {
-        return true;
-      }
-    }
-    return false;
+  //   if (response.statusCode == 200) {
+  //     if (response.data['sessKey'] != null) {
+  //       return true;
+  //     }
+  //   }
+  //   return false;
+  // }
+
+  String hashPassword(String pw) {
+    return sha256.convert(utf8.encode(pw)).toString();
   }
 
   Future<Map<String, dynamic>> _fetchCcxpDataFromApi(
@@ -471,18 +583,58 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
                       const SizedBox(height: 24),
 
                       // ── Helpful Links ──────────────────────────────────────
-                      TextButton(
-                        onPressed: () {
-                          // TODO: Open NTHU forgot password website
-                        },
-                        child: Text(
-                          'Forgot your password?',
-                          style: GoogleFonts.dmSans(
-                            color: const Color(0xFF6B7280),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
+                      // SizedBox(
+                      //   width: double.infinity,
+                      //   height: 52,
+                      //   child: FilledButton(
+                      //     onPressed: _isLoading ? null : _handleLogin,
+                      //     style: FilledButton.styleFrom(
+                      //       backgroundColor: const Color(0xFF7E22CE),
+                      //       shape: RoundedRectangleBorder(
+                      //         borderRadius: BorderRadius.circular(12),
+                      //       ),
+                      //     ),
+                      //     child: _isLoading
+                      //         ? const SizedBox(
+                      //             height: 24,
+                      //             width: 24,
+                      //             child: CircularProgressIndicator(
+                      //               color: Colors.white,
+                      //               strokeWidth: 2.5,
+                      //             ),
+                      //           )
+                      //         : Text(
+                      //             'Login to CCXP',
+                      //             style: GoogleFonts.dmSans(
+                      //               fontSize: 16,
+                      //               fontWeight: FontWeight.w700,
+                      //             ),
+                      //           ),
+                      //   ),
+                      // ),
+                      // TextButton(
+                      //   onPressed: () {
+                      //     _isLoading ? null : _handleRefresh;
+                      //     // _handleRefresh();
+                      //     // TODO: Open NTHU forgot password website
+                      //   },
+                      //   child: _isLoading
+                      //       ? const SizedBox(
+                      //           height: 24,
+                      //           width: 24,
+                      //           child: CircularProgressIndicator(
+                      //             color: Colors.white,
+                      //             strokeWidth: 2.5,
+                      //           ),
+                      //         )
+                      //       : Text(
+                      //           'Refreshing Data',
+                      //           style: GoogleFonts.dmSans(
+                      //             fontSize: 16,
+                      //             fontWeight: FontWeight.w700,
+                      //           ),
+                      //         ),
+                      // ),
                     ],
                   ),
                 ),

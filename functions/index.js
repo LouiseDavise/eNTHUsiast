@@ -6,6 +6,13 @@ const fs = require('fs').promises;
 const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { defineSecret } = require('firebase-functions/params');
+// const {express} = require('express');
+// const {cors} = require('cors');
+
+// const { ccxpKeyGetter, transcribingLocalCaptcha } = require("./scrapper/key_getter.js");
+// const { scrapTranscriptPage, scrapCurrentCourse } =require("./scrapper/ccxp_scrapper.js");
+// const { parseGraduationData, parseSchedule } = require("./parser/parser.js");
+// const { scrapEeclass } = require("./scrapper/eeclass_scrapper.js");
 
 // Define the secret parameter
 const geminiApiKey = defineSecret('GEMINI_API_KEY');
@@ -180,3 +187,45 @@ exports.linkGmailAccount = onCall(async (request) => {
         throw new HttpsError('internal', 'Failed to securely link Gmail account.');
     }
 });
+
+
+
+
+
+
+//Only change code after this or the dependencies
+// const app = express();
+// app.use(cors());
+// const PORT = 8080;
+// app.use(express.json());
+// app.listen(
+//     PORT,
+//     () => console.log(`http://localhost:${PORT}`)
+// )
+
+// app.post('/login',async (req,res) => {
+//     const { uid } = req.body;
+//     const { pw } = req.body;
+
+//     const sessKey = await ccxpKeyGetter(uid,pw);
+    
+//     res.send({
+//         sessKey: sessKey
+//     });
+// });
+
+// app.post('/graduationData',async (req,res) => {
+//     const { sessKey } = req.body;
+
+//     const graduationData = await scrapTranscriptPage(sessKey);
+//     console.log(graduationData);
+//     res.json(graduationData);
+// });
+
+// app.post('/schedule',async (req,res) => {
+//     const { sessKey } = req.body;
+
+//     const schedule = await scrapCurrentCourse(sessKey);
+//     res.json(schedule);
+// });
+
