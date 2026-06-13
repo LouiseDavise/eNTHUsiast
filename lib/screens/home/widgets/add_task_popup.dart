@@ -63,7 +63,9 @@ class _AddTaskPopupState extends State<AddTaskPopup> {
       }
 
       // 3. Safely extract it as a string
-      final String studentId = "113000265";
+      final String studentId = ccxpData
+          .graduationData!["studentInfo"]["studentId"]
+          .toString();
 
       // 2. Save directly to Firestore so it persists!
       await FirebaseFirestore.instance

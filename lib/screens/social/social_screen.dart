@@ -1,7 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../../models/social_post.dart';
+import '../../models/social_reply.dart';
+import '../../services/social_firestore_service.dart';
 
 const Color _primaryPurple = Color(0xFFA77CCB);
 const Color _deepPurple = Color(0xFF722E85);
@@ -13,8 +20,34 @@ const Color _hintTextGrey = Color(0xFFB3B7C8);
 const Color _smallTextLightGrey = Color(0xFFD1D5DC);
 const Color _cardBorder = Color(0xFFE8E1EF);
 
-String _avatarUrl(String seed) {
-  return 'https://api.dicebear.com/7.x/avataaars/png?seed=$seed';
+const Color _errorRed = Color(0xFFE05A5A);
+
+bool _isCurrentUserOwner(String ownerId) {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  return uid != null && ownerId == uid;
+}
+
+String _cleanPublicAuthorName(String userName) {
+  final trimmed = userName.trim();
+  if (trimmed.isEmpty) return 'Anonymous';
+  if (trimmed.toLowerCase() == 'you') return 'Anonymous';
+  return trimmed;
+}
+
+String _postAuthorName(SocialPost post) {
+  if (!post.isSeededDemo && _isCurrentUserOwner(post.ownerId)) {
+    return 'YOU';
+  }
+
+  return _cleanPublicAuthorName(post.userName);
+}
+
+String _replyAuthorName(SocialReply reply) {
+  if (!reply.isSeededDemo && _isCurrentUserOwner(reply.ownerId)) {
+    return 'YOU';
+  }
+
+  return _cleanPublicAuthorName(reply.userName);
 }
 
 class SocialScreen extends StatefulWidget {
@@ -29,6 +62,9 @@ class _SocialScreenState extends State<SocialScreen> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _contentController = TextEditingController();
   final TextEditingController _replyController = TextEditingController();
+
+  bool _showTitleError = false;
+  bool _showContentError = false;
 
   final Set<String> _savedPostIds = {};
   final Set<String> _hiddenPostIds = {};
@@ -47,7 +83,9 @@ class _SocialScreenState extends State<SocialScreen> {
     'Life Science',
   ];
 
-  late final List<_SocialPost> _posts;
+  final SocialFirestoreService _socialService = SocialFirestoreService();
+
+  List<SocialPost> _latestPosts = [];
   String _selectedDepartment = 'All';
   String _createDepartment = 'General';
 
@@ -55,292 +93,26 @@ class _SocialScreenState extends State<SocialScreen> {
   void initState() {
     super.initState();
 
-    _posts = [
-      _SocialPost(
-        id: 'post-1',
-        title: 'Looking for a Lab Partner',
-        user: 'Sarah M.',
-        department: 'Design',
-        content:
-            'Any design student interested in partnering up for the DES 115 final project? I focus on prototyping.',
-        time: '2m ago',
-        initials: 'SM',
-        avatarUrl: _avatarUrl('Sarah'),
-        replyCountOverride: 4,
-        replies: [
-          _SocialReply(
-            user: 'User7',
-            initials: 'U7',
-            avatarUrl: _avatarUrl('User7'),
-            content: 'Thanks for sharing this!',
-            time: '1h ago',
-          ),
-          _SocialReply(
-            user: 'User13',
-            initials: 'U13',
-            avatarUrl: _avatarUrl('User13'),
-            content: 'I might be interested, check your DMs.',
-            time: '30m ago',
-          ),
-        ],
-      ),
-      _SocialPost(
-        id: 'post-2',
-        title: 'DES 102 Study Session',
-        user: 'Alex Chen',
-        department: 'Design',
-        content:
-            'Room 402, 3PM today. Reviewing color theory and composition fundamentals. All welcome!',
-        time: '1h ago',
-        initials: 'AC',
-        avatarUrl: _avatarUrl('Alex'),
-        replyCountOverride: 12,
-        replies: [
-          _SocialReply(
-            user: 'User14',
-            initials: 'U14',
-            avatarUrl: _avatarUrl('User14'),
-            content: 'I will join after class.',
-            time: '45m ago',
-          ),
-        ],
-      ),
-      _SocialPost(
-        id: 'post-3',
-        title: 'Summer Internship Forum',
-        user: 'Prototyping Club',
-        department: 'General',
-        content:
-            'Sharing resources and tips for student portfolios. Check out the pinned thread for links.',
-        time: '3h ago',
-        initials: 'PC',
-        avatarUrl: _avatarUrl('Club'),
-        replyCountOverride: 28,
-        replies: [
-          _SocialReply(
-            user: 'User21',
-            initials: 'U21',
-            avatarUrl: _avatarUrl('User21'),
-            content: 'Can someone share the portfolio template?',
-            time: '2h ago',
-          ),
-        ],
-      ),
-      _SocialPost(
-        id: 'post-4',
-        title: 'Weekly Q&A Thread',
-        user: 'Prof. Miller',
-        department: 'HSS',
-        content:
-            "Post your questions regarding this week's lecture on Visual Systems Theory below.",
-        time: '5h ago',
-        initials: 'PM',
-        avatarUrl: _avatarUrl('Professor'),
-        replyCountOverride: 45,
-        replies: [
-          _SocialReply(
-            user: 'Student A',
-            initials: 'SA',
-            avatarUrl: _avatarUrl('StudentA'),
-            content: 'Could you explain the reading again?',
-            time: '3h ago',
-          ),
-        ],
-      ),
-      _SocialPost(
-        id: 'post-5',
-        title: 'Algorithms Homework Help',
-        user: 'Kevin L.',
-        department: 'CS',
-        content:
-            'Struggling with the dynamic programming section. Anyone want to review together?',
-        time: '10m ago',
-        initials: 'KL',
-        avatarUrl: _avatarUrl('Kevin'),
-        replyCountOverride: 3,
-        replies: [
-          _SocialReply(
-            user: 'Nathan',
-            initials: 'NT',
-            avatarUrl: _avatarUrl('Nathan'),
-            content: 'I can review recurrence relation with you.',
-            time: '5m ago',
-          ),
-        ],
-      ),
-      _SocialPost(
-        id: 'post-6',
-        title: 'Circuit Design Tips',
-        user: 'Li Wang',
-        department: 'EE',
-        content:
-            'Sharing some techniques for low-power CMOS design. Check the doc.',
-        time: '2h ago',
-        initials: 'LW',
-        avatarUrl: _avatarUrl('LiWang'),
-        replyCountOverride: 22,
-        replies: [
-          _SocialReply(
-            user: 'Chen Yu',
-            initials: 'CY',
-            avatarUrl: _avatarUrl('ChenYu'),
-            content: 'Can you share the CMOS checklist?',
-            time: '1h ago',
-          ),
-        ],
-      ),
-      _SocialPost(
-        id: 'post-7',
-        title: 'Embedded Systems Hackathon',
-        user: 'Michael T.',
-        department: 'EE',
-        content:
-            "Looking for teammates who know C and ARM architecture. Let's build something cool.",
-        time: '1d ago',
-        initials: 'MT',
-        avatarUrl: _avatarUrl('Michael'),
-        replyCountOverride: 8,
-        replies: [
-          _SocialReply(
-            user: 'Ray Huang',
-            initials: 'RH',
-            avatarUrl: _avatarUrl('Ray'),
-            content: 'I know basic ARM. Interested.',
-            time: '12h ago',
-          ),
-        ],
-      ),
-      _SocialPost(
-        id: 'post-8',
-        title: 'Math Olympiad Prep',
-        user: 'Emma W.',
-        department: 'Math',
-        content:
-            'Practicing number theory problems tonight. Join us on Discord!',
-        time: '4h ago',
-        initials: 'EW',
-        avatarUrl: _avatarUrl('Emma'),
-        replyCountOverride: 10,
-        replies: [
-          _SocialReply(
-            user: 'Tom H.',
-            initials: 'TH',
-            avatarUrl: _avatarUrl('Tom'),
-            content: 'Can you send the Discord link?',
-            time: '3h ago',
-          ),
-        ],
-      ),
-      _SocialPost(
-        id: 'post-9',
-        title: 'Ethics in AI Discussion',
-        user: 'Marcus G.',
-        department: 'CS',
-        content:
-            'Exploring the social implications of automated decision-making. Very relevant today.',
-        time: '6h ago',
-        initials: 'MG',
-        avatarUrl: _avatarUrl('Marcus'),
-        replyCountOverride: 35,
-        replies: [
-          _SocialReply(
-            user: 'Sofia R.',
-            initials: 'SR',
-            avatarUrl: _avatarUrl('Sofia'),
-            content: 'This is relevant for our AI policy class too.',
-            time: '5h ago',
-          ),
-        ],
-      ),
-      _SocialPost(
-        id: 'post-10',
-        title: 'Business Case Competition',
-        user: 'Alice W.',
-        department: 'Business',
-        content:
-            'Looking for 2 more members to join our team for the upcoming case competition. Finance background preferred.',
-        time: '2d ago',
-        initials: 'AW',
-        avatarUrl: _avatarUrl('Alice'),
-        replyCountOverride: 12,
-        replies: [
-          _SocialReply(
-            user: 'Brian T.',
-            initials: 'BT',
-            avatarUrl: _avatarUrl('Brian'),
-            content: 'I can help with market sizing and deck structure.',
-            time: '1d ago',
-          ),
-        ],
-      ),
-      _SocialPost(
-        id: 'post-11',
-        title: 'Quantum Mechanics Review Group',
-        user: 'Nina Huang',
-        department: 'Physics',
-        content:
-            'Reviewing wave functions, operators, and measurement problems before next week’s quiz. Everyone is welcome.',
-        time: '4h ago',
-        initials: 'NH',
-        avatarUrl: _avatarUrl('Nina'),
-        replyCountOverride: 16,
-        replies: [
-          _SocialReply(
-            user: 'Oscar Lin',
-            initials: 'OL',
-            avatarUrl: _avatarUrl('Oscar'),
-            content: 'Can we also cover uncertainty principle problems?',
-            time: '3h ago',
-          ),
-        ],
-      ),
-      _SocialPost(
-        id: 'post-12',
-        title: 'Campus Sketch Walk',
-        user: 'Art Club',
-        department: 'Arts',
-        content:
-            'We are meeting near the lake to sketch architecture and campus scenes this Saturday morning.',
-        time: '6h ago',
-        initials: 'AC',
-        avatarUrl: _avatarUrl('ArtClub'),
-        replyCountOverride: 9,
-        replies: [
-          _SocialReply(
-            user: 'Maya Chen',
-            initials: 'MC',
-            avatarUrl: _avatarUrl('Maya'),
-            content: 'Do beginners need to bring their own materials?',
-            time: '5h ago',
-          ),
-        ],
-      ),
-      _SocialPost(
-        id: 'post-13',
-        title: 'Biology Lab Notes Exchange',
-        user: 'Grace Lee',
-        department: 'Life Science',
-        content:
-            'Looking for classmates who want to exchange lab notes and prepare for the cell biology practical together.',
-        time: '7h ago',
-        initials: 'GL',
-        avatarUrl: _avatarUrl('Grace'),
-        replyCountOverride: 14,
-        replies: [
-          _SocialReply(
-            user: 'Henry Kao',
-            initials: 'HK',
-            avatarUrl: _avatarUrl('Henry'),
-            content: 'I can share my microscopy notes.',
-            time: '6h ago',
-          ),
-        ],
-      ),
-    ];
-
     _searchController.addListener(() {
       setState(() {});
     });
+
+    unawaited(_seedDemoPostsIfNeeded());
+  }
+
+  Future<void> _seedDemoPostsIfNeeded() async {
+    try {
+      await _socialService.seedDemoPostsIfNeeded();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to seed demo posts: $error'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   @override
@@ -352,10 +124,10 @@ class _SocialScreenState extends State<SocialScreen> {
     super.dispose();
   }
 
-  List<_SocialPost> get _filteredPosts {
+  List<SocialPost> _filteredPosts(List<SocialPost> source) {
     final query = _searchController.text.trim().toLowerCase();
 
-    return _posts.where((post) {
+    return source.where((post) {
       final notHidden = !_hiddenPostIds.contains(post.id);
 
       final matchesDepartment =
@@ -366,20 +138,28 @@ class _SocialScreenState extends State<SocialScreen> {
           query.isEmpty ||
           post.title.toLowerCase().contains(query) ||
           post.content.toLowerCase().contains(query) ||
-          post.user.toLowerCase().contains(query);
+          post.userName.toLowerCase().contains(query);
 
       return notHidden && matchesDepartment && matchesSearch;
     }).toList();
   }
 
-  List<_SocialPost> get _savedPosts {
-    return _posts.where((post) => _savedPostIds.contains(post.id)).toList();
+  List<SocialPost> get _savedPosts {
+    return _latestPosts
+        .where((post) => _savedPostIds.contains(post.id))
+        .toList();
+  }
+
+  bool _isMyPost(SocialPost post) {
+    return !post.isSeededDemo && _isCurrentUserOwner(post.ownerId);
+  }
+
+  bool _isMyReply(SocialReply reply) {
+    return !reply.isSeededDemo && _isCurrentUserOwner(reply.ownerId);
   }
 
   @override
   Widget build(BuildContext context) {
-    final posts = _filteredPosts;
-
     return Scaffold(
       backgroundColor: _backgroundWhite,
       body: Stack(
@@ -397,21 +177,40 @@ class _SocialScreenState extends State<SocialScreen> {
                     _buildSearchBar(),
                     _buildFilterChips(),
                     Expanded(
-                      child: posts.isEmpty
-                          ? _buildEmptyState()
-                          : ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(
-                                18,
-                                18,
-                                18,
-                                120,
+                      child: StreamBuilder<List<SocialPost>>(
+                        stream: _socialService.watchPosts(),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasError) {
+                            return _buildErrorState(snapshot.error.toString());
+                          }
+
+                          if (!snapshot.hasData) {
+                            return const Center(
+                              child: CircularProgressIndicator(
+                                color: _deepPurple,
                               ),
-                              itemBuilder: (context, index) =>
-                                  _buildPostCard(posts[index]),
-                              separatorBuilder: (context, index) =>
-                                  const SizedBox(height: 14),
-                              itemCount: posts.length,
-                            ),
+                            );
+                          }
+
+                          final allPosts =
+                              snapshot.data ?? const <SocialPost>[];
+                          _latestPosts = allPosts;
+                          final posts = _filteredPosts(allPosts);
+
+                          if (posts.isEmpty) {
+                            return _buildEmptyState();
+                          }
+
+                          return ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(18, 18, 18, 120),
+                            itemBuilder: (context, index) =>
+                                _buildPostCard(posts[index]),
+                            separatorBuilder: (context, index) =>
+                                const SizedBox(height: 14),
+                            itemCount: posts.length,
+                          );
+                        },
+                      ),
                     ),
                   ],
                 ),
@@ -616,8 +415,9 @@ class _SocialScreenState extends State<SocialScreen> {
     );
   }
 
-  Widget _buildPostCard(_SocialPost post) {
+  Widget _buildPostCard(SocialPost post) {
     final isSaved = _savedPostIds.contains(post.id);
+    final isMine = _isMyPost(post);
 
     return InkWell(
       onTap: () => _showPostDetailSheet(post),
@@ -668,7 +468,7 @@ class _SocialScreenState extends State<SocialScreen> {
                         runSpacing: 5,
                         children: [
                           Text(
-                            post.user.toUpperCase(),
+                            _postAuthorName(post).toUpperCase(),
                             style: const TextStyle(
                               color: _deepPurple,
                               fontSize: 11,
@@ -686,6 +486,18 @@ class _SocialScreenState extends State<SocialScreen> {
                               letterSpacing: 0.8,
                             ),
                           ),
+                          if (isMine) ...[
+                            const _SmallDot(),
+                            const Text(
+                              'YOUR FORUM',
+                              style: TextStyle(
+                                color: _deepPurple,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.9,
+                              ),
+                            ),
+                          ],
                           if (isSaved) ...[
                             const _SmallDot(),
                             const Icon(
@@ -803,8 +615,56 @@ class _SocialScreenState extends State<SocialScreen> {
     );
   }
 
-  void _showPostOptionsSheet(_SocialPost post) {
+  Widget _buildErrorState(String message) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 62,
+              height: 62,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE05A5A).withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                color: Color(0xFFE05A5A),
+                size: 30,
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Could not load discussions',
+              style: TextStyle(
+                color: _black,
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: _mainTextGrey,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showPostOptionsSheet(SocialPost post) {
     final isSaved = _savedPostIds.contains(post.id);
+    final isMine = _isMyPost(post);
 
     showModalBottomSheet<void>(
       context: context,
@@ -856,17 +716,32 @@ class _SocialScreenState extends State<SocialScreen> {
                       },
                     ),
                     const SizedBox(height: 8),
-                    _PostOptionTile(
-                      icon: Icons.visibility_off_outlined,
-                      title: 'Not interested',
-                      subtitle: 'Hide this discussion from your feed.',
-                      destructive: true,
-                      onTap: () {
-                        Navigator.pop(context);
-                        _hidePost(post);
-                      },
-                    ),
-                    const SizedBox(height: 8),
+                    if (isMine) ...[
+                      _PostOptionTile(
+                        icon: Icons.delete_outline_rounded,
+                        title: 'Delete forum',
+                        subtitle:
+                            'Delete this forum and all replies inside it.',
+                        destructive: true,
+                        onTap: () {
+                          Navigator.pop(context);
+                          _confirmDeletePost(post);
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                    ] else ...[
+                      _PostOptionTile(
+                        icon: Icons.visibility_off_outlined,
+                        title: 'Not interested',
+                        subtitle: 'Hide this discussion from your feed.',
+                        destructive: true,
+                        onTap: () {
+                          Navigator.pop(context);
+                          _hidePost(post);
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     _PostOptionTile(
                       icon: Icons.close_rounded,
                       title: 'Cancel',
@@ -883,7 +758,7 @@ class _SocialScreenState extends State<SocialScreen> {
     );
   }
 
-  void _toggleSavePost(_SocialPost post) {
+  void _toggleSavePost(SocialPost post) {
     final wasSaved = _savedPostIds.contains(post.id);
 
     setState(() {
@@ -903,18 +778,26 @@ class _SocialScreenState extends State<SocialScreen> {
     );
   }
 
-  void _hidePost(_SocialPost post) {
+  void _hidePost(SocialPost post) {
     setState(() {
       _hiddenPostIds.add(post.id);
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Post hidden.'),
+        content: const Text(
+          'Post hidden.',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        ),
+        backgroundColor: _deepPurple,
         behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(18, 0, 18, 92),
+        elevation: 12,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         duration: const Duration(seconds: 3),
         action: SnackBarAction(
-          label: 'Undo',
+          label: 'UNDO',
+          textColor: const Color(0xFFFFF2A8),
           onPressed: () {
             setState(() {
               _hiddenPostIds.remove(post.id);
@@ -923,6 +806,122 @@ class _SocialScreenState extends State<SocialScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _confirmDeletePost(SocialPost post) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: const Text(
+            'Delete forum?',
+            style: TextStyle(
+              color: _black,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          content: const Text(
+            'This will delete your forum and all replies inside it. This action cannot be undone in this prototype.',
+            style: TextStyle(
+              color: _mainTextGrey,
+              fontSize: 14,
+              height: 1.45,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(
+                  color: _mainTextGrey,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFE05A5A),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text(
+                'Delete',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    _deletePost(post);
+  }
+
+  Future<void> _deletePost(SocialPost post) async {
+    if (!_isMyPost(post)) return;
+
+    try {
+      await _socialService.deletePost(post.id);
+
+      if (!mounted) return;
+      setState(() {
+        _savedPostIds.remove(post.id);
+        _hiddenPostIds.remove(post.id);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Forum deleted.'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to delete forum: $error'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteReply(SocialPost post, SocialReply reply) async {
+    if (!_isMyReply(reply)) return;
+
+    try {
+      await _socialService.deleteReply(postId: post.id, replyId: reply.id);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Reply deleted.'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to delete reply: $error'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   void _showSavedPostsSheet() {
@@ -1023,6 +1022,8 @@ class _SocialScreenState extends State<SocialScreen> {
   void _showCreatePostSheet() {
     _titleController.clear();
     _contentController.clear();
+    _showTitleError = false;
+    _showContentError = false;
     _createDepartment = _selectedDepartment == 'All'
         ? 'General'
         : _selectedDepartment;
@@ -1051,12 +1052,20 @@ class _SocialScreenState extends State<SocialScreen> {
                       controller: _titleController,
                       label: 'Title',
                       hint: "What's on your mind?",
+                      showError: _showTitleError,
+                      errorText: 'Title is required',
+                      onChanged: (_) {
+                        if (!_showTitleError) return;
+                        setSheetState(() {
+                          _showTitleError = false;
+                        });
+                      },
                     ),
                     const SizedBox(height: 18),
                     const _SheetLabel('Department'),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      value: _createDepartment,
+                      initialValue: _createDepartment,
                       isExpanded: true,
                       icon: const Icon(
                         Icons.keyboard_arrow_down_rounded,
@@ -1107,15 +1116,23 @@ class _SocialScreenState extends State<SocialScreen> {
                     const SizedBox(height: 18),
                     _buildSheetTextField(
                       controller: _contentController,
-                      label: 'Body',
-                      hint: 'Describe your thoughts...',
+                      label: 'Content',
+                      hint: 'Share your thoughts with the community...',
                       maxLines: 5,
+                      showError: _showContentError,
+                      errorText: 'Content is required',
+                      onChanged: (_) {
+                        if (!_showContentError) return;
+                        setSheetState(() {
+                          _showContentError = false;
+                        });
+                      },
                     ),
                     const SizedBox(height: 26),
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
-                        onPressed: _addMockPost,
+                        onPressed: () => _validateAndCreatePost(setSheetState),
                         style: FilledButton.styleFrom(
                           backgroundColor: _deepPurple,
                           foregroundColor: Colors.white,
@@ -1142,7 +1159,7 @@ class _SocialScreenState extends State<SocialScreen> {
     );
   }
 
-  void _showPostDetailSheet(_SocialPost post) {
+  void _showPostDetailSheet(SocialPost post) {
     _replyController.clear();
 
     showModalBottomSheet<void>(
@@ -1151,9 +1168,11 @@ class _SocialScreenState extends State<SocialScreen> {
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.52),
       builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
+        return StreamBuilder<List<SocialReply>>(
+          stream: _socialService.watchReplies(post.id),
+          builder: (context, snapshot) {
             final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+            final replies = snapshot.data ?? const <SocialReply>[];
 
             return Padding(
               padding: EdgeInsets.only(bottom: bottomInset),
@@ -1162,10 +1181,18 @@ class _SocialScreenState extends State<SocialScreen> {
                   constraints: const BoxConstraints(maxWidth: 430),
                   child: _ThreadDetailPanel(
                     post: post,
+                    replies: replies,
                     replyController: _replyController,
+                    canDeletePost: _isMyPost(post),
+                    onDeletePost: () {
+                      Navigator.pop(context);
+                      _confirmDeletePost(post);
+                    },
+                    onDeleteReply: (reply) {
+                      unawaited(_deleteReply(post, reply));
+                    },
                     onSendReply: () {
-                      _addMockReply(post);
-                      setSheetState(() {});
+                      unawaited(_sendReply(post));
                     },
                   ),
                 ),
@@ -1182,6 +1209,9 @@ class _SocialScreenState extends State<SocialScreen> {
     required String label,
     required String hint,
     int maxLines = 1,
+    bool showError = false,
+    String? errorText,
+    ValueChanged<String>? onChanged,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1191,6 +1221,7 @@ class _SocialScreenState extends State<SocialScreen> {
         TextField(
           controller: controller,
           maxLines: maxLines,
+          onChanged: onChanged,
           textInputAction: maxLines == 1
               ? TextInputAction.next
               : TextInputAction.newline,
@@ -1212,13 +1243,33 @@ class _SocialScreenState extends State<SocialScreen> {
               horizontal: 16,
               vertical: 15,
             ),
+            errorText: showError ? errorText : null,
+            errorStyle: const TextStyle(
+              color: _errorRed,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: _cardBorder),
+              borderSide: BorderSide(
+                color: showError ? _errorRed : _cardBorder,
+                width: showError ? 1.4 : 1,
+              ),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: _primaryPurple, width: 1.4),
+              borderSide: BorderSide(
+                color: showError ? _errorRed : _primaryPurple,
+                width: 1.4,
+              ),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: _errorRed, width: 1.4),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: _errorRed, width: 1.4),
             ),
           ),
         ),
@@ -1226,57 +1277,81 @@ class _SocialScreenState extends State<SocialScreen> {
     );
   }
 
-  void _addMockPost() {
+  void _validateAndCreatePost(StateSetter setSheetState) {
+    final titleIsEmpty = _titleController.text.trim().isEmpty;
+    final contentIsEmpty = _contentController.text.trim().isEmpty;
+
+    setSheetState(() {
+      _showTitleError = titleIsEmpty;
+      _showContentError = contentIsEmpty;
+    });
+
+    if (titleIsEmpty || contentIsEmpty) return;
+
+    unawaited(_createPost());
+  }
+
+  Future<void> _createPost() async {
     final title = _titleController.text.trim();
     final content = _contentController.text.trim();
 
     if (title.isEmpty || content.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Title and content cannot be empty.'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
       return;
     }
 
-    setState(() {
-      _posts.insert(
-        0,
-        _SocialPost(
-          id: 'post-${DateTime.now().millisecondsSinceEpoch}',
-          title: title,
-          user: 'You',
-          department: _createDepartment,
-          content: content,
-          time: 'Just now',
-          initials: 'YO',
-          avatarUrl: _avatarUrl('You'),
-          replies: [],
+    try {
+      await _socialService.createPost(
+        title: title,
+        content: content,
+        department: _createDepartment,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _selectedDepartment = 'All';
+        _searchController.clear();
+      });
+
+      Navigator.pop(context);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to create forum: $error'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
         ),
       );
-      _selectedDepartment = 'All';
-      _searchController.clear();
-    });
-
-    Navigator.pop(context);
+    }
   }
 
-  void _addMockReply(_SocialPost post) {
+  Future<void> _sendReply(SocialPost post) async {
     final content = _replyController.text.trim();
 
-    if (content.isEmpty) {
-      return;
-    }
+    if (content.isEmpty) return;
 
-    setState(() {
-      post.replies.add(
-        _SocialReply(
-          user: 'You',
-          initials: 'YO',
-          avatarUrl: _avatarUrl('You'),
-          content: content,
-          time: 'Just now',
+    _replyController.clear();
+
+    try {
+      await _socialService.createReply(postId: post.id, content: content);
+    } catch (error) {
+      if (!mounted) return;
+      _replyController.text = content;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to send reply: $error'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
         ),
       );
-
-      post.replyCountOverride = post.replyCount + 1;
-      _replyController.clear();
-    });
+    }
   }
 }
 
@@ -1298,6 +1373,8 @@ class _Avatar extends StatelessWidget {
     ];
 
     final colorIndex = initials.codeUnitAt(0) % fallbackColors.length;
+    final normalizedImageUrl = imageUrl?.trim();
+    final memoryBytes = _decodeDataImage(normalizedImageUrl);
 
     return Container(
       width: size,
@@ -1307,16 +1384,31 @@ class _Avatar extends StatelessWidget {
         shape: BoxShape.circle,
       ),
       clipBehavior: Clip.antiAlias,
-      child: imageUrl == null
+      child: normalizedImageUrl == null || normalizedImageUrl.isEmpty
           ? _AvatarInitials(initials: initials, size: size)
+          : memoryBytes != null
+          ? Image.memory(memoryBytes, fit: BoxFit.cover, gaplessPlayback: true)
           : Image.network(
-              imageUrl!,
+              normalizedImageUrl,
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) {
                 return _AvatarInitials(initials: initials, size: size);
               },
             ),
     );
+  }
+
+  Uint8List? _decodeDataImage(String? value) {
+    if (value == null || !value.startsWith('data:image')) return null;
+
+    final commaIndex = value.indexOf(',');
+    if (commaIndex == -1 || commaIndex == value.length - 1) return null;
+
+    try {
+      return base64Decode(value.substring(commaIndex + 1));
+    } catch (_) {
+      return null;
+    }
   }
 }
 
@@ -1423,7 +1515,7 @@ class _SavedPostTile extends StatelessWidget {
     required this.onRemove,
   });
 
-  final _SocialPost post;
+  final SocialPost post;
   final VoidCallback onOpen;
   final VoidCallback onRemove;
 
@@ -1471,7 +1563,7 @@ class _SavedPostTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '${post.user.toUpperCase()} • ${post.department.toUpperCase()}',
+                    '${_postAuthorName(post).toUpperCase()} • ${post.department.toUpperCase()}',
                     style: const TextStyle(
                       color: _deepPurple,
                       fontSize: 10,
@@ -1776,13 +1868,21 @@ class _SheetLabel extends StatelessWidget {
 class _ThreadDetailPanel extends StatelessWidget {
   const _ThreadDetailPanel({
     required this.post,
+    required this.replies,
     required this.replyController,
     required this.onSendReply,
+    required this.onDeleteReply,
+    required this.canDeletePost,
+    required this.onDeletePost,
   });
 
-  final _SocialPost post;
+  final SocialPost post;
+  final List<SocialReply> replies;
   final TextEditingController replyController;
   final VoidCallback onSendReply;
+  final void Function(SocialReply reply) onDeleteReply;
+  final bool canDeletePost;
+  final VoidCallback onDeletePost;
 
   @override
   Widget build(BuildContext context) {
@@ -1803,19 +1903,24 @@ class _ThreadDetailPanel extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          _ThreadHeader(post: post),
+          _ThreadHeader(
+            post: post,
+            canDeletePost: canDeletePost,
+            onDeletePost: onDeletePost,
+          ),
           Expanded(
             child: Container(
               width: double.infinity,
               color: const Color(0xFFF6F6F8),
               child: ListView.separated(
                 padding: const EdgeInsets.fromLTRB(26, 28, 26, 110),
-                itemCount: post.replies.length + 1,
-                separatorBuilder: (_, __) => const SizedBox(height: 18),
+                itemCount: replies.length + 1,
+                separatorBuilder: (context, index) =>
+                    const SizedBox(height: 18),
                 itemBuilder: (context, index) {
                   if (index == 0) {
                     return Text(
-                      'REPLIES (${post.replyCount})',
+                      'REPLIES (${replies.length})',
                       style: const TextStyle(
                         color: Color(0xFF9AA0B8),
                         fontSize: 11,
@@ -1825,8 +1930,15 @@ class _ThreadDetailPanel extends StatelessWidget {
                     );
                   }
 
-                  final reply = post.replies[index - 1];
-                  return _ThreadReplyBubble(reply: reply);
+                  final reply = replies[index - 1];
+
+                  return _ThreadReplyBubble(
+                    reply: reply,
+                    canDelete:
+                        !reply.isSeededDemo &&
+                        _isCurrentUserOwner(reply.ownerId),
+                    onDelete: () => onDeleteReply(reply),
+                  );
                 },
               ),
             ),
@@ -1839,9 +1951,15 @@ class _ThreadDetailPanel extends StatelessWidget {
 }
 
 class _ThreadHeader extends StatelessWidget {
-  const _ThreadHeader({required this.post});
+  const _ThreadHeader({
+    required this.post,
+    required this.canDeletePost,
+    required this.onDeletePost,
+  });
 
-  final _SocialPost post;
+  final SocialPost post;
+  final bool canDeletePost;
+  final VoidCallback onDeletePost;
 
   @override
   Widget build(BuildContext context) {
@@ -1880,7 +1998,7 @@ class _ThreadHeader extends StatelessWidget {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(
-                          post.user.toUpperCase(),
+                          _postAuthorName(post).toUpperCase(),
                           style: const TextStyle(
                             color: _deepPurple,
                             fontSize: 11,
@@ -1898,11 +2016,33 @@ class _ThreadHeader extends StatelessWidget {
                             letterSpacing: 1.2,
                           ),
                         ),
+                        if (canDeletePost) ...[
+                          const _SmallDot(),
+                          const Text(
+                            'YOUR FORUM',
+                            style: TextStyle(
+                              color: _deepPurple,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.9,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ],
                 ),
               ),
+              if (canDeletePost)
+                IconButton(
+                  onPressed: onDeletePost,
+                  style: IconButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFF2F2),
+                    foregroundColor: const Color(0xFFE05A5A),
+                  ),
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
+              const SizedBox(width: 6),
               IconButton(
                 onPressed: () => Navigator.pop(context),
                 style: IconButton.styleFrom(
@@ -1930,72 +2070,136 @@ class _ThreadHeader extends StatelessWidget {
 }
 
 class _ThreadReplyBubble extends StatelessWidget {
-  const _ThreadReplyBubble({required this.reply});
+  const _ThreadReplyBubble({
+    required this.reply,
+    required this.canDelete,
+    required this.onDelete,
+  });
 
-  final _SocialReply reply;
+  final SocialReply reply;
+  final bool canDelete;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _Avatar(initials: reply.initials, imageUrl: reply.avatarUrl, size: 44),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    final isMine = !reply.isSeededDemo && _isCurrentUserOwner(reply.ownerId);
+
+    final avatar = _Avatar(
+      initials: reply.initials,
+      imageUrl: reply.avatarUrl,
+      size: 44,
+    );
+
+    final bubble = Container(
+      constraints: const BoxConstraints(maxWidth: 280),
+      padding: EdgeInsets.fromLTRB(18, 14, canDelete ? 8 : 18, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: isMine
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: isMine
+                ? MainAxisAlignment.end
+                : MainAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 14,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      reply.user,
-                      style: const TextStyle(
-                        color: Color(0xFF101427),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      reply.content,
-                      style: const TextStyle(
-                        color: Color(0xFF34384A),
-                        fontSize: 14,
-                        height: 1.35,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.only(left: 2),
+              Flexible(
                 child: Text(
-                  reply.time.toUpperCase(),
+                  _replyAuthorName(reply),
+                  textAlign: isMine ? TextAlign.right : TextAlign.left,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Color(0xFF9AA0B8),
-                    fontSize: 11,
+                    color: Color(0xFF101427),
+                    fontSize: 14,
                     fontWeight: FontWeight.w900,
-                    letterSpacing: 1.1,
                   ),
                 ),
               ),
+              if (canDelete) ...[
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: onDelete,
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Delete reply',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 30,
+                    minHeight: 30,
+                  ),
+                  icon: const Icon(
+                    Icons.delete_outline_rounded,
+                    color: Color(0xFFE05A5A),
+                    size: 19,
+                  ),
+                ),
+              ],
             ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            reply.content,
+            textAlign: isMine ? TextAlign.right : TextAlign.left,
+            style: const TextStyle(
+              color: Color(0xFF34384A),
+              fontSize: 14,
+              height: 1.35,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: isMine
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: isMine
+              ? MainAxisAlignment.end
+              : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!isMine) ...[avatar, const SizedBox(width: 14)],
+            Flexible(
+              child: Align(
+                alignment: isMine
+                    ? Alignment.centerRight
+                    : Alignment.centerLeft,
+                child: bubble,
+              ),
+            ),
+            if (isMine) ...[const SizedBox(width: 14), avatar],
+          ],
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: EdgeInsets.only(
+            left: isMine ? 0 : 58,
+            right: isMine ? 58 : 0,
+          ),
+          child: Text(
+            reply.time.toUpperCase(),
+            textAlign: isMine ? TextAlign.right : TextAlign.left,
+            style: const TextStyle(
+              color: Color(0xFF9AA0B8),
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.1,
+            ),
           ),
         ),
       ],
@@ -2090,48 +2294,4 @@ class _SmallDot extends StatelessWidget {
       ),
     );
   }
-}
-
-class _SocialPost {
-  _SocialPost({
-    required this.id,
-    required this.title,
-    required this.user,
-    required this.department,
-    required this.content,
-    required this.time,
-    required this.initials,
-    required this.replies,
-    this.avatarUrl,
-    this.replyCountOverride,
-  });
-
-  final String id;
-  final String title;
-  final String user;
-  final String department;
-  final String content;
-  final String time;
-  final String initials;
-  final String? avatarUrl;
-  final List<_SocialReply> replies;
-  int? replyCountOverride;
-
-  int get replyCount => replyCountOverride ?? replies.length;
-}
-
-class _SocialReply {
-  const _SocialReply({
-    required this.user,
-    required this.initials,
-    required this.content,
-    required this.time,
-    this.avatarUrl,
-  });
-
-  final String user;
-  final String initials;
-  final String content;
-  final String time;
-  final String? avatarUrl;
 }

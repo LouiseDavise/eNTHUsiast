@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
-import 'dart:io' show Platform;
 
 import 'firebase_options.dart';
 import 'providers/ccxp_data_provider.dart';
+import 'providers/language_provider.dart';
 import 'routes/app_routes.dart';
 import 'theme/app_theme.dart';
 
@@ -33,20 +33,22 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => CcxpDataProvider(),
-      child: MaterialApp(
-        title: 'eNTHUsiast App',
-        debugShowCheckedModeBanner: false,
+    return LanguageProviderScope(
+      child: ChangeNotifierProvider(
+        create: (_) => CcxpDataProvider(),
+        child: MaterialApp(
+          title: 'eNTHUsiast App',
+          debugShowCheckedModeBanner: false,
 
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
 
-        // 2. Remove initialRoute and use the Gatekeeper as the home widget
-        home: const GatekeeperScreen(),
+          // 2. Remove initialRoute and use the Gatekeeper as the home widget
+          home: const GatekeeperScreen(),
 
-        // 3. Keep your named routes intact for navigation later
-        routes: AppRoutes.routes,
+          // 3. Keep your named routes intact for navigation later
+          routes: AppRoutes.routes,
+        ),
       ),
     );
   }
