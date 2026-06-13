@@ -100,6 +100,10 @@ class GatekeeperScreen extends StatelessWidget {
             final graduationData =
                 userData?['graduationData'] as Map<String, dynamic>?;
             final schedule = userData?['scheduleData'];
+            final preferences = userData?['preferences'];
+            final hasCompletedPreferences =
+                preferences is Map<String, dynamic> &&
+                preferences['completed'] == true;
 
             if (graduationData != null && schedule != null) {
               // Hydrate your global Provider model so other pages can consume the data safely
@@ -110,8 +114,8 @@ class GatekeeperScreen extends StatelessWidget {
                 );
               });
 
-              // TIER 3: Check your global custom session state logic
-              return hasShownPreferencesThisSession
+              // TIER 3: Show preferences only until the user has saved them.
+              return hasCompletedPreferences
                   ? const MainScreen()
                   : const PreferenceScreen();
             }
