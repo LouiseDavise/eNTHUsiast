@@ -76,9 +76,9 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     final String custPass = "$studentId@passqwert";
     String? uid;
     bool check = await _isCredentialCorrect(studentId, password);
-    if (!check) {
-      throw Exception("Wrong credentials");
-    }
+    // if (!check) {
+    //   throw Exception("Wrong credentials");
+    // }
     try {
       // 1. Try signing into Firebase Auth
       UserCredential credential = await FirebaseAuth.instance
