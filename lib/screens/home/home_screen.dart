@@ -23,7 +23,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   // Global State
   bool _isBulletinCollapsed = false;
-  bool _showTutorial = false; 
+  bool _showTutorial = false;
+  bool _showFab = false;
+  final ScrollController _scrollController = ScrollController();
   DateTime _currentDate = DateTime.now();
   DateTime _selectedDate = DateTime.now();
 
@@ -34,6 +36,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _checkTutorialStatus();
+    _scrollController.addListener(() {
+      final shouldShow = _scrollController.offset > 80;
+      if (shouldShow != _showFab) {
+        setState(() => _showFab = shouldShow);
+      }
+    });
     TutorialTargetRegistry.forceBulletinOpen = () {
       if (mounted && _isBulletinCollapsed) {
         setState(() {
@@ -60,6 +68,12 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _showTutorial = false;
     });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   String _formatDateKey(DateTime date) {
@@ -174,7 +188,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Stack(
           children: [
             ListView(
-              
+              controller: _scrollController,
               padding: const EdgeInsets.only(bottom: 100),
               children: [
                 // Header Area
@@ -304,21 +318,32 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
 
-            // Floating Action Button (Fixed/Stationary to overlay viewport corner)
             Positioned(
               bottom: 32,
               right: 32,
-              child: Container(
-                key: TutorialTargetRegistry.get('fab-button'),
-                child: FloatingActionButton(
-                  onPressed: _openAddTask,
-                  backgroundColor: nthuPurple,
-                  elevation: 8,
-                  shape: const CircleBorder(),
-                  child: const Icon(
-                    Icons.add_rounded,
-                    color: Colors.white,
-                    size: 32,
+              child: AnimatedSlide(
+                offset: _showFab ? Offset.zero : const Offset(0, 0.3),
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutBack,
+                child: AnimatedOpacity(
+                  opacity: _showFab ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 250),
+                  child: IgnorePointer(
+                    ignoring: !_showFab,
+                    child: Container(
+                      key: TutorialTargetRegistry.get('fab-button'),
+                      child: FloatingActionButton(
+                        onPressed: _openAddTask,
+                        backgroundColor: nthuPurple,
+                        elevation: 8,
+                        shape: const CircleBorder(),
+                        child: const Icon(
+                          Icons.add_rounded,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
