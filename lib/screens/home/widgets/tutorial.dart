@@ -93,10 +93,11 @@ class _TutorialOverlayState extends State<TutorialOverlay>
     TutorialStep(
       targetId: 'fab-button',
       title: 'Add a Task',
-      content: 'Tap the + button to create your first task — you\'ll need one for the next part of the tour.',
+      content:
+          'Tap the + button to create your first task — you\'ll need one for the next part of the tour.',
       action: TutorialAction.waitForNextAppear,
-      padding: 8,
-      borderRadius: 999,
+      padding: 0,
+      borderRadius: 28,
     ),
     TutorialStep(
       targetId: 'add-task-popup',
@@ -123,8 +124,8 @@ class _TutorialOverlayState extends State<TutorialOverlay>
         title: 'Bulletin Board',
         content: 'Swipe left or right to see news.',
         action: TutorialAction.actionTrigger,
-        padding: -10,
-        borderRadius: 30,
+        padding: 0,
+        borderRadius: 40,
         swipeOnly: true,
       ),
       const TutorialStep(
@@ -179,8 +180,8 @@ class _TutorialOverlayState extends State<TutorialOverlay>
         title: 'Check it as done',
         content: 'Tap the checkbox to mark your new task as complete.',
         action: TutorialAction.actionTrigger,
-        padding: -4,
-        borderRadius: 24,
+        padding: 0,
+        borderRadius: 20,
       ),
       const TutorialStep(
         targetId: 'subtask-update-btn',
@@ -326,12 +327,13 @@ class _TutorialOverlayState extends State<TutorialOverlay>
     // We use the actual step targetId rather than hardcoded indices so the list
     // stays correct regardless of emergency-branch injection.
     final currentTargetId = _steps[_currentStep].targetId;
-    final needsDelay = {
-      'bulletin-board-card',   // swipe gesture settle
-      'calendar-week-view',    // swipe gesture settle
-      'subtask-new-item',      // checkbox animation
-      'upcoming-item-0',       // swipe-to-dismiss settle (last occurrence)
-    }.contains(currentTargetId) &&
+    final needsDelay =
+        {
+          'bulletin-board-card', // swipe gesture settle
+          'calendar-week-view', // swipe gesture settle
+          'subtask-new-item', // checkbox animation
+          'upcoming-item-0', // swipe-to-dismiss settle (last occurrence)
+        }.contains(currentTargetId) &&
         // Only the LAST upcoming-item-0 (swipe step) needs the delay,
         // not the first one (tap step).
         !(_steps[_currentStep].targetId == 'upcoming-item-0' &&
@@ -366,7 +368,8 @@ class _TutorialOverlayState extends State<TutorialOverlay>
       // Transitioning into the emergency branch
       await _showFeedback(
         title: "One more thing.",
-        content: "You need at least one task to continue. Let's create one now!",
+        content:
+            "You need at least one task to continue. Let's create one now!",
       );
     } else if (nextTargetId == 'upcoming-item-0' &&
         _steps[nextStepIndex].action == TutorialAction.waitForNextAppear) {
@@ -461,11 +464,23 @@ class _TutorialOverlayState extends State<TutorialOverlay>
       animation: _pulseController,
       builder: (context, child) {
         final pulseExpansion = _pulseController.value * 8.0;
+        final bool keepHighlightTight = {
+          'fab-button',
+          'bulletin-board-card',
+          'subtask-new-item',
+          'subtask-update-btn',
+        }.contains(currentStepInfo.targetId);
+        final effectivePulseExpansion = keepHighlightTight
+            ? 0.0
+            : pulseExpansion;
         final rect = _highlightRect?.inflate(
-          currentStepInfo.padding + pulseExpansion,
+          currentStepInfo.padding + effectivePulseExpansion,
         );
 
         final borderWidth = 2.0 + (_pulseController.value * 3.0);
+        final outlineRect = keepHighlightTight
+            ? rect?.inflate(borderWidth / 2)
+            : rect;
         final borderColor = localPurple.withOpacity(
           0.5 + (_pulseController.value * 0.5),
         );
@@ -475,7 +490,9 @@ class _TutorialOverlayState extends State<TutorialOverlay>
             ClipPath(
               clipper: HoleClipper(
                 holeRect: rect,
-                radius: currentStepInfo.borderRadius + (pulseExpansion / 2),
+                radius:
+                    currentStepInfo.borderRadius +
+                    (effectivePulseExpansion / 2),
               ),
               child: GestureDetector(
                 onTap: () {},
@@ -507,12 +524,13 @@ class _TutorialOverlayState extends State<TutorialOverlay>
 
             if (rect != null)
               Positioned.fromRect(
-                rect: rect,
+                rect: outlineRect!,
                 child: IgnorePointer(
                   child: Container(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(
-                        currentStepInfo.borderRadius + (pulseExpansion / 2),
+                        currentStepInfo.borderRadius +
+                            (effectivePulseExpansion / 2),
                       ),
                       border: Border.all(
                         color: borderColor,
@@ -522,12 +540,9 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                   ),
                 ),
               ),
-              
+
             if (rect != null && currentStepInfo.swipeOnly)
-            Positioned.fromRect(
-              rect: rect,
-              child: _SwipeOnlyGuard(),
-            ),
+              Positioned.fromRect(rect: rect, child: _SwipeOnlyGuard()),
 
             if (_highlightRect != null)
               _buildTooltip(context, currentStepInfo, rect),
@@ -718,7 +733,8 @@ class _TutorialOverlayState extends State<TutorialOverlay>
     Rect? targetRect,
   ) {
     // The calendar-details-popup step has empty title/content — no tooltip card.
-    if (stepInfo.targetId == 'calendar-details-popup-content') return const SizedBox.shrink();
+    if (stepInfo.targetId == 'calendar-details-popup-content')
+      return const SizedBox.shrink();
 
     const Color localPurple = Color(0xFF7A1B7B);
     final size = MediaQuery.of(context).size;
@@ -744,7 +760,10 @@ class _TutorialOverlayState extends State<TutorialOverlay>
     if (stepInfo.targetId == 'add-task-popup') {
       final popupTop = targetRect?.top ?? (size.height * 0.18);
       // Card is ~90 px tall; sit 12 px above the popup with a 24 px side margin.
-      final barTop = (popupTop - 102).clamp(padding.top + 12, size.height - 120);
+      final barTop = (popupTop - 102).clamp(
+        padding.top + 12,
+        size.height - 120,
+      );
 
       return Positioned(
         top: barTop.toDouble(),
@@ -1012,7 +1031,6 @@ class _InteractiveTutorialButton extends StatefulWidget {
 class _InteractiveTutorialButtonState
     extends State<_InteractiveTutorialButton> {
   bool _isHovered = false;
-  bool _isPressed = false;
 
   @override
   Widget build(BuildContext context) {
@@ -1020,14 +1038,9 @@ class _InteractiveTutorialButtonState
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
-        onTapDown: (_) => setState(() => _isPressed = true),
-        onTapUp: (_) {
-          setState(() => _isPressed = false);
-          widget.onPressed();
-        },
-        onTapCancel: () => setState(() => _isPressed = false),
+        onTap: widget.onPressed,
         child: AnimatedScale(
-          scale: _isPressed ? 0.95 : (_isHovered ? 1.03 : 1.0),
+          scale: _isHovered ? 1.03 : 1.0,
           duration: const Duration(milliseconds: 150),
           curve: Curves.easeOutBack,
           child: AnimatedContainer(
@@ -1037,6 +1050,12 @@ class _InteractiveTutorialButtonState
             decoration: BoxDecoration(
               color: widget.color,
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _isHovered
+                    ? Colors.white.withOpacity(0.85)
+                    : Colors.transparent,
+                width: 1.5,
+              ),
               boxShadow: _isHovered
                   ? [
                       BoxShadow(
@@ -1118,12 +1137,13 @@ class _SwipeOnlyGuard extends StatelessWidget {
     return RawGestureDetector(
       gestures: {
         // Claim taps exclusively — they stop here, never reach the widget below
-        TapGestureRecognizer: GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
-          () => TapGestureRecognizer(),
-          (instance) {
-            instance.onTap = () {}; // consume silently
-          },
-        ),
+        TapGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+              () => TapGestureRecognizer(),
+              (instance) {
+                instance.onTap = () {}; // consume silently
+              },
+            ),
         // Do NOT list any pan/swipe recognizer here.
         // Flutter's arena will see no competing pan claim from this layer,
         // so pan gestures fall through to the real widget underneath.
