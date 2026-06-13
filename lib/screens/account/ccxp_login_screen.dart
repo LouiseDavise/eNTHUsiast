@@ -1,13 +1,14 @@
+import 'dart:convert';
+import 'dart:ui';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:dio/dio.dart';
 import 'package:enthusiast/providers/ccxp_data_provider.dart';
 import 'package:enthusiast/routes/app_routes.dart';
-import 'package:enthusiast/widgets/button_circle_back.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:dio/dio.dart';
-import 'dart:convert';
 
 class CcxpLoginScreen extends StatefulWidget {
   const CcxpLoginScreen({super.key});
@@ -20,6 +21,7 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
   final _studentIdController = TextEditingController();
   final _passwordController = TextEditingController();
   final dio = Dio();
+
   bool _isPasswordVisible = false;
   bool _isLoading = false;
 
@@ -36,33 +38,29 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     required final graduationData,
     required final schedule,
   }) async {
-    String email = "$studentId@school.edu";
+    final email = '$studentId@school.edu';
 
     try {
-      // STEP 1: Create the user account in Firebase Authentication
-      UserCredential userCredential = await FirebaseAuth.instance
+      final userCredential = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(email: email, password: password);
 
-      // Get the unique UID Firebase generated for this specific user
-      String? uid = userCredential.user?.uid;
+      final uid = userCredential.user?.uid;
 
       if (uid != null) {
-        // STEP 2: Connect the student data to this authentication account
-        // We use the 'uid' as the Document ID so they are perfectly linked
         await FirebaseFirestore.instance.collection('ccxpUsers').doc(uid).set({
           'graduationData': graduationData,
           'scheduleData': schedule,
           'lastUpdatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
-        print("Successfully authenticated and created profile for student!");
+        debugPrint(
+          'Successfully authenticated and created profile for student!',
+        );
       }
     } on FirebaseAuthException catch (e) {
-      // Handle weak password, email already in use, etc.
-      print("Auth Error: ${e.message}");
+      debugPrint('Auth Error: ${e.message}');
     } catch (e) {
-      // Handle database connection errors
-      print("Database Error: $e");
+      debugPrint('Database Error: $e');
     }
   }
 
@@ -70,27 +68,25 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     required String studentId,
     required String password,
   }) async {
-    final String email = "$studentId@school.edu";
-    final String custPass = "$studentId@passqwert";
+    final email = '$studentId@school.edu';
+    final custPass = '$studentId@passqwert';
     String? uid;
-    bool check = await _isCredentialCorrect(studentId, password);
-    // if (!check) {
-    //   throw Exception("Wrong credentials");
-    // }
+
+    await _isCredentialCorrect(studentId, password);
+
     try {
-      // 1. Try signing into Firebase Auth
-      UserCredential credential = await FirebaseAuth.instance
-          .signInWithEmailAndPassword(email: email, password: custPass);
+      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: custPass,
+      );
       uid = credential.user?.uid;
-      print("Login successful via Firebase Auth!");
+      debugPrint('Login successful via Firebase Auth!');
     } on FirebaseAuthException catch (e) {
-      // 2. If user doesn't exist in Firebase Auth, fetch from API and register them
       if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
-        print("User not found in Firebase. Fetching from API...");
+        debugPrint('User not found in Firebase. Fetching from API...');
 
         final apiData = await _fetchCcxpDataFromApi(studentId, password);
 
-        // This registers them AND uploads their API data to Firestore using their new UID
         await registerFirebase(
           studentId: studentId,
           password: custPass,
@@ -98,11 +94,8 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
           schedule: apiData['scheduleData'],
         );
 
-        // After successful registration, the user is already signed in by registerFirebase.
-        // We just grab the current user UID.
         uid = FirebaseAuth.instance.currentUser?.uid;
       } else {
-        // Rethrow other auth errors (e.g., wrong-password) directly
         rethrow;
       }
     }
@@ -111,7 +104,6 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
       throw Exception('Authentication yielded an invalid user token.');
     }
 
-    // 3. Fetch the student profile from Firestore using the UID
     final userDoc = await FirebaseFirestore.instance
         .collection('ccxpUsers')
         .doc(uid)
@@ -125,23 +117,18 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     return userData;
   }
 
-  // Updated login UI mechanism triggered by your button
   void _handleLogin() async {
-    if (_studentIdController.text.isEmpty || _passwordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter both Student ID and Password'),
-        ),
-      );
+    final studentId = _studentIdController.text.trim();
+    final password = _passwordController.text;
+
+    if (studentId.isEmpty || password.isEmpty) {
+      _showMessage('Please enter both Student ID and Password');
       return;
     }
 
     setState(() => _isLoading = true);
-    final studentId = _studentIdController.text.trim();
-    final password = _passwordController.text;
 
     try {
-      // Run our robust firebase login orchestrator
       final userData = await loginFirebase(
         studentId: studentId,
         password: password,
@@ -151,7 +138,6 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
           userData['graduationData'] as Map<String, dynamic>?;
       final schedule = userData['scheduleData'];
 
-      // Send the data down to your global state provider
       if (graduationData != null && schedule != null) {
         if (mounted) {
           Provider.of<CcxpDataProvider>(
@@ -168,20 +154,34 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
         Navigator.pushReplacementNamed(context, AppRoutes.mainScreen);
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
+      if (!mounted) return;
 
-        // Friendly error messages depending on what broke
-        String errorMsg = e.toString();
-        if (e is FirebaseAuthException && e.code == 'wrong-password') {
-          errorMsg = "Incorrect password. Please try again.";
-        }
+      setState(() => _isLoading = false);
 
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Login failed: $errorMsg')));
+      var errorMsg = e.toString();
+      if (e is FirebaseAuthException && e.code == 'wrong-password') {
+        errorMsg = 'Incorrect password. Please try again.';
       }
+
+      _showMessage('Login failed: $errorMsg');
     }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: GoogleFonts.dmSans(fontWeight: FontWeight.w700),
+        ),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: _LoginColors.deepPurple,
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+    );
   }
 
   Future<bool> _isCredentialCorrect(String studentId, String password) async {
@@ -196,6 +196,7 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
         return true;
       }
     }
+
     return false;
   }
 
@@ -209,7 +210,7 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
       data: {'uid': studentId, 'pw': password},
     );
 
-    print("login succeed");
+    debugPrint('login succeed');
 
     if (response.statusCode != 200) {
       throw Exception('Login API failed with status ${response.statusCode}.');
@@ -253,239 +254,507 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      resizeToAvoidBottomInset: true,
+      backgroundColor: _LoginColors.background,
       body: SingleChildScrollView(
-        child: SizedBox(
-          height: MediaQuery.of(context).size.height,
-          child: Stack(
-            children: [
-              // ── Background Header Gradient ─────────────────────────────────
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: MediaQuery.of(context).size.height * 0.45,
-                child: Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFF7E22CE), // NTHU Purple-ish
-                        Color(0xFF3B82F6), // Blue accent
-                      ],
-                    ),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.only(bottom: 24 + bottomInset),
+        child: Column(
+          children: [
+            const _HeroHeader(),
+            Transform.translate(
+              offset: const Offset(0, -42),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 430),
+                    child: _buildLoginCard(),
                   ),
                 ),
               ),
+            ),
+            Transform.translate(
+              offset: const Offset(0, -22),
+              child: TextButton(
+                onPressed: () {
+                  // TODO: Open NTHU forgot password website.
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: _LoginColors.mutedText,
+                ),
+                child: Text(
+                  'Forgot your password?',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-              // ── Main Content ───────────────────────────────────────────────
-              SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                  child: Column(
-                    children: [
-                      // ── App Branding ───────────────────────────────────────
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.school_rounded,
-                          size: 48,
-                          color: Colors.white,
-                        ),
+  Widget _buildLoginCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(24, 26, 24, 28),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: Colors.white, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: _LoginColors.deepPurple.withValues(alpha: 0.14),
+            blurRadius: 36,
+            offset: const Offset(0, 20),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Sign in to CCXP',
+            style: GoogleFonts.dmSans(
+              fontSize: 25,
+              fontWeight: FontWeight.w900,
+              color: _LoginColors.primaryText,
+              height: 1.05,
+              letterSpacing: -0.6,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Access your academic records, schedule, and graduation progress.',
+            style: GoogleFonts.dmSans(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: _LoginColors.mutedText,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 26),
+          _AnimatedLoginField(
+            controller: _studentIdController,
+            label: 'Student ID',
+            hintText: 'Enter your student ID',
+            icon: Icons.badge_outlined,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.username],
+          ),
+          const SizedBox(height: 14),
+          _AnimatedLoginField(
+            controller: _passwordController,
+            label: 'Password',
+            hintText: 'Enter your CCXP password',
+            icon: Icons.lock_outline_rounded,
+            obscureText: !_isPasswordVisible,
+            textInputAction: TextInputAction.done,
+            autofillHints: const [AutofillHints.password],
+            onSubmitted: (_) => _handleLogin(),
+            suffixIcon: IconButton(
+              tooltip: _isPasswordVisible ? 'Hide password' : 'Show password',
+              onPressed: () {
+                setState(() {
+                  _isPasswordVisible = !_isPasswordVisible;
+                });
+              },
+              icon: Icon(
+                _isPasswordVisible
+                    ? Icons.visibility_off_rounded
+                    : Icons.visibility_rounded,
+                color: _LoginColors.mutedText,
+                size: 21,
+              ),
+            ),
+          ),
+          const SizedBox(height: 22),
+          const _TrustRow(),
+          const SizedBox(height: 24),
+          _GradientLoginButton(
+            isLoading: _isLoading,
+            onPressed: _isLoading ? null : _handleLogin,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LoginColors {
+  static const background = Color(0xFFF6F3FB);
+  static const primaryPurple = Color(0xFF7B2CBF);
+  static const deepPurple = Color(0xFF5A189A);
+  static const royalPurple = Color(0xFF3C096C);
+  static const blue = Color(0xFF5A189A);
+  static const primaryText = Color(0xFF111827);
+  static const mutedText = Color(0xFF5B6172);
+  static const border = Color(0xFFE5E0EE);
+}
+
+class _HeroHeader extends StatelessWidget {
+  const _HeroHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).padding.top;
+
+    return Container(
+      width: double.infinity,
+      height: 292 + topPadding,
+      padding: EdgeInsets.fromLTRB(24, topPadding + 34, 24, 72),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            _LoginColors.royalPurple,
+            _LoginColors.primaryPurple,
+            _LoginColors.blue,
+          ],
+          stops: [0.0, 0.54, 1.0],
+        ),
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(38),
+          bottomRight: Radius.circular(38),
+        ),
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            top: -48,
+            left: -60,
+            child: _GlowCircle(
+              size: 180,
+              color: Colors.white.withValues(alpha: 0.13),
+            ),
+          ),
+          Positioned(
+            right: -84,
+            bottom: -34,
+            child: _GlowCircle(
+              size: 220,
+              color: Colors.white.withValues(alpha: 0.12),
+            ),
+          ),
+          Positioned.fill(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: [
+                Container(
+                  width: 82,
+                  height: 82,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.45),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.14),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'eNTHUsiast',
-                        style: GoogleFonts.dmSans(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Academic Information System (CCXP)',
-                        style: GoogleFonts.dmSans(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white.withOpacity(0.9),
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-
-                      const SizedBox(height: 48),
-
-                      // ── Login Form Card ────────────────────────────────────
-                      Container(
-                        padding: const EdgeInsets.all(32),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
-                              blurRadius: 24,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Sign In',
-                              style: GoogleFonts.dmSans(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFF111827),
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-
-                            // Student ID Field
-                            TextField(
-                              controller: _studentIdController,
-                              keyboardType: TextInputType.number,
-                              textInputAction: TextInputAction.next,
-                              style: GoogleFonts.dmSans(color: Colors.black),
-                              decoration: InputDecoration(
-                                labelText: 'Student ID',
-                                labelStyle: GoogleFonts.dmSans(
-                                  color: const Color(0xFF6B7280),
-                                ),
-                                prefixIcon: const Icon(
-                                  Icons.badge_outlined,
-                                  color: Color(0xFF9CA3AF),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFE5E7EB),
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFF7E22CE),
-                                    width: 2,
-                                  ),
-                                ),
-                                filled: true,
-                                fillColor: const Color(0xFFF9FAFB),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-
-                            // Password Field
-                            TextField(
-                              controller: _passwordController,
-                              obscureText: !_isPasswordVisible,
-                              textInputAction: TextInputAction.done,
-                              onSubmitted: (_) => _handleLogin(),
-                              style: GoogleFonts.dmSans(color: Colors.black),
-                              decoration: InputDecoration(
-                                labelText: 'Password',
-                                labelStyle: GoogleFonts.dmSans(
-                                  color: const Color(0xFF6B7280),
-                                ),
-                                prefixIcon: const Icon(
-                                  Icons.lock_outline_rounded,
-                                  color: Color(0xFF9CA3AF),
-                                ),
-                                suffixIcon: IconButton(
-                                  icon: Icon(
-                                    _isPasswordVisible
-                                        ? Icons.visibility_off
-                                        : Icons.visibility,
-                                    color: const Color(0xFF9CA3AF),
-                                  ),
-                                  onPressed: () {
-                                    setState(
-                                      () => _isPasswordVisible =
-                                          !_isPasswordVisible,
-                                    );
-                                  },
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFE5E7EB),
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFF7E22CE),
-                                    width: 2,
-                                  ),
-                                ),
-                                filled: true,
-                                fillColor: const Color(0xFFF9FAFB),
-                              ),
-                            ),
-                            const SizedBox(height: 32),
-
-                            // Login Button
-                            SizedBox(
-                              width: double.infinity,
-                              height: 52,
-                              child: FilledButton(
-                                onPressed: _isLoading ? null : _handleLogin,
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xFF7E22CE),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                child: _isLoading
-                                    ? const SizedBox(
-                                        height: 24,
-                                        width: 24,
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white,
-                                          strokeWidth: 2.5,
-                                        ),
-                                      )
-                                    : Text(
-                                        'Login to CCXP',
-                                        style: GoogleFonts.dmSans(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // ── Helpful Links ──────────────────────────────────────
-                      TextButton(
-                        onPressed: () {
-                          // TODO: Open NTHU forgot password website
-                        },
-                        child: Text(
-                          'Forgot your password?',
-                          style: GoogleFonts.dmSans(
-                            color: const Color(0xFF6B7280),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.school_rounded,
+                    size: 44,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'eNTHUsiast',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 31,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    height: 1,
+                    letterSpacing: -0.8,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black.withValues(alpha: 0.24),
+                        blurRadius: 14,
+                        offset: const Offset(0, 4),
                       ),
                     ],
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 10),
+                Text(
+                  'Academic Information System (CCXP)',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white.withValues(alpha: 0.94),
+                    letterSpacing: 0.1,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black.withValues(alpha: 0.18),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GlowCircle extends StatelessWidget {
+  const _GlowCircle({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return ImageFiltered(
+      imageFilter: ImageFilter.blur(sigmaX: 34, sigmaY: 34),
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      ),
+    );
+  }
+}
+
+class _AnimatedLoginField extends StatefulWidget {
+  const _AnimatedLoginField({
+    required this.controller,
+    required this.label,
+    required this.hintText,
+    required this.icon,
+    this.keyboardType,
+    this.textInputAction,
+    this.obscureText = false,
+    this.suffixIcon,
+    this.onSubmitted,
+    this.autofillHints,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final String hintText;
+  final IconData icon;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final bool obscureText;
+  final Widget? suffixIcon;
+  final ValueChanged<String>? onSubmitted;
+  final Iterable<String>? autofillHints;
+
+  @override
+  State<_AnimatedLoginField> createState() => _AnimatedLoginFieldState();
+}
+
+class _AnimatedLoginFieldState extends State<_AnimatedLoginField> {
+  late final FocusNode _focusNode;
+  bool _hasFocus = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _focusNode = FocusNode()
+      ..addListener(() {
+        setState(() {
+          _hasFocus = _focusNode.hasFocus;
+        });
+      });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final activeColor = _hasFocus
+        ? _LoginColors.primaryPurple
+        : _LoginColors.border;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      decoration: BoxDecoration(
+        color: _hasFocus ? Colors.white : const Color(0xFFFAFAFD),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: activeColor, width: _hasFocus ? 1.5 : 1),
+        boxShadow: _hasFocus
+            ? [
+                BoxShadow(
+                  color: _LoginColors.primaryPurple.withValues(alpha: 0.12),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : null,
+      ),
+      child: TextField(
+        controller: widget.controller,
+        focusNode: _focusNode,
+        obscureText: widget.obscureText,
+        keyboardType: widget.keyboardType,
+        textInputAction: widget.textInputAction,
+        onSubmitted: widget.onSubmitted,
+        autofillHints: widget.autofillHints,
+        style: GoogleFonts.dmSans(
+          color: _LoginColors.primaryText,
+          fontSize: 15,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.1,
+        ),
+        decoration: InputDecoration(
+          labelText: widget.label,
+          hintText: widget.hintText,
+          labelStyle: GoogleFonts.dmSans(
+            color: _hasFocus
+                ? _LoginColors.primaryPurple
+                : _LoginColors.mutedText,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
+          hintStyle: GoogleFonts.dmSans(
+            color: const Color(0xFF8B91A3),
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
+          prefixIcon: Icon(
+            widget.icon,
+            color: _hasFocus
+                ? _LoginColors.primaryPurple
+                : const Color(0xFF9CA3AF),
+            size: 22,
+          ),
+          suffixIcon: widget.suffixIcon,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+        ),
+      ),
+    );
+  }
+}
+
+class _TrustRow extends StatelessWidget {
+  const _TrustRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: _LoginColors.primaryPurple.withValues(alpha: 0.10),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.verified_user_outlined,
+            color: _LoginColors.deepPurple,
+            size: 16,
+          ),
+        ),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Text(
+            'Secure student authentication',
+            style: GoogleFonts.dmSans(
+              color: _LoginColors.mutedText,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _GradientLoginButton extends StatelessWidget {
+  const _GradientLoginButton({
+    required this.isLoading,
+    required this.onPressed,
+  });
+
+  final bool isLoading;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [_LoginColors.primaryPurple, _LoginColors.deepPurple],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: _LoginColors.deepPurple.withValues(alpha: 0.30),
+            blurRadius: 22,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(18),
+          child: SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: Center(
+              child: isLoading
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2.6,
+                      ),
+                    )
+                  : Text(
+                      'LOGIN TO CCXP',
+                      style: GoogleFonts.dmSans(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.6,
+                      ),
+                    ),
+            ),
           ),
         ),
       ),
