@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:dio/dio.dart';
 import 'dart:convert';
 
@@ -30,8 +31,103 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     super.dispose();
   }
 
+  Future<void> registerFirebase({
+    required String studentId,
+    required String password,
+    required final graduationData,
+    required final schedule,
+  }) async {
+    String email = "$studentId@school.edu";
+
+    try {
+      // STEP 1: Create the user account in Firebase Authentication
+      UserCredential userCredential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(email: email, password: password);
+
+      // Get the unique UID Firebase generated for this specific user
+      String? uid = userCredential.user?.uid;
+
+      if (uid != null) {
+        // STEP 2: Connect the student data to this authentication account
+        // We use the 'uid' as the Document ID so they are perfectly linked
+        await FirebaseFirestore.instance.collection('ccxpUsers').doc(uid).set({
+          'graduationData': graduationData,
+          'scheduleData': schedule,
+          'lastUpdatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+        print("Successfully authenticated and created profile for student!");
+      }
+    } on FirebaseAuthException catch (e) {
+      // Handle weak password, email already in use, etc.
+      print("Auth Error: ${e.message}");
+    } catch (e) {
+      // Handle database connection errors
+      print("Database Error: $e");
+    }
+  }
+
+  Future<Map<String, dynamic>> loginFirebase({
+    required String studentId,
+    required String password,
+  }) async {
+    final String email = "$studentId@school.edu";
+    final String custPass = "$studentId@passqwert";
+    String? uid;
+    bool check = await _isCredentialCorrect(studentId, password);
+    // if (!check) {
+    //   throw Exception("Wrong credentials");
+    // }
+    try {
+      // 1. Try signing into Firebase Auth
+      UserCredential credential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: custPass);
+      uid = credential.user?.uid;
+      print("Login successful via Firebase Auth!");
+    } on FirebaseAuthException catch (e) {
+      // 2. If user doesn't exist in Firebase Auth, fetch from API and register them
+      if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
+        print("User not found in Firebase. Fetching from API...");
+
+        final apiData = await _fetchCcxpDataFromApi(studentId, password);
+
+        // This registers them AND uploads their API data to Firestore using their new UID
+        await registerFirebase(
+          studentId: studentId,
+          password: custPass,
+          graduationData: apiData['graduationData'],
+          schedule: apiData['scheduleData'],
+        );
+
+        // After successful registration, the user is already signed in by registerFirebase.
+        // We just grab the current user UID.
+        uid = FirebaseAuth.instance.currentUser?.uid;
+      } else {
+        // Rethrow other auth errors (e.g., wrong-password) directly
+        rethrow;
+      }
+    }
+
+    if (uid == null) {
+      throw Exception('Authentication yielded an invalid user token.');
+    }
+
+    // 3. Fetch the student profile from Firestore using the UID
+    final userDoc = await FirebaseFirestore.instance
+        .collection('ccxpUsers')
+        .doc(uid)
+        .get();
+
+    final userData = userDoc.data();
+    if (userData == null) {
+      throw Exception('Student database profile could not be found.');
+    }
+
+    return userData;
+  }
+
+  // Updated login UI mechanism triggered by your button
   void _handleLogin() async {
-    // Basic validation
     if (_studentIdController.text.isEmpty || _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -46,38 +142,17 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     final password = _passwordController.text;
 
     try {
-      Map<String, dynamic>? graduationData;
-      dynamic schedule;
-      // if (!Platform.isLinux) {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('ccxpUsers')
-          .doc(studentId)
-          .get();
+      // Run our robust firebase login orchestrator
+      final userData = await loginFirebase(
+        studentId: studentId,
+        password: password,
+      );
 
-      if (userDoc.exists) {
-        final userData = userDoc.data();
-        graduationData = userData?['graduationData'] as Map<String, dynamic>?;
-        schedule = userData?['scheduleData'];
-      }
-      // }
+      final graduationData =
+          userData['graduationData'] as Map<String, dynamic>?;
+      final schedule = userData['scheduleData'];
 
-      if (graduationData == null || schedule == null) {
-        final apiResult = await _fetchCcxpDataFromApi(studentId, password);
-        graduationData = apiResult['graduationData'] as Map<String, dynamic>?;
-        schedule = apiResult['scheduleData'];
-
-        if (graduationData != null && schedule != null) {
-          await FirebaseFirestore.instance
-              .collection('ccxpUsers')
-              .doc(studentId)
-              .set({
-                'graduationData': graduationData,
-                'scheduleData': schedule,
-                'lastUpdatedAt': FieldValue.serverTimestamp(),
-              }, SetOptions(merge: true));
-        }
-      }
-
+      // Send the data down to your global state provider
       if (graduationData != null && schedule != null) {
         if (mounted) {
           Provider.of<CcxpDataProvider>(
@@ -86,7 +161,7 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
           ).setData(graduationData: graduationData, scheduleData: schedule);
         }
       } else {
-        throw Exception('Unable to retrieve CCXP data.');
+        throw Exception('Unable to parse retrieved CCXP data structure.');
       }
 
       if (mounted) {
@@ -96,11 +171,33 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Login failed: ${e.toString()}')),
-        );
+
+        // Friendly error messages depending on what broke
+        String errorMsg = e.toString();
+        if (e is FirebaseAuthException && e.code == 'wrong-password') {
+          errorMsg = "Incorrect password. Please try again.";
+        }
+
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Login failed: $errorMsg')));
       }
     }
+  }
+
+  Future<bool> _isCredentialCorrect(String studentId, String password) async {
+    const url = 'https://prowler-underpaid-smudgy.ngrok-free.dev';
+    final response = await dio.post(
+      '$url/login',
+      data: {'uid': studentId, 'pw': password},
+    );
+
+    if (response.statusCode == 200) {
+      if (response.data['sessKey'] != null) {
+        return true;
+      }
+    }
+    return false;
   }
 
   Future<Map<String, dynamic>> _fetchCcxpDataFromApi(
@@ -188,15 +285,6 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 24.0),
                   child: Column(
                     children: [
-                      Align(
-                        alignment: Alignment.topLeft,
-                        child: CircleBackButton(
-                          onTap: () => Navigator.pop(context),
-                        ),
-                      ),
-
-                      const SizedBox(height: 40),
-
                       // ── App Branding ───────────────────────────────────────
                       Container(
                         padding: const EdgeInsets.all(16),
