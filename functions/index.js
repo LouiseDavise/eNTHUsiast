@@ -262,13 +262,15 @@ exports.parseCurriculumPdfFromBytes = onCall(
         const uid = request.auth.uid;
         const fileName = request.data.fileName || "curriculum.pdf";
         const pdfBase64 = request.data.pdfBase64 || "";
+        const studentIdFromClient = request.data.studentId || null;
 
-        const userProfileDoc = await db.collection("users").doc(uid).get();
-        const userProfile = userProfileDoc.data() || {};
+        const ccxpUserDoc = await db.collection("ccxpUsers").doc(uid).get();
+        const ccxpUser = ccxpUserDoc.data() || {};
 
         const studentId =
-            userProfile.studentId ||
-            userProfile.accountStudentId ||
+            ccxpUser.studentId ||
+            ccxpUser.accountStudentId ||
+            studentIdFromClient ||
             null;
 
         if (!studentId) {
@@ -287,7 +289,7 @@ exports.parseCurriculumPdfFromBytes = onCall(
 
         const curriculumRef = db
             .collection("ccxpUsers")
-            .doc(studentId)
+            .doc(uid)
             .collection("curriculum")
             .doc("current");
 

@@ -22,21 +22,62 @@ class CurriculumUploadService {
     return user.uid;
   }
 
+  DocumentReference<Map<String, dynamic>> get _ccxpUserRef {
+    return _firestore.collection('ccxpUsers').doc(_uid);
+  }
+
+  DocumentReference<Map<String, dynamic>> get _curriculumRef {
+    return _ccxpUserRef.collection('curriculum').doc('current');
+  }
+
+  String? _studentIdFromEmail(String? email) {
+    if (email == null) return null;
+
+    final prefix = email.split('@').first.trim();
+    final looksLikeStudentId = RegExp(r'^\d{6,12}$').hasMatch(prefix);
+
+    return looksLikeStudentId ? prefix : null;
+  }
+
   Future<String> _getCurrentStudentId() async {
-    final uid = _uid;
+    final user = _auth.currentUser;
 
-    final userDoc = await _firestore.collection('users').doc(uid).get();
-    final data = userDoc.data();
+    if (user == null) {
+      throw Exception('User is not logged in.');
+    }
 
-    final studentId =
+    final doc = await _ccxpUserRef.get();
+    final data = doc.data();
+
+    final savedStudentId =
         data?['studentId']?.toString() ??
         data?['accountStudentId']?.toString();
 
-    if (studentId == null || studentId.isEmpty) {
-      throw Exception('Cannot find student ID for current user.');
+    if (savedStudentId != null && savedStudentId.trim().isNotEmpty) {
+      return savedStudentId.trim();
     }
 
-    return studentId;
+    // Fallback for the new Firebase Auth flow:
+    // user.email should look like 113006203@school.edu.
+    // If ccxpUsers/{uid} does not have studentId yet, rebuild it from email.
+    final emailStudentId = _studentIdFromEmail(user.email);
+
+    if (emailStudentId != null && emailStudentId.isNotEmpty) {
+      await _ccxpUserRef.set({
+        'studentId': emailStudentId,
+        'accountStudentId': emailStudentId,
+        'authUid': user.uid,
+        'loginSource': 'ccxp',
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      return emailStudentId;
+    }
+
+    throw Exception(
+      'Cannot find student ID in ccxpUsers for current Firebase user. '
+      'Please log out, log in with CCXP again, then upload curriculum.',
+    );
   }
 
   Future<bool> pickAndUploadCurriculumPdf() async {
@@ -66,14 +107,9 @@ class CurriculumUploadService {
       throw Exception('Please upload a PDF file.');
     }
 
-    final curriculumRef = _firestore
-        .collection('ccxpUsers')
-        .doc(studentId)
-        .collection('curriculum')
-        .doc('current');
-
-    await curriculumRef.set({
+    await _curriculumRef.set({
       'studentId': studentId,
+      'authUid': _uid,
       'status': 'uploading',
       'fileName': fileName,
       'updatedAt': FieldValue.serverTimestamp(),
@@ -104,26 +140,14 @@ class CurriculumUploadService {
   }
 
   Stream<DocumentSnapshot<Map<String, dynamic>>> watchCurriculumStatus() async* {
-    final studentId = await _getCurrentStudentId();
-
-    yield* _firestore
-        .collection('ccxpUsers')
-        .doc(studentId)
-        .collection('curriculum')
-        .doc('current')
-        .snapshots();
+    await _getCurrentStudentId();
+    yield* _curriculumRef.snapshots();
   }
 
   Future<Map<String, dynamic>?> fetchCurriculumForBaoBao() async {
-    final studentId = await _getCurrentStudentId();
+    await _getCurrentStudentId();
 
-    final doc = await _firestore
-        .collection('ccxpUsers')
-        .doc(studentId)
-        .collection('curriculum')
-        .doc('current')
-        .get();
-
+    final doc = await _curriculumRef.get();
     final data = doc.data();
 
     if (data == null) return null;

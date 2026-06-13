@@ -1,6 +1,5 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import '../utilities/data.dart';
 import '../utilities/models.dart';
 import 'tutorial.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';

@@ -1,8 +1,6 @@
-import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../utilities/data.dart';
 import '../utilities/models.dart';
 import 'tutorial.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';

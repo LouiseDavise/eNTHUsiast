@@ -4,7 +4,6 @@ import 'package:enthusiast/widgets/button_circle_back.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import '../../theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:dio/dio.dart';
@@ -51,19 +50,20 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
         // STEP 2: Connect the student data to this authentication account
         // We use the 'uid' as the Document ID so they are perfectly linked
         await FirebaseFirestore.instance.collection('ccxpUsers').doc(uid).set({
+          'studentId': studentId,
+          'accountStudentId': studentId,
+          'authUid': uid,
+          'loginSource': 'ccxp',
           'graduationData': graduationData,
           'scheduleData': schedule,
           'lastUpdatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
-        print("Successfully authenticated and created profile for student!");
       }
     } on FirebaseAuthException catch (e) {
       // Handle weak password, email already in use, etc.
-      print("Auth Error: ${e.message}");
     } catch (e) {
       // Handle database connection errors
-      print("Database Error: $e");
     }
   }
 
@@ -83,12 +83,9 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
       UserCredential credential = await FirebaseAuth.instance
           .signInWithEmailAndPassword(email: email, password: custPass);
       uid = credential.user?.uid;
-      print("Login successful via Firebase Auth!");
     } on FirebaseAuthException catch (e) {
       // 2. If user doesn't exist in Firebase Auth, fetch from API and register them
       if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
-        print("User not found in Firebase. Fetching from API...");
-
         final apiData = await _fetchCcxpDataFromApi(studentId, password);
 
         // This registers them AND uploads their API data to Firestore using their new UID
@@ -112,7 +109,16 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
       throw Exception('Authentication yielded an invalid user token.');
     }
 
-    // 3. Fetch the student profile from Firestore using the UID
+    await FirebaseFirestore.instance.collection('ccxpUsers').doc(uid).set({
+      'studentId': studentId,
+      'accountStudentId': studentId,
+      'authUid': uid,
+      'loginSource': 'ccxp',
+      'lastLoginAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    // 3. Fetch the student profile from Firestore using the Firebase UID.
+    // Do not use ccxpUsers/{studentId}; that old path can be removed.
     final userDoc = await FirebaseFirestore.instance
         .collection('ccxpUsers')
         .doc(uid)

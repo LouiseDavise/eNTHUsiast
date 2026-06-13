@@ -2,6 +2,7 @@ import 'package:enthusiast/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../screens/account/settings/settings_screen.dart';
 import '../theme/app_theme.dart';
 
 class SettingsMenuWidget extends StatelessWidget {
@@ -53,7 +54,12 @@ class SettingsMenuWidget extends StatelessWidget {
         iconColor: const Color(0xFF6B7280),
         iconBg: const Color(0xFFF3F4F6),
         label: 'Settings',
-        onTap: () => _showComingSoon(context, 'Settings'),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SettingsScreen()),
+          );
+        },
       ),
     ];
 
@@ -63,21 +69,6 @@ class SettingsMenuWidget extends StatelessWidget {
         const SizedBox(height: 16),
         _LogoutButton(onTap: onLogout),
       ],
-    );
-  }
-
-  void _showComingSoon(BuildContext context, String label) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '$label coming soon',
-          style: GoogleFonts.dmSans(fontWeight: FontWeight.w500),
-        ),
-        backgroundColor: AppTheme.primary,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
-      ),
     );
   }
 }

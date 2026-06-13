@@ -11,7 +11,6 @@ class CalendarWidget extends StatefulWidget {
 
 class _CalendarWidgetState extends State<CalendarWidget> {
   // Current date: 2026-05-05
-  late DateTime _focusedDate;
   late DateTime _selectedDate;
   late DateTime _today;
 
@@ -19,7 +18,6 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   void initState() {
     super.initState();
     _today = DateTime(2026, 5, 5);
-    _focusedDate = DateTime(2026, 5, 1);
     _selectedDate = _today;
   }
 

@@ -2,7 +2,6 @@ import 'package:enthusiast/providers/ccxp_data_provider.dart';
 import 'package:enthusiast/screens/account/widgets/header_menu_widget.dart';
 import 'package:enthusiast/screens/account/widgets/transcript_card_widget.dart';
 import 'package:enthusiast/theme/app_theme.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
