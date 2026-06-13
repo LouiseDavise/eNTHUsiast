@@ -1,14 +1,15 @@
-import 'dart:convert';
-import 'dart:ui';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:dio/dio.dart';
 import 'package:enthusiast/providers/ccxp_data_provider.dart';
 import 'package:enthusiast/routes/app_routes.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:enthusiast/widgets/button_circle_back.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:dio/dio.dart';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'dart:ui';
 
 class CcxpLoginScreen extends StatefulWidget {
   const CcxpLoginScreen({super.key});
@@ -21,7 +22,6 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
   final _studentIdController = TextEditingController();
   final _passwordController = TextEditingController();
   final dio = Dio();
-
   bool _isPasswordVisible = false;
   bool _isLoading = false;
 
@@ -33,38 +33,39 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
   }
 
   Future<void> registerFirebase({
-    required String studentId,
+    required String email,
     required String password,
     required final graduationData,
     required final schedule,
+    // required final pw,
   }) async {
-    final email = '$studentId@school.edu';
+    // String email = "$studentId@school.edu";
 
     try {
-      final userCredential = await FirebaseAuth.instance
+      // STEP 1: Create the user account in Firebase Authentication
+      UserCredential userCredential = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(email: email, password: password);
 
-      final uid = userCredential.user?.uid;
+      // Get the unique UID Firebase generated for this specific user
+      String? uid = userCredential.user?.uid;
 
       if (uid != null) {
+        // STEP 2: Connect the student data to this authentication account
+        // We use the 'uid' as the Document ID so they are perfectly linked
         await FirebaseFirestore.instance.collection('ccxpUsers').doc(uid).set({
-          'studentId': studentId,
-          'accountStudentId': studentId,
-          'authUid': uid,
-          'loginSource': 'ccxp',
           'graduationData': graduationData,
           'scheduleData': schedule,
           'lastUpdatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
-        debugPrint(
-          'Successfully authenticated and created profile for student!',
-        );
+        print("Successfully authenticated and created profile for student!");
       }
     } on FirebaseAuthException catch (e) {
-      debugPrint('Auth Error: ${e.message}');
+      // Handle weak password, email already in use, etc.
+      print("Auth Error: ${e.message}");
     } catch (e) {
-      debugPrint('Database Error: $e');
+      // Handle database connection errors
+      print("Database Error: $e");
     }
   }
 
@@ -72,58 +73,65 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     required String studentId,
     required String password,
   }) async {
-    final email = '$studentId@school.edu';
-    final custPass = '$studentId@passqwert';
+    final String email = "$studentId@school.edu";
     String? uid;
+    dynamic userDoc = null;
+    dynamic userData = null;
+    // bool check = await _isCredentialCorrect(studentId, password);
+    // if (!check) {
+    //   throw Exception("Wrong credentials");
+    // }
 
-    await _isCredentialCorrect(studentId, password);
+    // 1. Try signing into Firebase Auth
+    final snapshot = await FirebaseFirestore.instance
+        .collection('ccxpUsers')
+        .where('graduationData.studentInfo.studentId', isEqualTo: studentId)
+        .limit(1)
+        .get();
+    print(snapshot.docs.isEmpty);
+    if (snapshot.docs.isEmpty) {
+      print("User not found in Firebase. Fetching from API...");
 
-    try {
-      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+      final apiData = await _fetchCcxpDataFromApi(studentId, password);
+
+      // final newPw = hashPassword(password);
+      // This registers them AND uploads their API data to Firestore using their new UID
+      await registerFirebase(
         email: email,
-        password: custPass,
+        password: hashPassword(password),
+        graduationData: apiData['graduationData'],
+        schedule: apiData['scheduleData'],
+        // pw: newPw,
       );
-      uid = credential.user?.uid;
-      debugPrint('Login successful via Firebase Auth!');
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
-        debugPrint('User not found in Firebase. Fetching from API...');
 
-        final apiData = await _fetchCcxpDataFromApi(studentId, password);
-
-        await registerFirebase(
-          studentId: studentId,
-          password: custPass,
-          graduationData: apiData['graduationData'],
-          schedule: apiData['scheduleData'],
-        );
-
-        uid = FirebaseAuth.instance.currentUser?.uid;
-      } else {
+      // After successful registration, the user is already signed in by registerFirebase.
+      // We just grab the current user UID.
+      uid = FirebaseAuth.instance.currentUser?.uid;
+    } else {
+      try {
+        UserCredential credential = await FirebaseAuth.instance
+            .signInWithEmailAndPassword(
+              email: email,
+              password: hashPassword(password),
+            );
+        uid = credential.user?.uid;
+        userDoc = await FirebaseFirestore.instance
+            .collection('ccxpUsers')
+            .doc(uid)
+            .get();
+        userData = userDoc.data();
+      } on FirebaseAuthException catch (e) {
         rethrow;
       }
     }
 
-    if (uid == null) {
-      throw Exception('Authentication yielded an invalid user token.');
-    }
-
-    await FirebaseFirestore.instance.collection('ccxpUsers').doc(uid).set({
-      'studentId': studentId,
-      'accountStudentId': studentId,
-      'authUid': uid,
-      'loginSource': 'ccxp',
-      'lastLoginAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
-    // 3. Fetch the student profile from Firestore using the Firebase UID.
-    // Do not use ccxpUsers/{studentId}; that old path can be removed.
-    final userDoc = await FirebaseFirestore.instance
+    // 3. Fetch the student profile from Firestore using the UID
+    userDoc = await FirebaseFirestore.instance
         .collection('ccxpUsers')
         .doc(uid)
         .get();
 
-    final userData = userDoc.data();
+    userData = userDoc.data();
     if (userData == null) {
       throw Exception('Student database profile could not be found.');
     }
@@ -131,27 +139,34 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     return userData;
   }
 
+  // Updated login UI mechanism triggered by your button
   void _handleLogin() async {
-    final studentId = _studentIdController.text.trim();
-    final password = _passwordController.text;
-
-    if (studentId.isEmpty || password.isEmpty) {
-      _showMessage('Please enter both Student ID and Password');
+    if (_studentIdController.text.isEmpty || _passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter both Student ID and Password'),
+        ),
+      );
       return;
     }
 
     setState(() => _isLoading = true);
+    final studentId = _studentIdController.text.trim();
+    final password = _passwordController.text;
 
     try {
+      // Run our robust firebase login orchestrator
       final userData = await loginFirebase(
         studentId: studentId,
         password: password,
       );
+      print(userData);
 
       final graduationData =
           userData['graduationData'] as Map<String, dynamic>?;
       final schedule = userData['scheduleData'];
 
+      // Send the data down to your global state provider
       if (graduationData != null && schedule != null) {
         if (mounted) {
           Provider.of<CcxpDataProvider>(
@@ -168,50 +183,133 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
         Navigator.pushReplacementNamed(context, AppRoutes.mainScreen);
       }
     } catch (e) {
-      if (!mounted) return;
+      // if (e is FirebaseAuthException && e.code == 'wrong-password') {
+      //   await FirebaseAuth.instance.signOut();
 
-      setState(() => _isLoading = false);
+      //   if (!mounted) return;
+      //   // print("inside catch block");
 
-      var errorMsg = e.toString();
-      if (e is FirebaseAuthException && e.code == 'wrong-password') {
-        errorMsg = 'Incorrect password. Please try again.';
+      //   ScaffoldMessenger.of(context).showSnackBar(
+      //     const SnackBar(
+      //       content: Text("Incorrect password. Please try again."),
+      //     ),
+      //   );
+      //   return;
+      // }
+      if (mounted) {
+        print("not logged in");
+        setState(() => _isLoading = false);
+
+        // Friendly error messages depending on what broke
+        String errorMsg = e.toString();
+        if (e is FirebaseAuthException && e.code == 'wrong-password') {
+          errorMsg = "Incorrect password. Please try again.";
+        }
+
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Login failed: $errorMsg')));
       }
-
-      _showMessage('Login failed: $errorMsg');
     }
   }
 
-  void _showMessage(String message) {
-    if (!mounted) return;
+  Future<Map<String, dynamic>> refreshData({
+    required String studentId,
+    required String password,
+  }) async {
+    final apiData = await _fetchCcxpDataFromApi(studentId, password);
+    final graduationData = apiData['graduationData'];
+    final schedule = apiData['schedule'];
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-          style: GoogleFonts.dmSans(fontWeight: FontWeight.w700),
-        ),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: _LoginColors.deepPurple,
-        margin: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-    );
-  }
+    final String email = "$studentId@school.edu";
+    final String custPass = "$studentId@passqwert";
+    UserCredential credential = await FirebaseAuth.instance
+        .signInWithEmailAndPassword(email: email, password: custPass);
+    final uid = credential.user?.uid;
+    await FirebaseFirestore.instance.collection('ccxpUsers').doc(uid).set({
+      'graduationData': graduationData,
+      'scheduleData': schedule,
+      'lastUpdatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
 
-  Future<bool> _isCredentialCorrect(String studentId, String password) async {
-    const url = 'https://prowler-underpaid-smudgy.ngrok-free.dev';
-    final response = await dio.post(
-      '$url/login',
-      data: {'uid': studentId, 'pw': password},
-    );
+    final userDoc = await FirebaseFirestore.instance
+        .collection('ccxpUsers')
+        .doc(uid)
+        .get();
 
-    if (response.statusCode == 200) {
-      if (response.data['sessKey'] != null) {
-        return true;
-      }
+    final userData = userDoc.data();
+    if (userData == null) {
+      throw Exception('Student database profile could not be found.');
     }
 
-    return false;
+    return userData;
+  }
+
+  void _handleRefresh() async {
+    setState(() => _isLoading = true);
+    final studentId = _studentIdController.text.trim();
+    final password = _passwordController.text;
+    try {
+      // Run our robust firebase login orchestrator
+      final userData = await refreshData(
+        studentId: studentId,
+        password: password,
+      );
+
+      final graduationData =
+          userData['graduationData'] as Map<String, dynamic>?;
+      final schedule = userData['scheduleData'];
+
+      // Send the data down to your global state provider
+      if (graduationData != null && schedule != null) {
+        if (mounted) {
+          Provider.of<CcxpDataProvider>(
+            context,
+            listen: false,
+          ).setData(graduationData: graduationData, scheduleData: schedule);
+        }
+      } else {
+        throw Exception('Unable to parse retrieved CCXP data structure.');
+      }
+
+      if (mounted) {
+        setState(() => _isLoading = false);
+        Navigator.pushReplacementNamed(context, AppRoutes.mainScreen);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+
+        // Friendly error messages depending on what broke
+        String errorMsg = e.toString();
+        if (e is FirebaseAuthException && e.code == 'wrong-password') {
+          errorMsg = "Incorrect password. Please try again.";
+        }
+
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Login failed: $errorMsg')));
+      }
+    }
+  }
+
+  // Future<bool> _isCredentialCorrect(String studentId, String password) async {
+  //   const url = 'https://prowler-underpaid-smudgy.ngrok-free.dev';
+  //   final response = await dio.post(
+  //     '$url/login',
+  //     data: {'uid': studentId, 'pw': password},
+  //   );
+
+  //   if (response.statusCode == 200) {
+  //     if (response.data['sessKey'] != null) {
+  //       return true;
+  //     }
+  //   }
+  //   return false;
+  // }
+
+  String hashPassword(String pw) {
+    return sha256.convert(utf8.encode(pw)).toString();
   }
 
   Future<Map<String, dynamic>> _fetchCcxpDataFromApi(
