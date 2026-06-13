@@ -31,7 +31,7 @@ class TranscriptScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final graduationData = context.watch<CcxpDataProvider>().graduationData;
     final records = graduationData!['allRecords'];
-    print(records);
+    // print(records);
     final transcriptEntries = _buildTranscript(records);
 
     return Scaffold(

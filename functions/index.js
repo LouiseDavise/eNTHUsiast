@@ -53,23 +53,30 @@ async function clearCollection(collectionRef) {
 // 4. The Core Parsing Logic
 async function checkAndParseEmails() {
     const genAI = new GoogleGenerativeAI(geminiApiKey.value());
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({
+        model: "gemini-2.5-flash",
+        generationConfig: { responseMimeType: "application/json" }
+    });
 
     // Step A: Get all users who have linked their Gmail via the Flutter app
-    const usersSnapshot = await db.collection('users').get();
+    const usersSnapshot = await db.collection('ccxpUsers').get();
     if (usersSnapshot.empty) {
-        console.log("No users found in database.");
+        console.log("No CCXP users found in database.");
         return;
     }
 
     // Step B: Loop through every user and check their inbox
     for (const userDoc of usersSnapshot.docs) {
+        const studentId = userDoc.id; // <--- The document ID is the studentId
         const userData = userDoc.data();
+
         const email = userData.email;
         const refreshToken = userData.refreshToken;
 
-        if (!refreshToken) continue;
-        console.log(`Checking emails for user: ${email}`);
+        // Skip users who haven't linked their Gmail yet
+        if (!refreshToken || !email) continue;
+
+        console.log(`Checking emails for student: ${studentId} (${email})`);
 
         try {
             const gmail = await authenticateGmail(refreshToken);
@@ -112,20 +119,46 @@ async function checkAndParseEmails() {
                         timestamp: admin.firestore.FieldValue.serverTimestamp()
                     });
                 } else {
-                    const prompt = `Extract task from: ${cleanText}`;
+                    const prompt = `You are an assistant for a university app. Read the following email
+and extract the task details into a strict JSON format.
+
+The JSON must have exactly these keys:
+- title: A short, clear name for the task
+- code: The course code. If none, return ""
+- time: The time of the class or deadline. If none, return ""
+- type: Must be one of: "Homework", "Midterm", "Final", "Quiz", "Project", or "Other"
+- dueDate: The deadline format as YYYY-MM-DD. If none, return ""
+
+Email Text:
+${cleanText}`; // Note: Ensure this variable matches your script (cleanText vs clean_text)
+
                     try {
                         const result = await model.generateContent(prompt);
-                        const aiData = JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
 
-                        // Save the task and link it to the specific user who received it
-                        await saveToFirestore('tasks', {
-                            ...aiData,
+                        // 2. Safely parse directly without regex because of the MimeType config
+                        const aiData = JSON.parse(result.response.text());
+
+                        // 3. Optional but highly recommended: Convert the YYYY-MM-DD string into a true Firestore Timestamp.
+                        // This allows you to easily sort by date in Flutter using .orderBy('dueDate') in the future.
+                        let firestoreDueDate = null;
+                        if (aiData.dueDate && aiData.dueDate !== "") {
+                            firestoreDueDate = admin.firestore.Timestamp.fromDate(new Date(aiData.dueDate));
+                        }
+
+                        await db.collection('ccxpUsers').doc(studentId).collection('upcoming').doc(msg.id).set({
+                            title: aiData.title || "New Task",
+                            code: aiData.code || "",
+                            time: aiData.time || "",
+                            type: aiData.type || "Other",
+                            dueDate: firestoreDueDate,
                             id: msg.id,
-                            userId: email, // <-- Links task to the user
                             status: "Incomplete",
                             timestamp: admin.firestore.FieldValue.serverTimestamp()
                         });
-                    } catch (e) { console.error("Gemini Error:", e); }
+
+                    } catch (e) {
+                        console.error(`Gemini Parsing Error for message ${msg.id}:`, e);
+                    }
                 }
 
                 // Mark as read so it isn't processed again
@@ -147,10 +180,10 @@ exports.nthuEmailParser = onSchedule({
 
 // --- CLOUD FUNCTION 2: The Endpoint for the Flutter App ---
 exports.linkGmailAccount = onCall(async (request) => {
-    const { serverAuthCode, email } = request.data;
+    const { serverAuthCode, email, studentId } = request.data;
 
-    if (!serverAuthCode || !email) {
-        throw new HttpsError('invalid-argument', 'Missing serverAuthCode or email.');
+    if (!serverAuthCode || !email || !studentId) {
+        throw new HttpsError('invalid-argument', 'Missing serverAuthCode, email, or studentId.');
     }
 
     try {
@@ -163,16 +196,16 @@ exports.linkGmailAccount = onCall(async (request) => {
         const { tokens } = await oAuth2Client.getToken(serverAuthCode);
 
         if (tokens.refresh_token) {
-            // Save the refresh token to Firestore
-            await db.collection('users').doc(email).set({
+            // 2. Save the refresh token and email into the existing CCXP user document
+            await db.collection('ccxpUsers').doc(studentId).set({
                 email: email,
                 refreshToken: tokens.refresh_token,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
+                gmailLinkedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true }); // <--- merge: true is CRITICAL so it doesn't delete their CCXP graduation data!
 
-            return { success: true, message: "Gmail successfully linked and token saved!" };
+            return { success: true, message: "Gmail successfully linked to CCXP profile!" };
         } else {
-            return { success: false, error: "No refresh token received. User already granted access previously." };
+            return { success: false, error: "No refresh token received." };
         }
 
     } catch (error) {

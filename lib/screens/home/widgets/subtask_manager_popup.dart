@@ -2,19 +2,22 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../utilities/models.dart';
 import 'tutorial.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
+import '../../../providers/ccxp_data_provider.dart';
 
 class SubtaskManagerPopup extends StatefulWidget {
   final AppEvent event;
   final List<Subtask> subtasks;
   final Function(String) onToggle;
   final VoidCallback onUpdate;
-  final Function(String) onAddSubtask; 
+  final Function(String) onAddSubtask;
 
   const SubtaskManagerPopup({
-    Key? key, 
-    required this.event, 
-    required this.subtasks, 
-    required this.onToggle, 
+    Key? key,
+    required this.event,
+    required this.subtasks,
+    required this.onToggle,
     required this.onUpdate,
     required this.onAddSubtask,
   }) : super(key: key);
@@ -28,16 +31,77 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
   bool _isAddHovered = false;
   bool _isUpdateHovered = false;
   bool _isCloseHovered = false;
+  bool _isUpdating = false;
+
+  Future<void> _saveToFirestore(int currentProgress) async {
+    setState(() => _isUpdating = true);
+
+    try {
+      final ccxpData = Provider.of<CcxpDataProvider>(context, listen: false);
+
+      if (ccxpData.graduationData == null ||
+          ccxpData.graduationData!["studentInfo"] == null ||
+          ccxpData.graduationData!["studentInfo"]["studentId"] == null) {
+        throw Exception("Could not find Student ID. Please log in again.");
+      }
+
+      final String studentId = ccxpData
+          .graduationData!["studentInfo"]["studentId"]
+          .toString();
+
+      // Convert your List<Subtask> into a List of Maps for Firebase
+      final List<Map<String, dynamic>> subtasksMap = widget.subtasks
+          .map(
+            (st) => {'id': st.id, 'text': st.text, 'completed': st.completed},
+          )
+          .toList();
+
+      // Update the specific task document in Firestore
+      await FirebaseFirestore.instance
+          .collection('ccxpUsers')
+          .doc(studentId)
+          .collection('upcoming')
+          .doc(
+            widget.event.id,
+          ) // Make sure your AppEvent model has the document ID!
+          .update({
+            'progress': currentProgress,
+            'subtasks': subtasksMap,
+            'lastUpdated':
+                FieldValue.serverTimestamp(), // Good practice to track edits
+          });
+
+      // Update local state and trigger callbacks
+      widget.event.progress = currentProgress;
+      widget.onUpdate();
+      TutorialTargetRegistry.fireAction();
+
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      print("Failed to update subtasks: $e");
+      if (mounted) {
+        setState(() => _isUpdating = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Update failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     const nthuPurple = Color(0xFF7E22CE);
     int completed = widget.subtasks.where((s) => s.completed).length;
     int total = widget.subtasks.length;
-    int progress = total > 0 ? ((completed / total) * 100).round() : widget.event.progress;
+    int progress = total > 0
+        ? ((completed / total) * 100).round()
+        : widget.event.progress;
 
     return BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0), 
+      filter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0),
       child: Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: const EdgeInsets.all(24),
@@ -45,9 +109,15 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
           key: TutorialTargetRegistry.get('subtask-modal-content'),
           padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(
-            color: Colors.white, 
+            color: Colors.white,
             borderRadius: BorderRadius.circular(40),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 40, offset: const Offset(0, 20))],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 40,
+                offset: const Offset(0, 20),
+              ),
+            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -61,9 +131,27 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(widget.event.title, maxLines: 2, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, color: Colors.black, height: 1.1)),
+                        Text(
+                          widget.event.title,
+                          maxLines: 2,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                            fontStyle: FontStyle.italic,
+                            color: Colors.black,
+                            height: 1.1,
+                          ),
+                        ),
                         const SizedBox(height: 6),
-                        Text("CHECKLIST & PROGRESS", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey.shade400, letterSpacing: 1.5)),
+                        Text(
+                          "CHECKLIST & PROGRESS",
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.grey.shade400,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -74,25 +162,48 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       decoration: BoxDecoration(
-                        color: _isCloseHovered ? Colors.grey.shade200 : Colors.grey.shade50, 
-                        shape: BoxShape.circle
+                        color: _isCloseHovered
+                            ? Colors.grey.shade200
+                            : Colors.grey.shade50,
+                        shape: BoxShape.circle,
                       ),
                       child: IconButton(
-                        onPressed: () => Navigator.pop(context), 
-                        icon: Icon(Icons.close_rounded, color: _isCloseHovered ? Colors.black : Colors.grey.shade600, size: 20),
+                        onPressed: () => Navigator.pop(context),
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: _isCloseHovered
+                              ? Colors.black
+                              : Colors.grey.shade600,
+                          size: 20,
+                        ),
                       ),
                     ),
-                  )
+                  ),
                 ],
               ),
               const SizedBox(height: 32),
-              
+
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text("TOTAL PROGRESS", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey.shade400, letterSpacing: 1.5)),
-                  Text("$progress%", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.black87)),
+                  Text(
+                    "TOTAL PROGRESS",
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.grey.shade400,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                  Text(
+                    "$progress%",
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.black87,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -103,15 +214,17 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                   curve: Curves.easeOutCubic,
                   tween: Tween<double>(begin: 0, end: progress / 100),
                   builder: (context, value, _) => LinearProgressIndicator(
-                    value: value, 
-                    backgroundColor: Colors.grey.shade100, 
-                    valueColor: AlwaysStoppedAnimation<Color>(widget.event.color), 
+                    value: value,
+                    backgroundColor: Colors.grey.shade100,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      widget.event.color,
+                    ),
                     minHeight: 10,
                   ),
                 ),
               ),
               const SizedBox(height: 24),
-              
+
               Row(
                 key: TutorialTargetRegistry.get('subtask-add-row'),
                 children: [
@@ -120,14 +233,25 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                       height: 56,
                       child: TextField(
                         controller: _subtaskCtrl,
-                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
                         decoration: InputDecoration(
                           filled: true,
                           fillColor: Colors.grey.shade50,
                           hintText: "Add a subtask...",
-                          hintStyle: TextStyle(color: Colors.grey.shade400, fontWeight: FontWeight.bold),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                          hintStyle: TextStyle(
+                            color: Colors.grey.shade400,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                          ),
                         ),
                         onSubmitted: (_) {
                           if (_subtaskCtrl.text.trim().isNotEmpty) {
@@ -159,20 +283,26 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                             }
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: nthuPurple, 
+                            backgroundColor: nthuPurple,
                             elevation: _isAddHovered ? 8 : 0,
                             shadowColor: nthuPurple.withOpacity(0.4),
                             padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
                           ),
-                          child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
+                          child: const Icon(
+                            Icons.add_rounded,
+                            color: Colors.white,
+                            size: 28,
+                          ),
                         ),
                       ),
                     ),
-                  )
+                  ),
                 ],
               ),
-              
+
               if (widget.subtasks.isNotEmpty) ...[
                 const SizedBox(height: 24),
                 ConstrainedBox(
@@ -183,20 +313,22 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                     itemBuilder: (context, index) {
                       final st = widget.subtasks[index];
                       return _InteractiveSubtaskRow(
-                        key: index == widget.subtasks.length - 1 ? TutorialTargetRegistry.get('subtask-new-item') : null,
+                        key: index == widget.subtasks.length - 1
+                            ? TutorialTargetRegistry.get('subtask-new-item')
+                            : null,
                         subtask: st,
                         onToggle: () {
                           widget.onToggle(st.id);
-                          TutorialTargetRegistry.fireAction(); 
+                          TutorialTargetRegistry.fireAction();
                         },
                       );
                     },
                   ),
                 ),
               ],
-              
+
               const SizedBox(height: 32),
-              
+
               MouseRegion(
                 onEnter: (_) => setState(() => _isUpdateHovered = true),
                 onExit: (_) => setState(() => _isUpdateHovered = false),
@@ -207,25 +339,44 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                   child: SizedBox(
                     width: double.infinity,
                     height: 56,
+                    // Fix: Just ONE ElevatedButton!
                     child: ElevatedButton(
                       key: TutorialTargetRegistry.get('subtask-update-btn'),
-                      onPressed: () {
-                        widget.event.progress = progress; 
-                        widget.onUpdate(); 
-                        TutorialTargetRegistry.fireAction();
-                        Navigator.pop(context); 
-                      },
+                      onPressed: _isUpdating
+                          ? null
+                          : () => _saveToFirestore(
+                              progress,
+                            ), // Calls your new function
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: nthuPurple, 
+                        backgroundColor: nthuPurple,
                         elevation: _isUpdateHovered ? 10 : 0,
                         shadowColor: nthuPurple.withOpacity(0.4),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                       ),
-                      child: const Text("UPDATE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 1.5, fontSize: 12)),
+                      child: _isUpdating
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Text(
+                              "UPDATE",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.5,
+                                fontSize: 12,
+                              ),
+                            ),
                     ),
                   ),
                 ),
-              )
+              ),
             ],
           ),
         ),
@@ -241,7 +392,11 @@ class _InteractiveSubtaskRow extends StatefulWidget {
   final Subtask subtask;
   final VoidCallback onToggle;
 
-  const _InteractiveSubtaskRow({Key? key, required this.subtask, required this.onToggle}) : super(key: key);
+  const _InteractiveSubtaskRow({
+    Key? key,
+    required this.subtask,
+    required this.onToggle,
+  }) : super(key: key);
 
   @override
   State<_InteractiveSubtaskRow> createState() => _InteractiveSubtaskRowState();
@@ -272,22 +427,46 @@ class _InteractiveSubtaskRowState extends State<_InteractiveSubtaskRow> {
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: _isHovered ? Colors.white : Colors.grey.shade50, 
+              color: _isHovered ? Colors.white : Colors.grey.shade50,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: _isHovered ? Colors.grey.shade200 : Colors.transparent),
-              boxShadow: _isHovered ? [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 4))] : [],
+              border: Border.all(
+                color: _isHovered ? Colors.grey.shade200 : Colors.transparent,
+              ),
+              boxShadow: _isHovered
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : [],
             ),
             child: Row(
               children: [
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  width: 24, height: 24,
+                  width: 24,
+                  height: 24,
                   decoration: BoxDecoration(
-                    color: widget.subtask.completed ? Colors.green : Colors.white, 
-                    border: Border.all(color: widget.subtask.completed ? Colors.green : Colors.grey.shade300, width: 2), 
-                    borderRadius: BorderRadius.circular(8)
+                    color: widget.subtask.completed
+                        ? Colors.green
+                        : Colors.white,
+                    border: Border.all(
+                      color: widget.subtask.completed
+                          ? Colors.green
+                          : Colors.grey.shade300,
+                      width: 2,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: widget.subtask.completed ? const Icon(Icons.check_rounded, size: 16, color: Colors.white) : null,
+                  child: widget.subtask.completed
+                      ? const Icon(
+                          Icons.check_rounded,
+                          size: 16,
+                          color: Colors.white,
+                        )
+                      : null,
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -295,13 +474,17 @@ class _InteractiveSubtaskRowState extends State<_InteractiveSubtaskRow> {
                     duration: const Duration(milliseconds: 200),
                     style: TextStyle(
                       fontFamily: DefaultTextStyle.of(context).style.fontFamily,
-                      fontSize: 14, 
-                      fontWeight: FontWeight.bold, 
-                      color: widget.subtask.completed ? Colors.grey : Colors.black87, 
-                      decoration: widget.subtask.completed ? TextDecoration.lineThrough : TextDecoration.none
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: widget.subtask.completed
+                          ? Colors.grey
+                          : Colors.black87,
+                      decoration: widget.subtask.completed
+                          ? TextDecoration.lineThrough
+                          : TextDecoration.none,
                     ),
                     child: Text(widget.subtask.text),
-                  )
+                  ),
                 ),
               ],
             ),

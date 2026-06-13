@@ -5,6 +5,8 @@ import 'widgets/header_menu_widget.dart';
 import 'ccxp_login_screen.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import '../../../providers/ccxp_data_provider.dart';
+import 'package:provider/provider.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -17,7 +19,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // Define the scopes we need
   final List<String> _scopes = [
     'email',
-    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/gmail.modify',
   ];
 
   void _navToCcxpLogin() {
@@ -60,13 +62,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
           try {
             // 1. Initialize Firebase Functions
             final functions = FirebaseFunctions.instance;
+            final ccxpData = Provider.of<CcxpDataProvider>(
+              context,
+              listen: false,
+            );
 
+            if (ccxpData.graduationData == null ||
+                ccxpData.graduationData!["studentInfo"] == null ||
+                ccxpData.graduationData!["studentInfo"]["studentId"] == null) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Error: Could not find Student ID. Please log in to CCXP first.',
+                    ),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+              return; // Stop the execution
+            }
+
+            final String currentStudentId = ccxpData
+                .graduationData!["studentInfo"]["studentId"]
+                .toString();
+            // -------------------------------------
             // 2. Call the new backend function
             final result = await functions
                 .httpsCallable('linkGmailAccount')
                 .call({
                   'serverAuthCode': serverAuthCode,
                   'email': account.email,
+                  'studentId': currentStudentId, // <--- ADDED THIS LINE
                 });
 
             // 3. Handle the server response
