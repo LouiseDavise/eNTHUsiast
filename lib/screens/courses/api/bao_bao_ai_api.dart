@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:http/http.dart' as http;
 
@@ -146,16 +147,85 @@ Do not make fake course codes.
   Future<List<String>> askBaoBaoRecommendedCourseIds({
     required String userMessage,
     required List<Map<String, dynamic>> courseCatalog,
+    Map<String, dynamic>? curriculum,
   }) async {
     final rawPlan = await _makeAiSearchPlan(userMessage);
-    final plan = _adjustPlanWithUserHints(rawPlan, userMessage);
+    final plan = _adjustPlanWithUserHints(
+      rawPlan,
+      userMessage,
+      curriculum: curriculum,
+    );
 
     print('Bao-Bao final search plan: ${plan.toDebugMap()}');
 
     final selectedIds = <String>[];
     final usedIds = <String>{};
+    final usedCourseTitles = <String>{};
+
+    final targetCredits = plan.targetCredits;
+    int selectedCredits = 0;
+
+    bool reachedTargetCredits() {
+      if (targetCredits == null) return false;
+      return selectedCredits >= targetCredits;
+    }
+
+    bool canAddCourse(Map<String, dynamic> course) {
+      if (targetCredits == null) return true;
+
+      final credits = _toInt(course['credits']);
+
+      if (credits <= 0) return false;
+
+      if (selectedCredits >= targetCredits) {
+        return false;
+      }
+
+      final nextTotal = selectedCredits + credits;
+
+      if (nextTotal <= targetCredits) {
+        return true;
+      }
+
+      // Allow small overflow only when the remaining credit is impossible to fill exactly.
+      final remaining = targetCredits - selectedCredits;
+      return remaining <= 1 && nextTotal <= targetCredits + 1;
+    }
+
+    bool tryAddCourse(Map<String, dynamic> course) {
+      final id = course['id']?.toString() ?? '';
+
+      if (id.isEmpty || usedIds.contains(id)) {
+        return false;
+      }
+
+      final titleKey = _normalizeSearchText(course['title']?.toString() ?? '');
+
+      if (titleKey.isNotEmpty && usedCourseTitles.contains(titleKey)) {
+        return false;
+      }
+
+      if (!canAddCourse(course)) {
+        return false;
+      }
+
+      selectedIds.add(id);
+      usedIds.add(id);
+
+      if (titleKey.isNotEmpty) {
+        usedCourseTitles.add(titleKey);
+      }
+
+      selectedCredits += _toInt(course['credits']);
+
+      return true;
+    }
 
     for (final group in plan.groups) {
+      if (reachedTargetCredits()) {
+        break;
+      }
+
       final candidates = _buildCandidatePool(
         group: group,
         catalog: courseCatalog,
@@ -175,42 +245,107 @@ Do not make fake course codes.
         continue;
       }
 
+      int addedForThisGroup = 0;
+
       final aiChosen = await _aiChooseCourseIds(
         userMessage: userMessage,
         group: group,
         candidates: candidates,
+        curriculum: curriculum,
       );
 
-      final validChosen = aiChosen.where((id) {
-        return !usedIds.contains(id) &&
-            candidates.any((course) => course['id']?.toString() == id);
-      }).take(group.count).toList();
+      for (final id in aiChosen) {
+        if (reachedTargetCredits()) break;
+        if (addedForThisGroup >= group.count) break;
+        if (usedIds.contains(id)) continue;
 
-      if (validChosen.isNotEmpty) {
-        selectedIds.addAll(validChosen);
-        usedIds.addAll(validChosen);
-      } else {
-        final fallback = _localRankCourses(group, candidates);
+        final course = candidates.firstWhere(
+          (course) => course['id']?.toString() == id,
+          orElse: () => {},
+        );
 
-        for (final course in fallback.take(group.count)) {
-          final id = course['id']?.toString() ?? '';
+        if (course.isEmpty) continue;
 
-          if (id.isNotEmpty && !usedIds.contains(id)) {
-            selectedIds.add(id);
-            usedIds.add(id);
+        if (tryAddCourse(course)) {
+          addedForThisGroup++;
+        }
+      }
+
+      if (addedForThisGroup < group.count && !reachedTargetCredits()) {
+        final fallback = _localRankCoursesWithDiversity(
+          group,
+          candidates,
+        );
+
+        for (final course in fallback) {
+          if (reachedTargetCredits()) break;
+          if (addedForThisGroup >= group.count) break;
+
+          if (tryAddCourse(course)) {
+            addedForThisGroup++;
           }
         }
       }
     }
 
+    print(
+      'Bao-Bao selected ${selectedIds.length} courses, '
+      '$selectedCredits/${targetCredits ?? "no target"} credits.',
+    );
+
     return selectedIds;
   }
 
+  List<Map<String, dynamic>> _localRankCoursesWithDiversity(
+    _SearchGroup group,
+    List<Map<String, dynamic>> candidates,
+  ) {
+    final ranked = _localRankCourses(group, candidates);
+
+    if (ranked.length <= group.count) {
+      return ranked;
+    }
+
+    final topRange = ranked.take(math.min(25, ranked.length)).toList();
+    final rest = ranked.skip(topRange.length).toList();
+
+    final random = math.Random(DateTime.now().millisecondsSinceEpoch);
+
+    topRange.shuffle(random);
+
+    return [
+      ...topRange,
+      ...rest,
+    ];
+  }
+  
   _AiSearchPlan _adjustPlanWithUserHints(
     _AiSearchPlan plan,
-    String userMessage,
-  ) {
+    String userMessage, {
+    Map<String, dynamic>? curriculum,
+  }) {
     final lower = userMessage.toLowerCase();
+
+    // Curriculum planning must be checked before credit mix,
+    // because curriculum prompts may also contain "20 credits", "core", "GE", etc.
+    if (_isCurriculumPlanningRequest(userMessage) && curriculum != null) {
+      final curriculumPlan = _buildDynamicCurriculumPlanningPlan(
+        userMessage,
+        curriculum,
+      );
+
+      if (curriculumPlan.groups.isNotEmpty) {
+        return curriculumPlan;
+      }
+    }
+
+    if (_isLightEasyRequest(userMessage)) {
+      return _buildLightEasyPlan(userMessage);
+    }
+
+    if (_isCreditMixRequest(userMessage)) {
+      return _buildCreditMixPlan(userMessage);
+    }
 
     final asksForOne =
         RegExp(r'\b(one|single|1)\b').hasMatch(lower) &&
@@ -218,78 +353,11 @@ Do not make fake course codes.
         !RegExp(r'\b(two|three|four|five|six|seven|eight|nine|ten|[2-9])\b')
             .hasMatch(lower);
 
-    // Special rule:
-    // Light/easy/chill request should show GE + ELECTIVE only.
-    // Do not recommend CORE courses for this kind of prompt.
-    if (_isLightEasyRequest(userMessage)) {
-      return _AiSearchPlan(
-        targetCredits: plan.targetCredits,
-        allowSpecialCourses: false,
-        groups: const [
-          _SearchGroup(
-            query: 'general education GE 通識 easy light chill',
-            subjectQuery: null,
-            subjectPhrases: [],
-            mustMatchSubject: false,
-            count: 12,
-            credits: null,
-            requiredType: 'GE',
-            timePreference: 'any',
-            language: 'any',
-            minLimit: null,
-            maxLimit: null,
-            mustHave: [],
-            avoid: [
-              'thesis',
-              'seminar',
-              'research',
-              'lab rotation',
-              '專題',
-              '論文',
-              '研究',
-            ],
-          ),
-          _SearchGroup(
-            query: 'elective course easy light chill 選修',
-            subjectQuery: null,
-            subjectPhrases: [],
-            mustMatchSubject: false,
-            count: 12,
-            credits: null,
-            requiredType: 'ELECTIVE',
-            timePreference: 'any',
-            language: 'any',
-            minLimit: null,
-            maxLimit: null,
-            mustHave: [],
-            avoid: [
-              'thesis',
-              'seminar',
-              'research',
-              'lab rotation',
-              '專題',
-              '論文',
-              '研究',
-            ],
-          ),
-        ],
-      );
-    }
+    final professorTokens = _hasExplicitProfessorSearchIntent(userMessage)
+        ? _extractProfessorNameTokens(userMessage)
+        : const <String>[];
 
-    final professorTokens = _extractProfessorNameTokens(userMessage);
     final hasProfessorSearch = professorTokens.isNotEmpty;
-
-    int adjustedCount(int currentCount) {
-      if (asksForOne) {
-        return 1;
-      }
-
-      if (currentCount <= 1) {
-        return 5;
-      }
-
-      return currentCount;
-    }
 
     final adjustedGroups = plan.groups.map((group) {
       if (hasProfessorSearch) {
@@ -299,12 +367,12 @@ Do not make fake course codes.
           mustMatchSubject: false,
           clearSubject: true,
           mustHave: _mergeStringLists(group.mustHave, professorTokens),
-          count: adjustedCount(group.count),
+          count: asksForOne && plan.groups.length == 1 ? 1 : group.count,
         );
       }
 
       return group.copyWith(
-        count: adjustedCount(group.count),
+        count: asksForOne && plan.groups.length == 1 ? 1 : group.count,
       );
     }).toList();
 
@@ -314,6 +382,594 @@ Do not make fake course codes.
       groups: adjustedGroups,
     );
   }
+
+  _AiSearchPlan _buildLightEasyPlan(String message) {
+    return _AiSearchPlan(
+      targetCredits: null,
+      allowSpecialCourses: false,
+      groups: [
+        _SearchGroup(
+          query: 'general education GE 通識 easy light chill',
+          subjectQuery: null,
+          subjectPhrases: const [],
+          mustMatchSubject: false,
+          count: 8,
+          credits: null,
+          requiredType: 'GE',
+          timePreference: 'any',
+          language: 'any',
+          minLimit: null,
+          maxLimit: null,
+          mustHave: const [],
+          avoid: const [
+            'thesis',
+            'seminar',
+            'research',
+            'lab rotation',
+            '專題',
+            '論文',
+            '研究',
+          ],
+        ),
+        _SearchGroup(
+          query: 'elective course easy light chill 選修',
+          subjectQuery: null,
+          subjectPhrases: const [],
+          mustMatchSubject: false,
+          count: 8,
+          credits: null,
+          requiredType: 'ELECTIVE',
+          timePreference: 'any',
+          language: 'any',
+          minLimit: null,
+          maxLimit: null,
+          mustHave: const [],
+          avoid: const [
+            'thesis',
+            'seminar',
+            'research',
+            'lab rotation',
+            '專題',
+            '論文',
+            '研究',
+          ],
+        ),
+      ],
+    );
+  }
+
+  bool _isCurriculumPlanningRequest(String message) {
+  final lower = message.toLowerCase();
+
+  final talksAboutCurriculum =
+      lower.contains('curriculum') ||
+      lower.contains('graduation') ||
+      lower.contains('requirement') ||
+      lower.contains('required') ||
+      lower.contains('department required') ||
+      lower.contains('dept req') ||
+      lower.contains('basic core') ||
+      lower.contains('core course') ||
+      lower.contains('professional') ||
+      lower.contains('lab') ||
+      lower.contains('bucket');
+
+  final asksPlanning =
+      lower.contains('plan') ||
+      lower.contains('recommend') ||
+      lower.contains('semester') ||
+      lower.contains('credit') ||
+      lower.contains('course') ||
+      lower.contains('take');
+
+  return talksAboutCurriculum && asksPlanning;
+}
+
+_AiSearchPlan _buildDynamicCurriculumPlanningPlan(
+  String message,
+  Map<String, dynamic> curriculum,
+) {
+  final lower = message.toLowerCase();
+  final targetCredits = _extractTargetCreditCount(lower);
+
+  final groupsRaw = curriculum['requirementGroups'];
+
+  if (groupsRaw is! List) {
+    return _AiSearchPlan(
+      targetCredits: targetCredits,
+      allowSpecialCourses: false,
+      groups: const [],
+    );
+  }
+
+  final dynamicGroups = <Map<String, dynamic>>[];
+
+  for (final rawGroup in groupsRaw) {
+    if (rawGroup is! Map) continue;
+
+    final category = rawGroup['category']?.toString() ?? '';
+    final description = rawGroup['description']?.toString() ?? '';
+    final requiredCredits = _toInt(rawGroup['requiredCredits']);
+    final coursesRaw = rawGroup['courses'];
+
+    final bucket = _bucketFromCurriculumCategory(
+      category: category,
+      description: description,
+    );
+
+    final priority = curriculumBucketPlanningPriority(
+      bucket: bucket,
+      category: category,
+      description: description,
+    );
+
+    final queryParts = <String>[
+      category,
+      description,
+      bucket,
+    ];
+
+    if (coursesRaw is List) {
+      for (final rawCourse in coursesRaw.take(30)) {
+        if (rawCourse is! Map) continue;
+
+        final name = rawCourse['name']?.toString();
+        final type = rawCourse['type']?.toString();
+        final acceptedCodes = rawCourse['acceptedCodes'];
+
+        if (name != null && name.trim().isNotEmpty) {
+          queryParts.add(name);
+        }
+
+        if (type != null && type.trim().isNotEmpty) {
+          queryParts.add(type);
+        }
+
+        if (acceptedCodes is List) {
+          for (final code in acceptedCodes) {
+            queryParts.add(code.toString());
+          }
+        }
+      }
+    }
+
+    final query = queryParts
+        .where((item) => item.trim().isNotEmpty)
+        .join(' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (query.isEmpty) continue;
+
+    final count = _estimateCourseCountForCurriculumGroup(
+      requiredCredits: requiredCredits,
+      priority: priority,
+      targetCredits: targetCredits,
+    );
+
+    dynamicGroups.add({
+      'priority': priority,
+      'bucket': bucket,
+      'query': query,
+      'count': count,
+      'requiredCredits': requiredCredits,
+    });
+  }
+
+  dynamicGroups.sort((a, b) {
+    final pa = a['priority'] as int;
+    final pb = b['priority'] as int;
+
+    if (pa != pb) {
+      return pa.compareTo(pb);
+    }
+
+    final ca = a['requiredCredits'] as int;
+    final cb = b['requiredCredits'] as int;
+
+    return cb.compareTo(ca);
+  });
+
+  final selectedGroups = dynamicGroups.take(7).map((item) {
+    final bucket = item['bucket']?.toString() ?? 'UNKNOWN';
+    final query = item['query']?.toString() ?? '';
+    final count = item['count'] as int;
+
+    return _SearchGroup(
+      query: query,
+      subjectQuery: null,
+      subjectPhrases: const [],
+      mustMatchSubject: false,
+      count: count,
+      credits: null,
+
+      // Do not rely on CORE/ELECTIVE/GE for curriculum planning.
+      // Use curriculumBucket through mustHave instead.
+      requiredType: bucket == 'GE' ? 'GE' : 'any',
+
+      timePreference: 'any',
+      language: 'any',
+      minLimit: null,
+      maxLimit: null,
+
+      // This forces candidate pool to prefer courses mapped to this curriculum bucket.
+      // Example: DEPT_REQUIRED, BASIC_CORE, CORE_COURSE, LAB, etc.
+      mustHave: bucket == 'UNKNOWN' ? const [] : [bucket],
+
+      avoid: const [
+        'thesis',
+        'seminar',
+        'research',
+        'lab rotation',
+        'dissertation',
+        '專題',
+        '論文',
+        '研究',
+        '書報',
+      ],
+    );
+  }).toList();
+
+  return _AiSearchPlan(
+    targetCredits: targetCredits,
+    allowSpecialCourses: false,
+    groups: selectedGroups,
+  );
+}
+
+String _bucketFromCurriculumCategory({
+  required String category,
+  required String description,
+}) {
+  final text = '$category $description'.toLowerCase();
+
+  if (text.contains('department required') ||
+      text.contains('dept required') ||
+      text.contains('major required') ||
+      text.contains('required courses') ||
+      text.contains('系定必修')) {
+    return 'DEPT_REQUIRED';
+  }
+
+  if (text.contains('basic core') ||
+      text.contains('basic course') ||
+      text.contains('foundation') ||
+      text.contains('基礎')) {
+    return 'BASIC_CORE';
+  }
+
+  if (text.contains('core courses') ||
+      text.contains('core course') ||
+      text.contains('核心')) {
+    return 'CORE_COURSE';
+  }
+
+  if (text.contains('professional') ||
+      text.contains('specialized') ||
+      text.contains('major elective') ||
+      text.contains('專業')) {
+    return 'PROFESSIONAL';
+  }
+
+  if (text.contains('lab') ||
+      text.contains('laboratory') ||
+      text.contains('experiment') ||
+      text.contains('實驗')) {
+    return 'LAB';
+  }
+
+  if (text.contains('general education') ||
+      text.contains('ge') ||
+      text.contains('通識')) {
+    return 'GE';
+  }
+
+  if (text.contains('language') ||
+      text.contains('english') ||
+      text.contains('chinese') ||
+      text.contains('mandarin') ||
+      text.contains('英文') ||
+      text.contains('中文') ||
+      text.contains('華語')) {
+    return 'LANGUAGE';
+  }
+
+  if (text.contains('free elective') ||
+      text.contains('elective') ||
+      text.contains('選修')) {
+    return 'FREE_ELECTIVE';
+  }
+
+  if (text.contains('compulsory') ||
+      text.contains('school required') ||
+      text.contains('university required') ||
+      text.contains('校定必修')) {
+    return 'SCHOOL_COMPULSORY';
+  }
+
+  return 'UNKNOWN';
+}
+
+int curriculumBucketPlanningPriority({
+  required String bucket,
+  required String category,
+  required String description,
+}) {
+  switch (bucket) {
+    case 'DEPT_REQUIRED':
+      return 1;
+    case 'BASIC_CORE':
+      return 2;
+    case 'CORE_COURSE':
+      return 3;
+    case 'PROFESSIONAL':
+      return 4;
+    case 'LAB':
+      return 5;
+    case 'GE':
+      return 6;
+    case 'LANGUAGE':
+      return 7;
+    case 'SCHOOL_COMPULSORY':
+      return 8;
+    case 'FREE_ELECTIVE':
+      return 9;
+    default:
+      return 99;
+  }
+}
+
+int _estimateCourseCountForCurriculumGroup({
+  required int requiredCredits,
+  required int priority,
+  required int? targetCredits,
+}) {
+  // For semester planning, do not try to satisfy the whole curriculum group.
+  // Example: 20 credits usually means around 6–8 courses, not 17 courses.
+  if (targetCredits != null && targetCredits > 0) {
+    if (priority == 1) {
+      return 2; // Department required
+    }
+
+    if (priority == 2) {
+      return 2; // Basic core
+    }
+
+    if (priority == 3) {
+      return 2; // Core courses
+    }
+
+    if (priority == 4) {
+      return 1; // Professional
+    }
+
+    if (priority == 5) {
+      return 1; // Lab
+    }
+
+    return 1; // GE / language / free elective
+  }
+
+  if (requiredCredits <= 0) {
+    return priority <= 3 ? 3 : 2;
+  }
+
+  final estimated = (requiredCredits / 3).ceil();
+
+  if (priority <= 3) {
+    return estimated.clamp(2, 5);
+  }
+
+  if (priority <= 5) {
+    return estimated.clamp(1, 3);
+  }
+
+  return estimated.clamp(1, 2);
+}
+
+bool _hasExplicitProfessorSearchIntent(String message) {
+  final lower = message.toLowerCase();
+
+  if (lower.contains('prof ') ||
+      lower.contains('professor') ||
+      lower.contains('teacher') ||
+      lower.contains('instructor') ||
+      lower.contains('taught by')) {
+    return true;
+  }
+
+  final byFromWithPattern = RegExp(
+    r'\b(?:class|classes|course|courses)\s+(?:by|from|with)\s+[a-zA-ZÀ-ž\u4e00-\u9fff]',
+    caseSensitive: false,
+  );
+
+  return byFromWithPattern.hasMatch(message);
+}
+
+  bool _isCreditMixRequest(String message) {
+  final lower = message.toLowerCase();
+
+  return lower.contains('credit') &&
+      lower.contains('ge') &&
+      lower.contains('core') &&
+      lower.contains('language');
+}
+
+_AiSearchPlan _buildCreditMixPlan(String message) {
+  final lower = message.toLowerCase();
+
+  final targetCredits = _extractTargetCreditCount(lower);
+
+  final geCount = _extractCountBeforeKeyword(
+    lower,
+    keywordPatterns: [
+      r'ge',
+      r'general\s+education',
+      r'通識',
+    ],
+    fallback: 4,
+  );
+
+  final coreCount = _extractCountBeforeKeyword(
+    lower,
+    keywordPatterns: [
+      r'cs\s+core',
+      r'eecs\s+core',
+      r'core',
+      r'必修',
+    ],
+    fallback: 2,
+  );
+
+  final languageCount = _extractCountBeforeKeyword(
+    lower,
+    keywordPatterns: [
+      r'language',
+      r'foreign\s+language',
+      r'英文',
+      r'日文',
+      r'中文',
+      r'華語',
+    ],
+    fallback: 1,
+  );
+
+  return _AiSearchPlan(
+    targetCredits: targetCredits,
+    allowSpecialCourses: false,
+    groups: [
+      _SearchGroup(
+        query: 'general education GE 通識',
+        subjectQuery: null,
+        subjectPhrases: const [],
+        mustMatchSubject: false,
+        count: geCount,
+        credits: null,
+        requiredType: 'GE',
+        timePreference: 'any',
+        language: 'any',
+        minLimit: null,
+        maxLimit: null,
+        mustHave: const [],
+        avoid: const [],
+      ),
+      _SearchGroup(
+        query:
+            'CS EECS computer programming software algorithm data structure computer architecture operating system database 資訊 程式',
+        subjectQuery: null,
+        subjectPhrases: const [],
+        mustMatchSubject: false,
+        count: coreCount,
+        credits: null,
+        requiredType: 'CORE',
+        timePreference: 'any',
+        language: 'any',
+        minLimit: null,
+        maxLimit: null,
+        mustHave: const [],
+        avoid: const [],
+      ),
+      _SearchGroup(
+        query: 'language English Japanese Chinese Mandarin 英文 日文 中文 華語',
+        subjectQuery: 'language course',
+        subjectPhrases: const [
+          'language',
+          'English',
+          'Japanese',
+          'Chinese',
+          'Mandarin',
+          '英文',
+          '日文',
+          '中文',
+          '華語',
+        ],
+        mustMatchSubject: true,
+        count: languageCount,
+        credits: null,
+        requiredType: 'ELECTIVE',
+        timePreference: 'any',
+        language: 'any',
+        minLimit: null,
+        maxLimit: null,
+        mustHave: const [],
+        avoid: const [],
+      ),
+    ],
+  );
+}
+
+int? _extractTargetCreditCount(String lower) {
+  final match = RegExp(
+    r'\b([0-9]+)\s*[- ]?\s*credits?\b',
+  ).firstMatch(lower);
+
+  if (match == null) {
+    return null;
+  }
+
+  return int.tryParse(match.group(1) ?? '');
+}
+
+int _extractCountBeforeKeyword(
+  String lower, {
+  required List<String> keywordPatterns,
+  required int fallback,
+}) {
+  for (final keywordPattern in keywordPatterns) {
+    final regex = RegExp(
+      r'\b([0-9]+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:' +
+          keywordPattern +
+          r')\b',
+      caseSensitive: false,
+    );
+
+    final match = regex.firstMatch(lower);
+
+    if (match != null) {
+      final raw = match.group(1) ?? '';
+      return _smallNumberToInt(raw) ?? fallback;
+    }
+  }
+
+  return fallback;
+}
+
+int? _smallNumberToInt(String value) {
+  switch (value.toLowerCase()) {
+    case '1':
+    case 'one':
+      return 1;
+    case '2':
+    case 'two':
+      return 2;
+    case '3':
+    case 'three':
+      return 3;
+    case '4':
+    case 'four':
+      return 4;
+    case '5':
+    case 'five':
+      return 5;
+    case '6':
+    case 'six':
+      return 6;
+    case '7':
+    case 'seven':
+      return 7;
+    case '8':
+    case 'eight':
+      return 8;
+    case '9':
+    case 'nine':
+      return 9;
+    case '10':
+    case 'ten':
+      return 10;
+    default:
+      return null;
+  }
+}
 
   bool _isLightEasyRequest(String message) {
     final lower = message.toLowerCase();
@@ -687,11 +1343,14 @@ Return:
     required bool allowSpecialCourses,
   }) {
     final queryTokens = _tokens(group.query);
-    final mustTokens = group.mustHave.expand(_tokens).toList();
+    final requiredBucket = _requiredCurriculumBucket(group);
+
+    final mustTokens = group.mustHave
+      .where((item) => !_isCurriculumBucketName(item))
+      .expand(_tokens)
+      .toList();
     final avoidTokens = group.avoid.expand(_tokens).toList();
-
     final subjectPhrases = _effectiveSubjectPhrases(group);
-
     final scored = <_ScoredCourse>[];
 
     for (final course in catalog) {
@@ -721,6 +1380,32 @@ Return:
 
       if (!_matchesRequiredType(course, group.requiredType)) {
         continue;
+      }
+
+      if (requiredBucket != null) {
+        final courseBucket =
+            (course['curriculumBucket'] ?? '').toString().toUpperCase();
+
+        final matchedBy =
+            (course['curriculumMatchedBy'] ?? '').toString().toLowerCase();
+
+        if (courseBucket != requiredBucket) {
+          continue;
+        }
+
+        final importantBuckets = {
+          'DEPT_REQUIRED',
+          'BASIC_CORE',
+          'CORE_COURSE',
+          'PROFESSIONAL',
+          'LAB',
+        };
+
+        // For important curriculum buckets, fallback is not enough.
+        // It must come from acceptedCode or requiredName match in the curriculum.
+        if (importantBuckets.contains(requiredBucket) && matchedBy == 'fallback') {
+          continue;
+        }
       }
 
       if (!_matchesTimePreference(course, group.timePreference)) {
@@ -813,6 +1498,35 @@ Return:
     });
 
     return scored.take(80).map((item) => item.course).toList();
+  }
+
+  bool _isCurriculumBucketName(String value) {
+    final upper = value.trim().toUpperCase();
+
+    return {
+      'DEPT_REQUIRED',
+      'BASIC_CORE',
+      'CORE_COURSE',
+      'PROFESSIONAL',
+      'LAB',
+      'GE',
+      'LANGUAGE',
+      'FREE_ELECTIVE',
+      'SCHOOL_COMPULSORY',
+      'UNKNOWN',
+    }.contains(upper);
+  }
+
+  String? _requiredCurriculumBucket(_SearchGroup group) {
+    for (final item in group.mustHave) {
+      final upper = item.trim().toUpperCase();
+
+      if (_isCurriculumBucketName(upper)) {
+        return upper;
+      }
+    }
+
+    return null;
   }
 
   List<String> _effectiveSubjectPhrases(_SearchGroup group) {
@@ -1041,6 +1755,7 @@ Return:
     final code = _looseText((course['code'] ?? '').toString());
     final department = _looseText((course['department'] ?? '').toString());
     final type = _looseText((course['type'] ?? '').toString());
+    final bucket = (course['curriculumBucket'] ?? 'UNKNOWN').toString();
     final professor = _looseText((course['professor'] ?? '').toString());
     final looseText = _looseText(text);
 
@@ -1085,6 +1800,8 @@ Return:
       }
     }
 
+    score += _curriculumBucketScoreForGroup(bucket, group);
+
     if (group.requiredType != 'any') score += 120;
     if (group.timePreference != 'any') score += 90;
     if (group.language != 'any') score += 90;
@@ -1101,6 +1818,8 @@ Return:
     final rating = _toDouble(course['rating']);
     score += (rating * 5).round();
 
+    score += _toInt(course['yearFitScore']);
+
     return score;
   }
 
@@ -1112,15 +1831,28 @@ Return:
     required String userMessage,
     required _SearchGroup group,
     required List<Map<String, dynamic>> candidates,
+    Map<String, dynamic>? curriculum,
   }) async {
+    if (_apiKey.trim().isEmpty) {
+      return [];
+    }
+
     final compactCandidates = candidates.take(60).map((course) {
       return {
         'id': course['id'],
         'code': _short(course['code'], 40),
         'title': _short(course['title'], 90),
-        'professor': _short(course['professor'], 100),
+        'professor': _short(course['professor'], 80),
         'credits': course['credits'],
         'type': course['type'],
+        'curriculumBucket': course['curriculumBucket'],
+        'curriculumCategory': _short(course['curriculumCategory'], 80),
+        'curriculumRequiredCourseName':
+            _short(course['curriculumRequiredCourseName'], 100),
+        'curriculumMatchedBy': course['curriculumMatchedBy'],
+        'studentYear': course['studentYear'],
+        'courseYearLevel': course['courseYearLevel'],
+        'yearFitScore': course['yearFitScore'],
         'department': course['department'],
         'time': course['slotCode'] ?? course['timeSlot'],
         'location': _short(course['location'], 40),
@@ -1131,59 +1863,112 @@ Return:
       };
     }).toList();
 
-    final content = await _callAiChat(
-      systemPrompt: '''
-You are Bao-Bao's course selector.
-
-You MUST choose only from the given candidate list.
-Never invent IDs.
-Choose the courses that best match the user's request.
-Respect count, subjectQuery, subjectPhrases, mustMatchSubject, requiredType, credits, professor names, timePreference, language of instruction, minLimit, maxLimit, mustHave, and the search query.
-
-Important:
-- If mustHave contains professor name tokens, choose courses whose professor field best matches those tokens.
-- If mustMatchSubject is true, only choose courses matching the requested subject/topic.
-- If the user asks for a specific subject AND language of instruction, choose courses matching both.
-- Do not replace a specific subject request with a random language course.
-- If the user asks for English/Chinese instruction, prioritize matching language.
-- If the user asks for morning/night/afternoon/evening classes, prioritize matching time.
-- If the user asks for large limit/capacity, prioritize higher limit.
-- If the user asks for light/easy/chill courses, choose GE and ELECTIVE only.
-- Avoid thesis, seminar, colloquium, research, MOOC, lab rotation, and 0-credit courses unless directly requested.
-
-Return JSON only:
-{
-  "courseIds": ["id1", "id2"]
-}
-''',
-      userContent: jsonEncode({
-        'userMessage': userMessage,
-        'group': {
-          'query': group.query,
-          'subjectQuery': group.subjectQuery,
-          'subjectPhrases': group.subjectPhrases,
-          'mustMatchSubject': group.mustMatchSubject,
-          'count': group.count,
-          'credits': group.credits,
-          'requiredType': group.requiredType,
-          'timePreference': group.timePreference,
-          'language': group.language,
-          'minLimit': group.minLimit,
-          'maxLimit': group.maxLimit,
-          'mustHave': group.mustHave,
-          'avoid': group.avoid,
-        },
-        'candidates': compactCandidates,
-      }),
-      temperature: 0.05,
-      maxTokens: 500,
-    );
-
-    if (content == null || content.trim().isEmpty) {
-      return [];
-    }
+    final url = Uri.parse('https://openrouter.ai/api/v1/chat/completions');
 
     try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_apiKey',
+          'HTTP-Referer': 'https://enthusiast.app',
+          'X-OpenRouter-Title': 'eNTHUsiast Bao-Bao',
+        },
+        body: jsonEncode({
+          'model': _model,
+          'messages': [
+            {
+              'role': 'system',
+              'content': '''
+  You are Bao-Bao's course selector.
+
+  You MUST choose only from the given candidate list.
+  Never invent IDs.
+  Choose the courses that best match the user's request.
+  Respect count, subjectQuery, subjectPhrases, mustMatchSubject, requiredType, credits, professor names, timePreference, language of instruction, minLimit, maxLimit, and the search query.
+
+  Curriculum rule:
+  - If userCurriculum is provided, use it as the student's curriculum reference.
+  - Prefer candidate courses that match curriculum requirement groups, accepted course codes, required course names, GE requirements, core requirements, and graduation requirements.
+  - Never invent curriculum requirements.
+  - Never invent courses.
+  - Only choose from the candidates list.
+
+  Curriculum bucket rule:
+  - Candidates may include curriculumBucket values:
+    DEPT_REQUIRED, BASIC_CORE, CORE_COURSE, PROFESSIONAL, LAB,
+    GE, LANGUAGE, FREE_ELECTIVE, SCHOOL_COMPULSORY, UNKNOWN.
+  - For normal planning requests, prioritize buckets in this order:
+    1. DEPT_REQUIRED
+    2. BASIC_CORE
+    3. CORE_COURSE
+    4. PROFESSIONAL
+    5. LAB
+    6. GE
+    7. LANGUAGE
+    8. FREE_ELECTIVE
+  - Do not treat CORE / ELECTIVE / GE as the full curriculum requirement.
+    The curriculumBucket is more important than the display type.
+  - If the user asks for CS core, prefer DEPT_REQUIRED, BASIC_CORE, or CORE_COURSE.
+  - If the user asks for language, prefer LANGUAGE.
+  - If the user asks for GE, prefer GE.
+  - If the user asks for lab, prefer LAB.
+
+  Important:
+  - If mustMatchSubject is true, only choose courses matching the requested subject/topic.
+  - If the user asks for a specific subject AND language of instruction, choose courses matching both.
+  - Do not replace a specific subject request with a random language course.
+  - If the user asks for English/Chinese instruction, prioritize matching language.
+  - If the user asks for morning/night/afternoon/evening classes, prioritize matching time.
+  - If the user asks for large limit/capacity, prioritize higher limit.
+  - Avoid thesis, seminar, colloquium, research, MOOC, lab rotation, and 0-credit courses unless directly requested.
+
+  Return JSON only:
+  {
+    "courseIds": ["id1", "id2"]
+  }
+  ''',
+            },
+            {
+              'role': 'user',
+              'content': jsonEncode({
+                'userMessage': userMessage,
+                'userCurriculum': _compactCurriculumForAi(curriculum),
+                'group': {
+                  'query': group.query,
+                  'subjectQuery': group.subjectQuery,
+                  'subjectPhrases': group.subjectPhrases,
+                  'mustMatchSubject': group.mustMatchSubject,
+                  'count': group.count,
+                  'credits': group.credits,
+                  'requiredType': group.requiredType,
+                  'timePreference': group.timePreference,
+                  'language': group.language,
+                  'minLimit': group.minLimit,
+                  'maxLimit': group.maxLimit,
+                  'mustHave': group.mustHave,
+                  'avoid': group.avoid,
+                },
+                'candidates': compactCandidates,
+              }),
+            },
+          ],
+          'temperature': 0.05,
+          'max_tokens': 500,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        return [];
+      }
+
+      final data = jsonDecode(response.body);
+      final content = data['choices']?[0]?['message']?['content']?.toString();
+
+      if (content == null || content.trim().isEmpty) {
+        return [];
+      }
+
       final parsed = jsonDecode(_extractJsonObject(content));
       final ids = parsed['courseIds'];
 
@@ -1196,6 +1981,220 @@ Return JSON only:
       print('Bao-Bao AI rerank failed: $error');
       return [];
     }
+  }
+    Map<String, dynamic>? _compactCurriculumForAi(Map<String, dynamic>? curriculum) {
+    if (curriculum == null) {
+      return null;
+    }
+
+    final groupsRaw = curriculum['requirementGroups'];
+    final allGroups = <Map<String, dynamic>>[];
+
+    if (groupsRaw is List) {
+      for (final group in groupsRaw) {
+        if (group is! Map) continue;
+
+        final category = group['category']?.toString() ?? '';
+        final description = group['description']?.toString() ?? '';
+        final coursesRaw = group['courses'];
+        final compactCourses = <Map<String, dynamic>>[];
+
+        if (coursesRaw is List) {
+          for (final course in coursesRaw) {
+            if (course is! Map) continue;
+
+            compactCourses.add({
+              'name': course['name'],
+              'credits': course['credits'],
+              'acceptedCodes': course['acceptedCodes'],
+              'type': course['type'],
+              'remarks': course['remarks'],
+            });
+          }
+        }
+
+        allGroups.add({
+          'priority': _curriculumGroupPriority(category, description),
+          'category': category,
+          'requiredCredits': group['requiredCredits'],
+          'description': description,
+          'courses': compactCourses,
+        });
+      }
+    }
+
+    allGroups.sort((a, b) {
+      final pa = a['priority'] is int ? a['priority'] as int : 999;
+      final pb = b['priority'] is int ? b['priority'] as int : 999;
+      return pa.compareTo(pb);
+    });
+
+    final compactGroups = allGroups.map((group) {
+      final courses = group['courses'];
+
+      return {
+        'category': group['category'],
+        'requiredCredits': group['requiredCredits'],
+        'description': group['description'],
+        'courses': courses is List ? courses.take(50).toList() : [],
+      };
+    }).take(12).toList();
+
+    return {
+      'programName': curriculum['programName'],
+      'department': curriculum['department'],
+      'entryYear': curriculum['entryYear'],
+      'minimumGraduationCredits': curriculum['minimumGraduationCredits'],
+      'requirementGroups': compactGroups,
+      'notes': curriculum['notes'],
+      'planningInstruction':
+          'Prioritize Department Required, Basic Core, Core Courses, Professional, and Lab requirements before general school compulsory courses.',
+    };
+  }
+
+  int _curriculumGroupPriority(String category, String description) {
+    final text = '$category $description'.toLowerCase();
+
+    if (text.contains('department required') || text.contains('系定必修')) {
+      return 1;
+    }
+
+    if (text.contains('basic core') || text.contains('基礎選修')) {
+      return 2;
+    }
+
+    if ((text.contains('core course') || text.contains('core courses')) &&
+        !text.contains('core general') &&
+        !text.contains('general education')) {
+      return 3;
+    }
+
+    if (text.contains('核心選修')) {
+      return 3;
+    }
+
+    if (text.contains('professional') || text.contains('專業選修')) {
+      return 4;
+    }
+
+    if (text.contains('lab') ||
+        text.contains('laboratory') ||
+        text.contains('實驗')) {
+      return 5;
+    }
+
+    if (text.contains('free elective') || text.contains('其餘選修')) {
+      return 6;
+    }
+
+    if (text.contains('general education') ||
+        text.contains('core general') ||
+        text.contains('ge') ||
+        text.contains('通識')) {
+      return 7;
+    }
+
+    if (text.contains('english') ||
+        text.contains('chinese') ||
+        text.contains('mandarin') ||
+        text.contains('language') ||
+        text.contains('英文') ||
+        text.contains('中文') ||
+        text.contains('華語')) {
+      return 8;
+    }
+
+    if (text.contains('compulsory') || text.contains('校定必修')) {
+      return 9;
+    }
+
+    return 99;
+  }
+
+
+  int _curriculumBucketScoreForGroup(String bucket, _SearchGroup group) {
+    final normalizedBucket = bucket.toUpperCase();
+    final requestedBuckets = group.mustHave
+        .map((item) => item.toUpperCase().trim())
+        .where((item) => item.isNotEmpty)
+        .toSet();
+
+    final query = '${group.query} ${group.subjectQuery ?? ''}'.toLowerCase();
+
+    int score = 0;
+
+    // If this group specifically asks for this bucket, make it very strong.
+    if (requestedBuckets.contains(normalizedBucket)) {
+      score += 10000;
+    }
+
+    switch (normalizedBucket) {
+      case 'DEPT_REQUIRED':
+        score += 5000;
+        break;
+      case 'BASIC_CORE':
+        score += 4500;
+        break;
+      case 'CORE_COURSE':
+        score += 4000;
+        break;
+      case 'PROFESSIONAL':
+        score += 2500;
+        break;
+      case 'LAB':
+        score += 2200;
+        break;
+      case 'GE':
+        score += 1200;
+        break;
+      case 'LANGUAGE':
+        score += 1000;
+        break;
+      case 'SCHOOL_COMPULSORY':
+        score += 800;
+        break;
+      case 'FREE_ELECTIVE':
+        score += 300;
+        break;
+      default:
+        score += 0;
+    }
+
+    if (query.contains('department') && normalizedBucket == 'DEPT_REQUIRED') {
+      score += 2000;
+    }
+
+    if (query.contains('basic') && normalizedBucket == 'BASIC_CORE') {
+      score += 2000;
+    }
+
+    if (query.contains('core') && normalizedBucket == 'CORE_COURSE') {
+      score += 1800;
+    }
+
+    if (query.contains('professional') && normalizedBucket == 'PROFESSIONAL') {
+      score += 1500;
+    }
+
+    if ((query.contains('lab') || query.contains('laboratory')) &&
+        normalizedBucket == 'LAB') {
+      score += 1500;
+    }
+
+    if ((query.contains('ge') || query.contains('general education')) &&
+        normalizedBucket == 'GE') {
+      score += 1200;
+    }
+
+    if ((query.contains('language') ||
+            query.contains('english') ||
+            query.contains('chinese') ||
+            query.contains('mandarin')) &&
+        normalizedBucket == 'LANGUAGE') {
+      score += 1200;
+    }
+
+    return score;
   }
 
   // ============================================================
@@ -1302,7 +2301,44 @@ Return JSON only:
           .replaceAll(RegExp(r'\s+'), ' ')
           .trim();
 
-      final tokens = _tokens(name).where((token) => token.length >= 2).toList();
+      final blockedProfessorWords = {
+        'each',
+        'list',
+        'course',
+        'courses',
+        'class',
+        'classes',
+        'recommended',
+        'recommend',
+        'plan',
+        'semester',
+        'curriculum',
+        'graduation',
+        'data',
+        'uploaded',
+        'based',
+        'prioritize',
+        'missing',
+        'department',
+        'dept',
+        'required',
+        'basic',
+        'core',
+        'professional',
+        'lab',
+        'requirements',
+        'before',
+        'choosing',
+        'duplicate',
+        'sections',
+        'same',
+        'different',
+      };
+
+      final tokens = _tokens(name)
+          .where((token) => token.length >= 2)
+          .where((token) => !blockedProfessorWords.contains(token.toLowerCase()))
+          .toList();
 
       if (tokens.isNotEmpty) {
         return tokens;
@@ -1672,6 +2708,10 @@ Return JSON only:
       course['titleEn'],
       course['professor'],
       course['type'],
+      course['curriculumBucket'],
+      course['curriculumCategory'],
+      course['curriculumRequiredCourseName'],
+      course['curriculumMatchedBy'],
       course['department'],
       course['slotCode'],
       course['timeSlot'],

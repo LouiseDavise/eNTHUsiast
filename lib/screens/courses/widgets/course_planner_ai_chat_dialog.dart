@@ -6,6 +6,11 @@ import 'package:flutter/material.dart';
 
 import '../../../models/courses_planner_model.dart';
 import '../api/bao_bao_ai_api.dart';
+import 'package:provider/provider.dart';
+
+import 'package:enthusiast/providers/ccxp_data_provider.dart';
+import 'package:enthusiast/screens/account/service/curriculum_upload_service.dart';
+import 'package:enthusiast/screens/courses/services/bao_bao_course_agent.dart';
 
 enum _BaoBaoStage {
   idle,
@@ -114,10 +119,38 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
       return;
     }
 
-    final recommendedIds = await _baoBaoAiApi.askBaoBaoRecommendedCourseIds(
-      userMessage: text,
-      courseCatalog: _buildCourseCatalogForAi(),
+    final courseCatalog = _buildCourseCatalogForAi();
+    print('Bao-Bao dialog widget.allCourses length: ${widget.allCourses.length}');
+    print('Bao-Bao dialog courseCatalog length: ${courseCatalog.length}');
+    print('Bao-Bao first course sample: ${courseCatalog.isNotEmpty ? courseCatalog.first : "EMPTY"}');
+
+    final curriculum = await CurriculumUploadService().fetchCurriculumForBaoBao();
+    print('Bao-Bao curriculum loaded: ${curriculum != null}');
+    print('Bao-Bao curriculum keys: ${curriculum?.keys.toList()}');
+    print('Bao-Bao program name: ${curriculum?['programName']}');
+    print('Bao-Bao requirement groups: ${curriculum?['requirementGroups']}');
+
+    final ccxpProvider = context.read<CcxpDataProvider>();
+    final graduationData = ccxpProvider.graduationData;
+    print('Bao-Bao graduation data loaded: ${graduationData != null}');
+    print('Bao-Bao graduation data keys: ${graduationData?.keys.toList()}');
+
+    final agent = BaoBaoCourseAgent(
+      aiApi: _baoBaoAiApi,
     );
+
+    final result = await agent.planCourse(
+      userMessage: text,
+      courseCatalog: courseCatalog,
+      curriculum: curriculum,
+      graduationData: graduationData,
+    );
+
+    for (final step in result.trace) {
+      print('[Bao-Bao Agent] ${step.name}: ${step.status} - ${step.message}');
+    }
+
+    final recommendedIds = result.recommendedCourseIds;
 
     if (!mounted) return;
 
@@ -138,7 +171,7 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
       stage = _BaoBaoStage.success;
       pendingRecommendedIds = recommendedIds;
       pendingResultMessage = resultMessage;
-      speechText = '$resultMessage\n\nTap anywhere to continue ✨';
+      speechText = resultMessage;
     });
   }
 
@@ -223,10 +256,16 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
       ];
     }
 
-    if (lower.contains('prof') ||
-        lower.contains('teacher') ||
-        lower.contains('instructor') ||
-        lower.contains('taught by')) {
+    if (_asksForCurriculumBucketPlanning(prompt)) {
+      return const [
+        'Reading your curriculum buckets...',
+        'Checking missing department, basic core, core, professional, and lab requirements...',
+        'Removing completed or in-progress courses...',
+        'Almost done building your curriculum-based plan...',
+      ];
+    }
+
+    if (_asksForProfessorSearch(prompt)) {
       return const [
         'Searching by professor name...',
         'Checking instructor fields from the course list...',
@@ -286,15 +325,16 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
 
     final lower = prompt.toLowerCase();
 
-    if (lower.contains('prof') ||
-        lower.contains('teacher') ||
-        lower.contains('instructor') ||
-        lower.contains('taught by')) {
+    if (_asksForCurriculumBucketPlanning(prompt)) {
+      return 'I found $count courses using your curriculum buckets and graduation data 🐼✨';
+    }
+
+    if (_asksForProfessorSearch(prompt)) {
       return 'I found $count courses based on the professor name you asked for 🐼';
     }
 
     if (lower.contains('20') && lower.contains('credit')) {
-      return 'I found a course mix for your credit plan. I tried to match your GE, CS core, and language requirements ✨';
+      return 'I found a 20-credit course plan based on your request ✨';
     }
 
     if (lower.contains('ge')) {
@@ -413,6 +453,45 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
     }
 
     return null;
+  }
+
+  bool _asksForProfessorSearch(String prompt) {
+    final lower = prompt.toLowerCase();
+
+    if (lower.contains('professional')) {
+      return false;
+    }
+
+    if (RegExp(r'\bprof\b').hasMatch(lower) ||
+        lower.contains('professor') ||
+        lower.contains('teacher') ||
+        lower.contains('instructor') ||
+        lower.contains('taught by')) {
+      return true;
+    }
+
+    final explicitByPattern = RegExp(
+      r'\b(?:class|classes|course|courses)\s+(?:by|from|with)\s+(?:prof\s+|professor\s+|teacher\s+|instructor\s+)?[a-zA-ZÀ-ž\u4e00-\u9fff]',
+      caseSensitive: false,
+    );
+
+    return explicitByPattern.hasMatch(prompt);
+  }
+
+  bool _asksForCurriculumBucketPlanning(String prompt) {
+    final lower = prompt.toLowerCase();
+
+    return lower.contains('curriculum') ||
+        lower.contains('graduation') ||
+        lower.contains('bucket') ||
+        lower.contains('department required') ||
+        lower.contains('dept req') ||
+        lower.contains('dept required') ||
+        lower.contains('basic core') ||
+        lower.contains('core course') ||
+        lower.contains('professional course') ||
+        lower.contains('lab requirement') ||
+        lower.contains('missing requirement');
   }
 
   bool _asksForInstructionLanguage(String prompt) {
@@ -630,52 +709,65 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
                   22,
                   math.max(24, effectiveBottomInset + 20),
                 ),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxWidth: 430,
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _SpeechBubble(
-                          text: speechText,
-                          stage: stage,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight,
                         ),
-                        const SizedBox(height: 6),
-                        _BaoBaoAvatar(
-                          floatController: _floatController,
-                          pulseController: _pulseController,
-                          sparkleController: _sparkleController,
-                          stage: stage,
-                        ),
-                        const SizedBox(height: 24),
-                        if (lastUserPrompt.isNotEmpty && !isSuccess) ...[
-                          _UserPromptPreview(text: lastUserPrompt),
-                          const SizedBox(height: 14),
-                        ],
-                        AnimatedSize(
-                          duration: const Duration(milliseconds: 240),
-                          curve: Curves.easeOut,
-                          child: isLoading || isSuccess
-                              ? _ThinkingStatus(stage: stage)
-                              : Column(
-                                  children: [
-                                    _PromptInput(
-                                      controller: _messageController,
-                                      isDisabled: isLoading,
-                                      onSend: () => sendPrompt(),
-                                    ),
-                                    const SizedBox(height: 14),
-                                    _SuggestionChips(
-                                      onSelected: sendPrompt,
-                                    ),
-                                  ],
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(
+                              maxWidth: 430,
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _SpeechBubble(
+                                  text: speechText,
+                                  stage: stage,
                                 ),
+                                const SizedBox(height: 6),
+                                _BaoBaoAvatar(
+                                  floatController: _floatController,
+                                  pulseController: _pulseController,
+                                  sparkleController: _sparkleController,
+                                  stage: stage,
+                                ),
+                                const SizedBox(height: 24),
+                                if (lastUserPrompt.isNotEmpty && !isSuccess) ...[
+                                  _UserPromptPreview(text: lastUserPrompt),
+                                  const SizedBox(height: 14),
+                                ],
+                                AnimatedSize(
+                                  duration: const Duration(milliseconds: 240),
+                                  curve: Curves.easeOut,
+                                  child: isLoading || isSuccess
+                                      ? _ThinkingStatus(stage: stage)
+                                      : Column(
+                                          children: [
+                                            _PromptInput(
+                                              controller: _messageController,
+                                              isDisabled: isLoading,
+                                              onSend: () => sendPrompt(),
+                                            ),
+                                            const SizedBox(height: 14),
+                                            _SuggestionChips(
+                                              onSelected: sendPrompt,
+                                            ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                      ],
-                    ),
-                  ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -775,14 +867,6 @@ class _SpeechBubble extends StatelessWidget {
                 if (isLoading) ...[
                   const SizedBox(width: 12),
                   const _LoadingDots(),
-                ],
-                if (isSuccess) ...[
-                  const SizedBox(width: 10),
-                  const Icon(
-                    Icons.touch_app_rounded,
-                    color: Color(0xFF7E3291),
-                    size: 21,
-                  ),
                 ],
               ],
             ),
@@ -1327,7 +1411,7 @@ class _SuggestionChips extends StatelessWidget {
       _BaoBaoSuggestion(
         label: '20 credits plan 🎯',
         prompt:
-            'I need 20 credits with 4 GE courses, 2 CS core courses, and 1 language course',
+            'Bao-Bao, plan a 20-credit semester based on my uploaded curriculum and graduation data. Prioritize missing department required, basic core, core courses, professional courses, and lab courses before GE or language courses. Do not recommend completed or in-progress courses, and avoid duplicate sections of the same course.',
       ),
     ];
 

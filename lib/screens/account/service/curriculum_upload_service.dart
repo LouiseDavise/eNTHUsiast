@@ -89,6 +89,7 @@ class CurriculumUploadService {
     );
 
     final resultData = await callable.call({
+      'studentId': studentId,
       'fileName': fileName,
       'pdfBase64': pdfBase64,
     });
@@ -113,7 +114,7 @@ class CurriculumUploadService {
         .snapshots();
   }
 
-  Future<Map<String, dynamic>?> fetchCurriculum() async {
+  Future<Map<String, dynamic>?> fetchCurriculumForBaoBao() async {
     final studentId = await _getCurrentStudentId();
 
     final doc = await _firestore
@@ -126,6 +127,7 @@ class CurriculumUploadService {
     final data = doc.data();
 
     if (data == null) return null;
+    if (data['status'] != 'ready') return null;
 
     final curriculum = data['curriculum'];
 
