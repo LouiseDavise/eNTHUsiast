@@ -148,6 +148,7 @@ Do not make fake course codes.
     required String userMessage,
     required List<Map<String, dynamic>> courseCatalog,
     Map<String, dynamic>? curriculum,
+    Map<String, dynamic>? userPreferences,
   }) async {
     final rawPlan = await _makeAiSearchPlan(userMessage);
     final plan = _adjustPlanWithUserHints(
@@ -162,7 +163,7 @@ Do not make fake course codes.
     final usedIds = <String>{};
     final usedCourseTitles = <String>{};
 
-    final targetCredits = plan.targetCredits;
+    final targetCredits = plan.targetCredits ?? _targetCreditsFromPreferences(userPreferences);
     int selectedCredits = 0;
 
     bool reachedTargetCredits() {
@@ -294,6 +295,30 @@ Do not make fake course codes.
     );
 
     return selectedIds;
+  }
+
+  int? _targetCreditsFromPreferences(Map<String, dynamic>? rawPreferences) {
+    if (rawPreferences == null) return null;
+
+    final prefs = rawPreferences['preferences'] is Map
+        ? Map<String, dynamic>.from(rawPreferences['preferences'])
+        : rawPreferences;
+
+    final value = prefs['targetCreditLoad']?.toString() ?? '';
+
+    final numbers = RegExp(r'\d+')
+        .allMatches(value)
+        .map((match) => int.tryParse(match.group(0) ?? ''))
+        .whereType<int>()
+        .toList();
+
+    if (numbers.isEmpty) return null;
+
+    if (numbers.length >= 2) {
+      return numbers[1];
+    }
+
+    return numbers.first;
   }
 
   List<Map<String, dynamic>> _localRankCoursesWithDiversity(
@@ -1819,6 +1844,7 @@ Return:
     score += (rating * 5).round();
 
     score += _toInt(course['yearFitScore']);
+    score += _toInt(course['preferenceFitScore']);
 
     return score;
   }
@@ -1853,6 +1879,8 @@ Return:
         'studentYear': course['studentYear'],
         'courseYearLevel': course['courseYearLevel'],
         'yearFitScore': course['yearFitScore'],
+        'preferenceFitScore': course['preferenceFitScore'],
+        'preferenceReasons': course['preferenceReasons'],
         'department': course['department'],
         'time': course['slotCode'] ?? course['timeSlot'],
         'location': _short(course['location'], 40),
@@ -2719,6 +2747,8 @@ Return:
       course['language'],
       course['instructionLanguage'],
       course['languageOfInstruction'],
+      course['preferenceFitScore'],
+      course['preferenceReasons'],
     ].whereType<Object>().join(' ').toLowerCase();
   }
 

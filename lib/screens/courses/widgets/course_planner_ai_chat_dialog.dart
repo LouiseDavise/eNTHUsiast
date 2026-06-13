@@ -8,6 +8,9 @@ import '../../../models/courses_planner_model.dart';
 import '../api/bao_bao_ai_api.dart';
 import 'package:provider/provider.dart';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 import 'package:enthusiast/providers/ccxp_data_provider.dart';
 import 'package:enthusiast/screens/account/service/curriculum_upload_service.dart';
 import 'package:enthusiast/screens/courses/services/bao_bao_course_agent.dart';
@@ -139,11 +142,14 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
       aiApi: _baoBaoAiApi,
     );
 
+    final userPreferences = await _fetchUserPreferences();
+
     final result = await agent.planCourse(
       userMessage: text,
       courseCatalog: courseCatalog,
       curriculum: curriculum,
       graduationData: graduationData,
+      userPreferences: userPreferences,
     );
 
     for (final step in result.trace) {
@@ -300,6 +306,29 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
       'Filtering by subject, type, time, and language...',
       'Picking the best matching course cards...',
     ];
+  }
+
+  Future<Map<String, dynamic>?> _fetchUserPreferences() async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) return null;
+
+    final doc = await FirebaseFirestore.instance
+        .collection('ccxpUsers')
+        .doc(user.uid)
+        .get();
+
+    final data = doc.data();
+
+    if (data == null) return null;
+
+    final preferences = data['preferences'];
+
+    if (preferences is Map) {
+      return Map<String, dynamic>.from(preferences);
+    }
+
+    return null;
   }
 
   String _successMessageFor(String prompt, int count) {

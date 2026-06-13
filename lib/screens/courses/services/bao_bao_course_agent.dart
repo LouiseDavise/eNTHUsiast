@@ -1,5 +1,15 @@
 import '../api/bao_bao_ai_api.dart';
 
+class _PreferenceFitResult {
+  final int score;
+  final List<String> reasons;
+
+  const _PreferenceFitResult({
+    required this.score,
+    required this.reasons,
+  });
+}
+
 class BaoBaoCourseAgent {
   final BaoBaoAiApi aiApi;
 
@@ -12,6 +22,7 @@ class BaoBaoCourseAgent {
     required List<Map<String, dynamic>> courseCatalog,
     required Map<String, dynamic>? curriculum,
     required Map<String, dynamic>? graduationData,
+    Map<String, dynamic>? userPreferences,
   }) async {
     final trace = <BaoBaoAgentStep>[];
 
@@ -70,7 +81,12 @@ class BaoBaoCourseAgent {
       studentYear: studentYear,
     );
 
-    final bucketCountsBeforeFilter = _bucketCounts(yearAwareCourses);
+    final preferenceAwareCourses = _attachUserPreferenceInsights(
+      courses: yearAwareCourses,
+      userPreferences: userPreferences,
+    );
+
+   final bucketCountsBeforeFilter = _bucketCounts(preferenceAwareCourses);
 
     trace.add(
       BaoBaoAgentStep(
@@ -83,7 +99,7 @@ class BaoBaoCourseAgent {
     );
 
     final availableCourses = _dedupeSameCourse(
-      yearAwareCourses.where((course) {
+      preferenceAwareCourses.where((course) {
         return !_courseMatchesBlockedList(course, completedCourses) &&
             !_isTooAdvancedForStudentYear(course, studentYear);
       }).toList(),
@@ -110,6 +126,7 @@ class BaoBaoCourseAgent {
       userMessage: userMessage,
       courseCatalog: availableCourses,
       curriculum: curriculum,
+      userPreferences: userPreferences,
     );
 
     final recommendedCourses = availableCourses.where((course) {
@@ -166,6 +183,215 @@ class BaoBaoCourseAgent {
       explanation: explanation,
       trace: trace,
     );
+  }
+
+  List<Map<String, dynamic>> _attachUserPreferenceInsights({
+    required List<Map<String, dynamic>> courses,
+    required Map<String, dynamic>? userPreferences,
+  }) {
+    final prefs = _preferenceMap(userPreferences);
+
+    return courses.map((course) {
+      final copied = Map<String, dynamic>.from(course);
+      final result = _preferenceFitForCourse(course, prefs);
+
+      copied['preferenceFitScore'] = result.score;
+      copied['preferenceReasons'] = result.reasons;
+
+      return copied;
+    }).toList();
+  }
+
+  Map<String, dynamic> _preferenceMap(Map<String, dynamic>? raw) {
+    if (raw == null) return {};
+
+    final nested = raw['preferences'];
+
+    if (nested is Map) {
+      return Map<String, dynamic>.from(nested);
+    }
+
+    return Map<String, dynamic>.from(raw);
+  }
+
+  _PreferenceFitResult _preferenceFitForCourse(
+    Map<String, dynamic> course,
+    Map<String, dynamic> prefs,
+  ) {
+    int score = 0;
+    final reasons = <String>[];
+
+    final text = _normalizeText([
+      course['id'],
+      course['code'],
+      course['title'],
+      course['titleZh'],
+      course['titleEn'],
+      course['department'],
+      course['type'],
+      course['curriculumBucket'],
+      course['curriculumCategory'],
+      course['curriculumRequiredCourseName'],
+    ].whereType<Object>().join(' '));
+
+    final bucket = (course['curriculumBucket'] ?? '').toString().toUpperCase();
+
+    final careerPaths = _stringListFromAny(prefs['careerPaths']);
+    final geInterests = _stringListFromAny(prefs['geInterests']);
+    final languagePreference =
+        (prefs['languagePreference'] ?? '').toString().toLowerCase();
+
+    for (final career in careerPaths) {
+      final careerText = _normalizeText(career);
+      final careerKeywords = _careerKeywords(careerText);
+
+      for (final keyword in careerKeywords) {
+        final normalizedKeyword = _normalizeText(keyword);
+
+        if (normalizedKeyword.isNotEmpty && text.contains(normalizedKeyword)) {
+          score += 180;
+          reasons.add('matches career goal: $career');
+          break;
+        }
+      }
+    }
+
+    if (careerPaths.isNotEmpty &&
+        {
+          'DEPT_REQUIRED',
+          'BASIC_CORE',
+          'CORE_COURSE',
+          'PROFESSIONAL',
+          'LAB',
+        }.contains(bucket)) {
+      score += 120;
+    }
+
+    if (geInterests.isNotEmpty && bucket == 'GE') {
+      for (final interest in geInterests) {
+        final interestText = _normalizeText(interest);
+
+        if (interestText.isNotEmpty && text.contains(interestText)) {
+          score += 220;
+          reasons.add('matches GE interest: $interest');
+          break;
+        }
+      }
+    }
+
+    if (languagePreference.contains('english')) {
+      if (text.contains('english') ||
+          text.contains('英語') ||
+          text.contains('英文') ||
+          text.contains('english taught')) {
+        score += 180;
+        reasons.add('matches English-taught preference');
+      }
+    }
+
+    if (languagePreference.contains('chinese')) {
+      if (text.contains('chinese') ||
+          text.contains('中文') ||
+          text.contains('華語')) {
+        score += 120;
+        reasons.add('matches Chinese-taught preference');
+      }
+    }
+
+    return _PreferenceFitResult(
+      score: score,
+      reasons: reasons.toSet().toList(),
+    );
+  }
+
+  List<String> _careerKeywords(String careerText) {
+    final keywords = <String>{careerText};
+
+    if (careerText.contains('software')) {
+      keywords.addAll([
+        'software',
+        'programming',
+        'data structures',
+        'algorithms',
+        'database',
+        'operating systems',
+        'computer networks',
+        'software studio',
+        'computer architecture',
+        'web',
+        'app',
+        'backend',
+      ]);
+    }
+
+    if (careerText.contains('devops') ||
+        careerText.contains('sre') ||
+        careerText.contains('cloud')) {
+      keywords.addAll([
+        'devops',
+        'cloud',
+        'network',
+        'computer networks',
+        'operating systems',
+        'linux',
+        'system',
+        'distributed',
+        'database',
+        'security',
+        'software',
+        'backend',
+        'web',
+        'computer architecture',
+      ]);
+    }
+
+    if (careerText.contains('ai') ||
+        careerText.contains('machine learning') ||
+        careerText.contains('data')) {
+      keywords.addAll([
+        'machine learning',
+        'artificial intelligence',
+        'data',
+        'statistics',
+        'probability',
+        'linear algebra',
+        'algorithm',
+        'python',
+      ]);
+    }
+
+    if (careerText.contains('hardware') ||
+        careerText.contains('embedded') ||
+        careerText.contains('chip')) {
+      keywords.addAll([
+        'logic design',
+        'electronics',
+        'electric circuits',
+        'computer architecture',
+        'embedded',
+        'microelectronics',
+        'signals and systems',
+      ]);
+    }
+
+    return keywords.toList();
+  }
+
+  List<String> _stringListFromAny(dynamic value) {
+    if (value == null) return [];
+
+    if (value is List) {
+      return value
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+    }
+
+    final text = value.toString().trim();
+
+    if (text.isEmpty) return [];
+
+    return [text];
   }
 
   List<Map<String, dynamic>> _getAvailableCourses(
