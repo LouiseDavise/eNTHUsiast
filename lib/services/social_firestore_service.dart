@@ -66,6 +66,7 @@ class SocialFirestoreService {
     final user = await _ensureSignedIn();
     final userName = _displayNameFor(user);
     final userInitials = _initialsFor(userName);
+    final avatarUrl = await _profilePhotoUrlFor(user);
 
     await _postsRef.doc().set({
       'ownerId': user.uid,
@@ -74,7 +75,7 @@ class SocialFirestoreService {
       'department': department.trim().isEmpty ? 'General' : department.trim(),
       'userName': userName,
       'userInitials': userInitials,
-      'avatarUrl': _avatarUrl(user.uid),
+      'avatarUrl': avatarUrl,
       'replyCount': 0,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
@@ -92,6 +93,7 @@ class SocialFirestoreService {
     final user = await _ensureSignedIn();
     final userName = _displayNameFor(user);
     final userInitials = _initialsFor(userName);
+    final avatarUrl = await _profilePhotoUrlFor(user);
 
     final postRef = _postsRef.doc(postId);
     final replyRef = postRef.collection('replies').doc();
@@ -103,7 +105,7 @@ class SocialFirestoreService {
       'content': trimmedContent,
       'userName': userName,
       'userInitials': userInitials,
-      'avatarUrl': _avatarUrl(user.uid),
+      'avatarUrl': avatarUrl,
       'createdAt': FieldValue.serverTimestamp(),
       'isSeededDemo': false,
     });
@@ -236,6 +238,30 @@ class SocialFirestoreService {
     }
 
     return '${words[0][0]}${words[1][0]}'.toUpperCase();
+  }
+
+  Future<String> _profilePhotoUrlFor(User user) async {
+    final ccxpPhoto = await _photoUrlFromCollection('ccxpUsers', user.uid);
+    if (ccxpPhoto != null) return ccxpPhoto;
+
+    final userProfilePhoto = await _photoUrlFromCollection('users', user.uid);
+    if (userProfilePhoto != null) return userProfilePhoto;
+
+    return _avatarUrl(user.uid);
+  }
+
+  Future<String?> _photoUrlFromCollection(String collection, String uid) async {
+    final snapshot = await _firestore.collection(collection).doc(uid).get();
+    final data = snapshot.data();
+    if (data == null) return null;
+
+    return _cleanPhotoUrl(data['photoUrl']);
+  }
+
+  String? _cleanPhotoUrl(Object? value) {
+    final photoUrl = value?.toString().trim() ?? '';
+    if (photoUrl.isEmpty) return null;
+    return photoUrl;
   }
 
   String _avatarUrl(String seed) {

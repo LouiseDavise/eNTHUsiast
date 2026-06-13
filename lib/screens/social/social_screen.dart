@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -1371,6 +1373,8 @@ class _Avatar extends StatelessWidget {
     ];
 
     final colorIndex = initials.codeUnitAt(0) % fallbackColors.length;
+    final normalizedImageUrl = imageUrl?.trim();
+    final memoryBytes = _decodeDataImage(normalizedImageUrl);
 
     return Container(
       width: size,
@@ -1380,16 +1384,31 @@ class _Avatar extends StatelessWidget {
         shape: BoxShape.circle,
       ),
       clipBehavior: Clip.antiAlias,
-      child: imageUrl == null
+      child: normalizedImageUrl == null || normalizedImageUrl.isEmpty
           ? _AvatarInitials(initials: initials, size: size)
+          : memoryBytes != null
+          ? Image.memory(memoryBytes, fit: BoxFit.cover, gaplessPlayback: true)
           : Image.network(
-              imageUrl!,
+              normalizedImageUrl,
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) {
                 return _AvatarInitials(initials: initials, size: size);
               },
             ),
     );
+  }
+
+  Uint8List? _decodeDataImage(String? value) {
+    if (value == null || !value.startsWith('data:image')) return null;
+
+    final commaIndex = value.indexOf(',');
+    if (commaIndex == -1 || commaIndex == value.length - 1) return null;
+
+    try {
+      return base64Decode(value.substring(commaIndex + 1));
+    } catch (_) {
+      return null;
+    }
   }
 }
 
