@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/ccxp_data_provider.dart'; // To get the studentId
 import '../utilities/data.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../utilities/models.dart';
 import 'tutorial.dart';
 import 'upcoming.dart';
@@ -40,22 +41,15 @@ class _AddTaskPopupState extends State<AddTaskPopup> {
 
     try {
       final String taskId = UniqueKey().toString();
-
-      // 1. Get the dynamic student ID
-      // 1. Safely grab the provider first
-      final ccxpData = Provider.of<CcxpDataProvider>(context, listen: false);
-
-      // 2. Check if the data actually exists before forcing it open
-      if (ccxpData.graduationData == null ||
-          ccxpData.graduationData!["studentInfo"] == null ||
-          ccxpData.graduationData!["studentInfo"]["studentId"] == null) {
+      final user = FirebaseAuth.instance.currentUser;
+      final uid = user?.uid;
+      // 3. Safely extract it as a string
+      if (uid == null) {
         setState(() => _isSaving = false);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text(
-                'Error: Could not find Student ID. Please log in again.',
-              ),
+              content: Text('Error: User not logged in. Please log in again.'),
               backgroundColor: Colors.red,
             ),
           );
@@ -63,15 +57,10 @@ class _AddTaskPopupState extends State<AddTaskPopup> {
         return; // Stop the save process completely
       }
 
-      // 3. Safely extract it as a string
-      final String studentId = ccxpData
-          .graduationData!["studentInfo"]["studentId"]
-          .toString();
-
       // 2. Save directly to Firestore so it persists!
       await FirebaseFirestore.instance
           .collection('ccxpUsers')
-          .doc(studentId)
+          .doc(uid)
           .collection('upcoming')
           .doc(taskId)
           .set({
