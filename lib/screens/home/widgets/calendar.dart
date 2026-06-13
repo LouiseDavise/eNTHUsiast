@@ -23,14 +23,37 @@ class CalendarWidget extends StatefulWidget {
   State<CalendarWidget> createState() => _CalendarWidgetState();
 }
 
-class _CalendarWidgetState extends State<CalendarWidget> {
+class _CalendarWidgetState extends State<CalendarWidget>
+    with TickerProviderStateMixin {
   bool _showFullCalendar = false;
   double _dragDistance = 0;
+
+  // --- Cascading crossfade animation ---
+  late AnimationController _swipeController;
+
+  // direction: +1 = forward (next week), -1 = backward (prev week)
+  // Forward  → old cells drift UP   + fade out; new cells rise from BELOW + fade in
+  // Backward → old cells drift DOWN + fade out; new cells fall from ABOVE + fade in
+  int _swipeDirection = 1;
+
+  // Snapshot of the week being animated OUT (filled when animation starts)
+  List<DateTime>? _outgoingWeekDays;
+
+  // Live drag offset (fraction of widget width, for finger-follow feedback)
+  double _dragFraction = 0.0;
+
+  // Whether a programmatic swipe animation is running
+  bool _animating = false;
 
   @override
   void initState() {
     super.initState();
-    
+
+    _swipeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 480),
+    );
+
     UpcomingTasksWidget.tasksNotifier.addListener(_onTasksUpdated);
 
     TutorialTargetRegistry.forceCalendarWeekView = () {
@@ -53,12 +76,59 @@ class _CalendarWidgetState extends State<CalendarWidget> {
 
   @override
   void dispose() {
+    _swipeController.dispose();
     UpcomingTasksWidget.tasksNotifier.removeListener(_onTasksUpdated);
     super.dispose();
   }
 
   void _onTasksUpdated() {
     if (mounted) setState(() {});
+  }
+
+  /// Captures outgoing week snapshot and sets direction before animating.
+  void _prepareAnimation({required int direction}) {
+    _swipeDirection = direction;
+    _outgoingWeekDays = _computeWeekDays(widget.currentDate);
+  }
+
+  /// Triggers the cascading crossfade animation then commits navigation.
+  Future<void> _handleNavigationAnimated(int step) async {
+    if (_animating || _showFullCalendar) {
+      _handleNavigation(step);
+      return;
+    }
+
+    _prepareAnimation(direction: step);
+    _swipeController.reset();
+    setState(() {
+      _animating = true;
+      _dragFraction = 0;
+    });
+
+    await _swipeController.forward();
+
+    widget.onNavigate(_nextDate(step));
+    _swipeController.reset();
+
+    setState(() {
+      _animating = false;
+      _outgoingWeekDays = null;
+    });
+  }
+
+  DateTime _nextDate(int step) {
+    DateTime cleanDate = DateUtils.dateOnly(widget.currentDate);
+    return DateTime(cleanDate.year, cleanDate.month, cleanDate.day + (7 * step));
+  }
+
+  List<DateTime> _computeWeekDays(DateTime anchorDate) {
+    final cleanDate = DateUtils.dateOnly(anchorDate);
+    final int offset = anchorDate.weekday % 7;
+    final startOfWeek = DateTime(cleanDate.year, cleanDate.month, cleanDate.day - offset);
+    return List.generate(
+      7,
+      (i) => DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day + i),
+    );
   }
 
   void _handleNavigation(int step) {
@@ -74,23 +144,6 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       );
     }
     widget.onNavigate(newDate);
-  }
-
-  List<DateTime> _getWeekDays() {
-    DateTime cleanDate = DateUtils.dateOnly(widget.currentDate);
-    int offset = widget.currentDate.weekday % 7;
-    
-    DateTime startOfWeek = DateTime(
-      cleanDate.year, 
-      cleanDate.month, 
-      cleanDate.day - offset
-    );
-
-    return List.generate(7, (index) => DateTime(
-      startOfWeek.year, 
-      startOfWeek.month, 
-      startOfWeek.day + index
-    ));
   }
 
   List<DateTime?> _getMonthDays() {
@@ -170,7 +223,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
             children: [
               _InteractiveArrowButton(
                 icon: Icons.chevron_left_rounded,
-                onPressed: () => _handleNavigation(-1),
+                onPressed: () => _handleNavigationAnimated(-1),
               ),
               SizedBox(
                 width: 140,
@@ -182,7 +235,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
               ),
               _InteractiveArrowButton(
                 icon: Icons.chevron_right_rounded,
-                onPressed: () => _handleNavigation(1),
+                onPressed: () => _handleNavigationAnimated(1),
               ),
             ],
           ),
@@ -201,51 +254,171 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   }
 
   Widget _buildWeekView() {
-    final weekDays = _getWeekDays();
-    final today = DateTime.now();
-
     return GestureDetector(
       key: TutorialTargetRegistry.get('calendar-week-view'),
       behavior: HitTestBehavior.opaque,
       onHorizontalDragUpdate: (details) {
+        if (_animating) return;
         _dragDistance += details.primaryDelta!;
+        setState(() {
+          _dragFraction = _dragDistance / context.size!.width;
+        });
       },
       onHorizontalDragEnd: (details) {
-        if (_dragDistance > 40 || details.primaryVelocity! > 300) {
-          _handleNavigation(-1); 
-          TutorialTargetRegistry.fireAction(); 
-        } else if (_dragDistance < -40 || details.primaryVelocity! < -300) {
-          _handleNavigation(1);
+        if (_animating) return;
+        final velocity = details.primaryVelocity ?? 0;
+        if (_dragDistance > 40 || velocity > 300) {
+          _dragDistance = 0;
+          _dragFraction = 0;
+          _handleNavigationAnimated(-1);
           TutorialTargetRegistry.fireAction();
+        } else if (_dragDistance < -40 || velocity < -300) {
+          _dragDistance = 0;
+          _dragFraction = 0;
+          _handleNavigationAnimated(1);
+          TutorialTargetRegistry.fireAction();
+        } else {
+          setState(() {
+            _dragDistance = 0;
+            _dragFraction = 0;
+          });
         }
-        _dragDistance = 0;
       },
-      child: Container(
-        color: Colors.transparent,
-        padding: const EdgeInsets.only(bottom: 16),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: weekDays.map((date) {
-            final isSelected = DateUtils.isSameDay(date, widget.selectedDate);
-            final isToday = DateUtils.isSameDay(date, today);
-            final dailyEvents = _getEventsForDate(date);
+      child: AnimatedBuilder(
+        animation: _swipeController,
+        builder: (context, _) {
+          final t = _swipeController.value; // 0.0 → 1.0
 
-            return _InteractiveDayCell(
-              date: date,
-              isSelected: isSelected,
-              isToday: isToday,
-              events: dailyEvents,
-              onTap: () {
-                widget.onDateSelected(date);
-                // Added the DayDetailsPopup call back in
-                showDialog(
-                  context: context,
-                  builder: (context) => DayDetailsPopup(date: date, events: dailyEvents),
-                );
-              },
+          if (_animating && _outgoingWeekDays != null) {
+            final incomingWeekDays = _computeWeekDays(_nextDate(_swipeDirection));
+            return _buildCascadingRows(
+              outgoing: _outgoingWeekDays!,
+              incoming: incomingWeekDays,
+              t: t,
+              direction: _swipeDirection,
             );
-          }).toList(),
+          }
+
+          // Idle / live-drag: subtle horizontal + vertical follow
+          final absDrag = _dragFraction.abs().clamp(0.0, 1.0);
+          return Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.identity()
+              ..translate(_dragFraction * MediaQuery.of(context).size.width * 0.4, 0.0)
+              ..scale(1.0 - absDrag * 0.02),
+            child: _buildWeekRow(_computeWeekDays(widget.currentDate)),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Builds two overlaid rows where each of the 7 cells animates with a
+  /// staggered delay — creating the cascading waterfall crossfade effect.
+  Widget _buildCascadingRows({
+    required List<DateTime> outgoing,
+    required List<DateTime> incoming,
+    required double t,           // controller value 0→1
+    required int direction,      // +1 forward, -1 backward
+  }) {
+    const int cellCount = 7;
+    // Each cell's animation window within the full 0→1 timeline.
+    // They overlap so the cascade isn't too slow.
+    const double cellDuration = 0.55; // fraction of total each cell takes
+    const double staggerStep = (1.0 - cellDuration) / (cellCount - 1);
+
+    // Vertical drift direction: forward→ old drifts up, new comes from below
+    //                           backward→ old drifts down, new comes from above
+    final double driftSign = direction > 0 ? -1.0 : 1.0;
+    const double driftPx = 14.0; // max vertical travel in logical pixels
+
+    Widget buildCell(DateTime date, int cellIndex, {required bool isOut}) {
+      // Map t into this cell's [0,1] local progress
+      final cellStart = cellIndex * staggerStep;
+      final rawLocal = (t - cellStart) / cellDuration;
+      final local = rawLocal.clamp(0.0, 1.0);
+
+      // Apply ease curves
+      final easedLocal = Curves.easeInOutCubic.transform(local);
+
+      double opacity;
+      double dy;
+
+      if (isOut) {
+        // Fade OUT: opacity 1→0, drifts in driftSign direction
+        opacity = (1.0 - easedLocal).clamp(0.0, 1.0);
+        dy = driftSign * driftPx * easedLocal;
+      } else {
+        // Fade IN: opacity 0→1, arrives from opposite direction
+        opacity = easedLocal.clamp(0.0, 1.0);
+        dy = -driftSign * driftPx * (1.0 - easedLocal);
+      }
+
+      final today = DateTime.now();
+      final isSelected = DateUtils.isSameDay(date, widget.selectedDate);
+      final isToday = DateUtils.isSameDay(date, today);
+      final dailyEvents = _getEventsForDate(date);
+
+      return Opacity(
+        opacity: opacity,
+        child: Transform.translate(
+          offset: Offset(0, dy),
+          child: _InteractiveDayCell(
+            date: date,
+            isSelected: isSelected,
+            isToday: isToday,
+            events: dailyEvents,
+            onTap: () => widget.onDateSelected(date),
+          ),
         ),
+      );
+    }
+
+    return Container(
+      color: Colors.transparent,
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: List.generate(cellCount, (i) {
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              buildCell(outgoing[i], i, isOut: true),
+              buildCell(incoming[i], i, isOut: false),
+            ],
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildWeekRow(List<DateTime> weekDays) {
+    final today = DateTime.now();
+
+    return Container(
+      color: Colors.transparent,
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: weekDays.map((date) {
+          final isSelected = DateUtils.isSameDay(date, widget.selectedDate);
+          final isToday = DateUtils.isSameDay(date, today);
+          final dailyEvents = _getEventsForDate(date);
+
+          return _InteractiveDayCell(
+            date: date,
+            isSelected: isSelected,
+            isToday: isToday,
+            events: dailyEvents,
+            onTap: () {
+              widget.onDateSelected(date);
+              showDialog(
+                context: context,
+                builder: (context) => DayDetailsPopup(date: date, events: dailyEvents),
+              );
+            },
+          );
+        }).toList(),
       ),
     );
   }
