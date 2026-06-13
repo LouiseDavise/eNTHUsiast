@@ -2,41 +2,82 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const { google } = require('googleapis');
-const fs = require('fs').promises;
 const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { defineSecret } = require('firebase-functions/params');
 
-// Define the secret parameter
 const geminiApiKey = defineSecret('GEMINI_API_KEY');
+const gmailCredentials = defineSecret('GMAIL_CREDENTIALS');
 
-// 1. Initialize Firebase Admin
 const serviceAccount = require("./serviceAccountKey.json");
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
 });
 const db = admin.firestore();
 
-// 2. Configuration
-const CREDENTIALS_PATH = path.join(__dirname, 'credentials.json');
-const TARGET_EMAIL = 'louizkwok2@gmail.com';
+const ALLOWED_SENDERS = [
+    'louizkwok2@gmail.com',
+    'louizkwok@gmail.com',
+    'no-reply@nthu.edu.tw',
+];
 
-// 3. Multi-User Gmail Auth
+// ─────────────────────────────────────────────────────────────────────────────
+// BUG 1 FIX: Recursively find the text/plain part in nested multipart emails.
+// Gmail wraps content in nested parts; parts[0].body.data is often null.
+// ─────────────────────────────────────────────────────────────────────────────
+function findPlainTextPart(payload) {
+    // Base case: this part itself is text/plain
+    if (payload.mimeType === 'text/plain' && payload.body && payload.body.data) {
+        return payload.body.data;
+    }
+    // Recursive case: search nested parts
+    if (payload.parts && payload.parts.length > 0) {
+        for (const part of payload.parts) {
+            const found = findPlainTextPart(part);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
 async function authenticateGmail(refreshToken) {
-    const credsFile = await fs.readFile(CREDENTIALS_PATH, 'utf-8');
-    const credentials = JSON.parse(credsFile);
+    const credentials = JSON.parse(gmailCredentials.value());
     const { client_secret, client_id, redirect_uris } = credentials.installed || credentials.web;
 
-    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris ? redirect_uris[0] : "");
+    const oAuth2Client = new google.auth.OAuth2(
+        client_id,
+        client_secret,
+        redirect_uris ? redirect_uris[0] : ""
+    );
 
-    // Force the client to use the refresh token
     oAuth2Client.setCredentials({ refresh_token: refreshToken });
-
-    // Explicitly refresh the access token before returning the gmail instance
-    // This is the missing step that often causes '0 messages found'
     await oAuth2Client.getAccessToken();
 
     return google.gmail({ version: 'v1', auth: oAuth2Client });
+}
+
+// BUG 3 FIX: Web users have accessToken instead of refreshToken.
+// Authenticate using accessToken directly (short-lived, ~1hr).
+async function authenticateGmailWithAccessToken(accessToken) {
+    const credentials = JSON.parse(gmailCredentials.value());
+    const { client_secret, client_id, redirect_uris } = credentials.installed || credentials.web;
+
+    const oAuth2Client = new google.auth.OAuth2(
+        client_id,
+        client_secret,
+        redirect_uris ? redirect_uris[0] : ""
+    );
+
+    // Set accessToken directly — no refresh token needed for short-lived reads
+    oAuth2Client.setCredentials({ access_token: accessToken });
+
+    return google.gmail({ version: 'v1', auth: oAuth2Client });
+}
+
+async function getOAuthClient() {
+    const credentials = JSON.parse(gmailCredentials.value());
+    const { client_secret, client_id } = credentials.installed || credentials.web;
+    return new google.auth.OAuth2(client_id, client_secret, "");
 }
 
 async function saveToFirestore(collectionName, newData) {
@@ -50,7 +91,6 @@ async function clearCollection(collectionRef) {
     await Promise.all(deletePromises);
 }
 
-// 4. The Core Parsing Logic
 async function checkAndParseEmails() {
     const genAI = new GoogleGenerativeAI(geminiApiKey.value());
     const model = genAI.getGenerativeModel({
@@ -58,33 +98,51 @@ async function checkAndParseEmails() {
         generationConfig: { responseMimeType: "application/json" }
     });
 
-    // Step A: Get all users who have linked their Gmail via the Flutter app
     const usersSnapshot = await db.collection('ccxpUsers').get();
     if (usersSnapshot.empty) {
         console.log("No CCXP users found in database.");
         return;
     }
 
-    // Step B: Loop through every user and check their inbox
     for (const userDoc of usersSnapshot.docs) {
-        const studentId = userDoc.id; // <--- The document ID is the studentId
+        const studentId = userDoc.id;
         const userData = userDoc.data();
 
         const email = userData.email;
         const refreshToken = userData.refreshToken;
+        const accessToken = userData.accessToken;
+        const platform = userData.gmailLinkPlatform;
 
-        // Skip users who haven't linked their Gmail yet
-        if (!refreshToken || !email) continue;
+        // BUG 3 FIX: Skip only if BOTH tokens are missing, not just refreshToken
+        if (!email || (!refreshToken && !accessToken)) {
+            console.log(`Skipping user ${studentId}: no Gmail credentials linked.`);
+            continue;
+        }
 
-        console.log(`Checking emails for student: ${studentId} (${email})`);
+        console.log(`Checking emails for user: ${studentId} (${email}), platform: ${platform}`);
 
         try {
-            const gmail = await authenticateGmail(refreshToken);
-            const query = `from:${TARGET_EMAIL} is:unread`;
+            // BUG 3 FIX: Choose auth method based on which token is available
+            let gmail;
+            if (refreshToken) {
+                gmail = await authenticateGmail(refreshToken);
+            } else {
+                // Web user — use accessToken (may fail if expired ~1hr)
+                console.log(`Using web accessToken for ${studentId} (expires after ~1hr)`);
+                gmail = await authenticateGmailWithAccessToken(accessToken);
+            }
+
+            const fromFilter = ALLOWED_SENDERS.map(e => `from:${e}`).join(' OR ');
+            const query = `(${fromFilter}) is:unread`;
             const res = await gmail.users.messages.list({ userId: 'me', q: query });
             const messages = res.data.messages || [];
 
-            if (messages.length === 0) continue;
+            if (messages.length === 0) {
+                console.log(`No unread messages from ${TARGET_EMAIL} for user ${studentId}.`);
+                continue;
+            }
+
+            console.log(`Found ${messages.length} unread message(s) for ${studentId}.`);
 
             for (const msg of messages) {
                 const msgData = await gmail.users.messages.get({ userId: 'me', id: msg.id });
@@ -94,13 +152,31 @@ async function checkAndParseEmails() {
                 const subjectHeader = headers.find(h => h.name.toLowerCase() === 'subject');
                 const subject = subjectHeader ? subjectHeader.value : '';
 
-                let base64Data = payload.parts && payload.parts.length > 0 ? payload.parts[0].body.data : payload.body.data;
-                if (!base64Data) continue;
+                // BUG 1 FIX: Use recursive search instead of parts[0].body.data
+                const base64Data = findPlainTextPart(payload);
+
+                if (!base64Data) {
+                    console.warn(`No text/plain content found for message ${msg.id}. Skipping.`);
+                    // Still mark as read to avoid re-processing
+                    await gmail.users.messages.modify({
+                        userId: 'me',
+                        id: msg.id,
+                        requestBody: { removeLabelIds: ['UNREAD'] }
+                    });
+                    continue;
+                }
 
                 const cleanText = Buffer.from(base64Data, 'base64').toString('utf-8');
                 const snippetText = msgData.data.snippet || '';
 
-                if (subject.includes("<NTHU Bulletin Board>") || cleanText.includes("<NTHU Bulletin Board>")) {
+                console.log(`Processing message ${msg.id}, subject: "${subject}"`);
+                console.log(`cleanText preview: ${cleanText.substring(0, 100)}`);
+
+                // BUG 2 NOTE: Subject check is now the primary gate; cleanText is fallback
+                const isBulletin = subject.includes("<NTHU Bulletin Board>") || cleanText.includes("<NTHU Bulletin Board>");
+
+                if (isBulletin) {
+                    console.log(`→ Identified as BULLETIN for ${studentId}`);
                     await clearCollection(db.collection('bulletins'));
 
                     let parts = cleanText.split("English Version");
@@ -118,7 +194,12 @@ async function checkAndParseEmails() {
                         fullText: englishContent.replace(/\xa0\xa0/g, '\n\n'),
                         timestamp: admin.firestore.FieldValue.serverTimestamp()
                     });
+
+                    console.log(`✓ Bulletin saved to Firestore.`);
+
                 } else {
+                    console.log(`→ Identified as UPCOMING TASK for ${studentId}, sending to Gemini...`);
+
                     const prompt = `You are an assistant for a university app. Read the following email
 and extract the task details into a strict JSON format.
 
@@ -130,16 +211,12 @@ The JSON must have exactly these keys:
 - dueDate: The deadline format as YYYY-MM-DD. If none, return ""
 
 Email Text:
-${cleanText}`; // Note: Ensure this variable matches your script (cleanText vs clean_text)
+${cleanText}`;
 
                     try {
                         const result = await model.generateContent(prompt);
-
-                        // 2. Safely parse directly without regex because of the MimeType config
                         const aiData = JSON.parse(result.response.text());
 
-                        // 3. Optional but highly recommended: Convert the YYYY-MM-DD string into a true Firestore Timestamp.
-                        // This allows you to easily sort by date in Flutter using .orderBy('dueDate') in the future.
                         let firestoreDueDate = null;
                         if (aiData.dueDate && aiData.dueDate !== "") {
                             firestoreDueDate = admin.firestore.Timestamp.fromDate(new Date(aiData.dueDate));
@@ -156,13 +233,19 @@ ${cleanText}`; // Note: Ensure this variable matches your script (cleanText vs c
                             timestamp: admin.firestore.FieldValue.serverTimestamp()
                         });
 
+                        console.log(`✓ Upcoming task "${aiData.title}" saved for ${studentId}.`);
+
                     } catch (e) {
                         console.error(`Gemini Parsing Error for message ${msg.id}:`, e);
                     }
                 }
 
                 // Mark as read so it isn't processed again
-                await gmail.users.messages.modify({ userId: 'me', id: msg.id, requestBody: { removeLabelIds: ['UNREAD'] } });
+                await gmail.users.messages.modify({
+                    userId: 'me',
+                    id: msg.id,
+                    requestBody: { removeLabelIds: ['UNREAD'] }
+                });
             }
         } catch (error) {
             console.error(`Failed to process emails for ${email}:`, error);
@@ -170,38 +253,59 @@ ${cleanText}`; // Note: Ensure this variable matches your script (cleanText vs c
     }
 }
 
-// --- CLOUD FUNCTION 1: The 30-Minute Cron Job ---
 exports.nthuEmailParser = onSchedule({
-    schedule: "every 30 minutes",
-    secrets: [geminiApiKey]
+    schedule: "every 1 minutes",
+    secrets: [geminiApiKey, gmailCredentials]
 }, async (event) => {
     await checkAndParseEmails();
 });
 
-// --- CLOUD FUNCTION 2: The Endpoint for the Flutter App ---
-exports.linkGmailAccount = onCall(async (request) => {
-    const { serverAuthCode, email, studentId } = request.data;
+exports.linkGmailAccount = onCall({
+    secrets: [gmailCredentials]
+}, async (request) => {
+    const { serverAuthCode, accessToken, email, studentId, platform } = request.data;
 
-    if (!serverAuthCode || !email || !studentId) {
-        throw new HttpsError('invalid-argument', 'Missing serverAuthCode, email, or studentId.');
+    if (!email || !studentId) {
+        throw new HttpsError('invalid-argument', 'Missing email or studentId.');
+    }
+
+    if (platform === 'web') {
+        if (!accessToken) {
+            throw new HttpsError('invalid-argument', 'Missing accessToken for web platform.');
+        }
+
+        try {
+            await db.collection('ccxpUsers').doc(studentId).set({
+                email: email,
+                accessToken: accessToken,
+                refreshToken: null,
+                gmailLinkedAt: admin.firestore.FieldValue.serverTimestamp(),
+                gmailLinkPlatform: 'web',
+            }, { merge: true });
+
+            return { success: true, message: "Gmail linked via web. Re-linking required after ~1 hour." };
+        } catch (error) {
+            console.error("Web token storage failed:", error);
+            throw new HttpsError('internal', 'Failed to store web Gmail access.');
+        }
+    }
+
+    if (!serverAuthCode) {
+        throw new HttpsError('invalid-argument', 'Missing serverAuthCode for mobile platform.');
     }
 
     try {
-        const credsFile = await fs.readFile(CREDENTIALS_PATH, 'utf-8');
-        const credentials = JSON.parse(credsFile);
-        const { client_secret, client_id } = credentials.installed || credentials.web;
-
-        // Trade the auth code for a permanent refresh token
-        const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, "");
+        const oAuth2Client = await getOAuthClient();
         const { tokens } = await oAuth2Client.getToken(serverAuthCode);
 
         if (tokens.refresh_token) {
-            // 2. Save the refresh token and email into the existing CCXP user document
             await db.collection('ccxpUsers').doc(studentId).set({
                 email: email,
                 refreshToken: tokens.refresh_token,
-                gmailLinkedAt: admin.firestore.FieldValue.serverTimestamp()
-            }, { merge: true }); // <--- merge: true is CRITICAL so it doesn't delete their CCXP graduation data!
+                accessToken: null,
+                gmailLinkedAt: admin.firestore.FieldValue.serverTimestamp(),
+                gmailLinkPlatform: 'mobile',
+            }, { merge: true });
 
             return { success: true, message: "Gmail successfully linked to CCXP profile!" };
         } else {
