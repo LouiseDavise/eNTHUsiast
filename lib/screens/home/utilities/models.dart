@@ -10,6 +10,7 @@ class AppEvent {
   final String location;
   int progress;
   final DateTime dueDate;
+  final List<Subtask> subtasks;
 
   AppEvent({
     required this.id,
@@ -21,6 +22,7 @@ class AppEvent {
     this.location = 'Online',
     this.progress = 0,
     required this.dueDate,
+    this.subtasks = const [],
   });
 }
 
@@ -43,9 +45,5 @@ class Subtask {
   final String text;
   bool completed;
 
-  Subtask({
-    required this.id,
-    required this.text,
-    this.completed = false,
-  });
+  Subtask({required this.id, required this.text, this.completed = false});
 }

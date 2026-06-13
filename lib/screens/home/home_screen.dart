@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'utilities/data.dart';
@@ -28,7 +27,6 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime _currentDate = DateTime.now();
   DateTime _selectedDate = DateTime.now();
 
-  List<String> _completedTaskIds = [];
   List<AppEvent> _customEvents = [];
   Map<String, List<Subtask>> _subtasksMap = Map.from(initialSubtasksMap);
 
@@ -66,40 +64,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _formatDateKey(DateTime date) {
     return "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
-  }
-
-  List<AppEvent> get _allUpcomingEvents {
-    List<AppEvent> items = [];
-
-    initialCalendarEvents.forEach((dateKey, events) {
-      for (var event in events) {
-        if (event.type != 'Lecture' && event.type != 'TODO') {
-          items.add(event);
-        }
-      }
-    });
-
-    items.addAll(_customEvents);
-
-    return items.map((event) {
-      final subs = _subtasksMap[event.id] ?? [];
-      int currentProgress = event.progress;
-      if (subs.isNotEmpty) {
-        int comp = subs.where((s) => s.completed).length;
-        currentProgress = ((comp / subs.length) * 100).round();
-      }
-      return AppEvent(
-        id: event.id,
-        title: event.title,
-        code: event.code,
-        time: event.time,
-        type: event.type,
-        color: event.color,
-        location: event.location,
-        dueDate: event.dueDate,
-        progress: currentProgress,
-      );
-    }).toList();
   }
 
   void _openDayDetails(DateTime date) {
@@ -165,7 +129,6 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setStateModal) {
-          final subs = _subtasksMap[event.id] ?? [];
           return SubtaskManagerPopup(
             event: event,
             subtasks: _subtasksMap[event.id] ?? [],
@@ -205,21 +168,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final displayEvents =
-        _allUpcomingEvents
-            .where(
-              (e) => e.dueDate.isAfter(
-                DateTime.now().subtract(const Duration(days: 1)),
-              ),
-            )
-            .toList()
-          ..sort((a, b) {
-            bool aDone = _completedTaskIds.contains(a.id);
-            bool bDone = _completedTaskIds.contains(b.id);
-            if (aDone != bDone) return aDone ? 1 : -1;
-            return a.dueDate.compareTo(b.dueDate);
-          });
-
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(

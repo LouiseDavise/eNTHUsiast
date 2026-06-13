@@ -210,24 +210,6 @@ class CoursePlannerFirestoreService {
 
     return 'ELECTIVE';
   }
-  Map<String, int> _parseGrading(Map<String, dynamic> data) {
-    final raw = data['grading'];
-
-    if (raw is Map) {
-      return raw.map(
-        (key, value) => MapEntry(
-          key.toString(),
-          _intValue(value),
-        ),
-      );
-    }
-
-    return {
-      'Exams': 40,
-      'Projects': 40,
-      'Participation': 20,
-    };
-  }
 
   Color _courseColor(String type) {
     switch (type.toUpperCase()) {

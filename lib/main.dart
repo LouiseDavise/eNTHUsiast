@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
-import 'dart:io' show Platform;
 
 import 'firebase_options.dart';
 import 'providers/ccxp_data_provider.dart';
+import 'providers/language_provider.dart';
 import 'routes/app_routes.dart';
 import 'theme/app_theme.dart';
 
@@ -33,20 +33,22 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => CcxpDataProvider(),
-      child: MaterialApp(
-        title: 'eNTHUsiast App',
-        debugShowCheckedModeBanner: false,
+    return LanguageProviderScope(
+      child: ChangeNotifierProvider(
+        create: (_) => CcxpDataProvider(),
+        child: MaterialApp(
+          title: 'eNTHUsiast App',
+          debugShowCheckedModeBanner: false,
 
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
 
-        // 2. Remove initialRoute and use the Gatekeeper as the home widget
-        home: const GatekeeperScreen(),
+          // 2. Remove initialRoute and use the Gatekeeper as the home widget
+          home: const GatekeeperScreen(),
 
-        // 3. Keep your named routes intact for navigation later
-        routes: AppRoutes.routes,
+          // 3. Keep your named routes intact for navigation later
+          routes: AppRoutes.routes,
+        ),
       ),
     );
   }
@@ -100,6 +102,10 @@ class GatekeeperScreen extends StatelessWidget {
             final graduationData =
                 userData?['graduationData'] as Map<String, dynamic>?;
             final schedule = userData?['scheduleData'];
+            final preferences = userData?['preferences'];
+            final hasCompletedPreferences =
+                preferences is Map<String, dynamic> &&
+                preferences['completed'] == true;
 
             if (graduationData != null && schedule != null) {
               // Hydrate your global Provider model so other pages can consume the data safely
@@ -110,8 +116,8 @@ class GatekeeperScreen extends StatelessWidget {
                 );
               });
 
-              // TIER 3: Check your global custom session state logic
-              return hasShownPreferencesThisSession
+              // TIER 3: Show preferences only until the user has saved them.
+              return hasCompletedPreferences
                   ? const MainScreen()
                   : const PreferenceScreen();
             }
