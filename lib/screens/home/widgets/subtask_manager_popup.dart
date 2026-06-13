@@ -1,10 +1,10 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../utilities/data.dart';
 import '../utilities/models.dart';
 import 'tutorial.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:provider/provider.dart';
-import '../../../providers/ccxp_data_provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SubtaskManagerPopup extends StatefulWidget {
   final AppEvent event;
@@ -37,41 +37,28 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
     setState(() => _isUpdating = true);
 
     try {
-      final ccxpData = Provider.of<CcxpDataProvider>(context, listen: false);
-
-      if (ccxpData.graduationData == null ||
-          ccxpData.graduationData!["studentInfo"] == null ||
-          ccxpData.graduationData!["studentInfo"]["studentId"] == null) {
-        throw Exception("Could not find Student ID. Please log in again.");
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) {
+        throw Exception("Not logged in to Firebase. Please log in again.");
       }
 
-      final String studentId = ccxpData
-          .graduationData!["studentInfo"]["studentId"]
-          .toString();
-
-      // Convert your List<Subtask> into a List of Maps for Firebase
       final List<Map<String, dynamic>> subtasksMap = widget.subtasks
           .map(
             (st) => {'id': st.id, 'text': st.text, 'completed': st.completed},
           )
           .toList();
 
-      // Update the specific task document in Firestore
       await FirebaseFirestore.instance
           .collection('ccxpUsers')
-          .doc(studentId)
+          .doc(uid)
           .collection('upcoming')
-          .doc(
-            widget.event.id,
-          ) // Make sure your AppEvent model has the document ID!
+          .doc(widget.event.id)
           .update({
             'progress': currentProgress,
             'subtasks': subtasksMap,
-            'lastUpdated':
-                FieldValue.serverTimestamp(), // Good practice to track edits
+            'lastUpdated': FieldValue.serverTimestamp(),
           });
 
-      // Update local state and trigger callbacks
       widget.event.progress = currentProgress;
       widget.onUpdate();
       TutorialTargetRegistry.fireAction();
@@ -182,7 +169,6 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                 ],
               ),
               const SizedBox(height: 32),
-
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -198,7 +184,7 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                   ),
                   Text(
                     "$progress%",
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
                       color: Colors.black87,
@@ -224,7 +210,6 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                 ),
               ),
               const SizedBox(height: 24),
-
               Row(
                 key: TutorialTargetRegistry.get('subtask-add-row'),
                 children: [
@@ -302,7 +287,6 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                   ),
                 ],
               ),
-
               if (widget.subtasks.isNotEmpty) ...[
                 const SizedBox(height: 24),
                 ConstrainedBox(
@@ -326,9 +310,7 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                   ),
                 ),
               ],
-
               const SizedBox(height: 32),
-
               MouseRegion(
                 onEnter: (_) => setState(() => _isUpdateHovered = true),
                 onExit: (_) => setState(() => _isUpdateHovered = false),
@@ -339,14 +321,11 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                   child: SizedBox(
                     width: double.infinity,
                     height: 56,
-                    // Fix: Just ONE ElevatedButton!
                     child: ElevatedButton(
                       key: TutorialTargetRegistry.get('subtask-update-btn'),
                       onPressed: _isUpdating
                           ? null
-                          : () => _saveToFirestore(
-                              progress,
-                            ), // Calls your new function
+                          : () => _saveToFirestore(progress),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: nthuPurple,
                         elevation: _isUpdateHovered ? 10 : 0,
@@ -385,9 +364,6 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
   }
 }
 
-// ----------------------------------------------------------------------
-// INTERACTIVE SUBTASK ROW (NEW)
-// ----------------------------------------------------------------------
 class _InteractiveSubtaskRow extends StatefulWidget {
   final Subtask subtask;
   final VoidCallback onToggle;
