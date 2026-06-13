@@ -19,31 +19,43 @@ class SocialFirestoreService {
     return _firestore.collection(postsCollection);
   }
 
-  User get _currentUser {
-    final user = _auth.currentUser;
-    if (user == null) {
-      throw StateError('User is not signed in.');
+  Future<User> _ensureSignedIn() async {
+    final existingUser = _auth.currentUser;
+    if (existingUser != null) {
+      return existingUser;
     }
+
+    final credential = await _auth.signInAnonymously();
+    final user = credential.user;
+
+    if (user == null) {
+      throw StateError('Could not sign in anonymously.');
+    }
+
     return user;
   }
 
   Stream<List<SocialPost>> watchPosts() {
-    return _postsRef.orderBy('createdAt', descending: true).snapshots().map((
-      snapshot,
-    ) {
-      return snapshot.docs.map(SocialPost.fromDoc).toList();
+    return Stream.fromFuture(_ensureSignedIn()).asyncExpand((_) {
+      return _postsRef.orderBy('createdAt', descending: true).snapshots().map((
+        snapshot,
+      ) {
+        return snapshot.docs.map(SocialPost.fromDoc).toList();
+      });
     });
   }
 
   Stream<List<SocialReply>> watchReplies(String postId) {
-    return _postsRef
-        .doc(postId)
-        .collection('replies')
-        .orderBy('createdAt')
-        .snapshots()
-        .map((snapshot) {
-          return snapshot.docs.map(SocialReply.fromDoc).toList();
-        });
+    return Stream.fromFuture(_ensureSignedIn()).asyncExpand((_) {
+      return _postsRef
+          .doc(postId)
+          .collection('replies')
+          .orderBy('createdAt')
+          .snapshots()
+          .map((snapshot) {
+            return snapshot.docs.map(SocialReply.fromDoc).toList();
+          });
+    });
   }
 
   Future<void> createPost({
@@ -51,7 +63,7 @@ class SocialFirestoreService {
     required String content,
     required String department,
   }) async {
-    final user = _currentUser;
+    final user = await _ensureSignedIn();
     final userName = _displayNameFor(user);
     final userInitials = _initialsFor(userName);
 
@@ -77,7 +89,7 @@ class SocialFirestoreService {
     final trimmedContent = content.trim();
     if (trimmedContent.isEmpty) return;
 
-    final user = _currentUser;
+    final user = await _ensureSignedIn();
     final userName = _displayNameFor(user);
     final userInitials = _initialsFor(userName);
 
@@ -108,6 +120,8 @@ class SocialFirestoreService {
     required String postId,
     required String replyId,
   }) async {
+    await _ensureSignedIn();
+
     final postRef = _postsRef.doc(postId);
     final replyRef = postRef.collection('replies').doc(replyId);
 
@@ -123,6 +137,8 @@ class SocialFirestoreService {
   }
 
   Future<void> deletePost(String postId) async {
+    await _ensureSignedIn();
+
     final postRef = _postsRef.doc(postId);
     final repliesSnapshot = await postRef.collection('replies').get();
 
@@ -138,6 +154,8 @@ class SocialFirestoreService {
   }
 
   Future<void> seedDemoPostsIfNeeded() async {
+    final user = await _ensureSignedIn();
+
     final existingSeed = await _postsRef
         .where('seedBatchId', isEqualTo: demoSeedBatchId)
         .limit(1)
@@ -145,7 +163,6 @@ class SocialFirestoreService {
 
     if (existingSeed.docs.isNotEmpty) return;
 
-    final user = _currentUser;
     final now = DateTime.now();
     final batch = _firestore.batch();
 
@@ -193,7 +210,13 @@ class SocialFirestoreService {
     if (displayName != null && displayName.isNotEmpty) {
       return displayName;
     }
-    return 'You';
+
+    final email = user.email?.trim();
+    if (email != null && email.isNotEmpty) {
+      return email.split('@').first;
+    }
+
+    return 'Anonymous';
   }
 
   String _initialsFor(String name) {
@@ -203,7 +226,7 @@ class SocialFirestoreService {
         .where((word) => word.isNotEmpty)
         .toList();
 
-    if (words.isEmpty) return 'YO';
+    if (words.isEmpty) return 'AN';
 
     if (words.length == 1) {
       final word = words.first;
@@ -216,7 +239,7 @@ class SocialFirestoreService {
   }
 
   String _avatarUrl(String seed) {
-    return 'https://api.dicebear.com/7.x/avataaars/png?seed=$seed';
+    return 'https://api.dicebear.com/7.x/avataaars/png?seed=${Uri.encodeComponent(seed)}';
   }
 }
 

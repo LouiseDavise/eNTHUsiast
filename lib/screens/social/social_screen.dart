@@ -18,6 +18,36 @@ const Color _hintTextGrey = Color(0xFFB3B7C8);
 const Color _smallTextLightGrey = Color(0xFFD1D5DC);
 const Color _cardBorder = Color(0xFFE8E1EF);
 
+const Color _errorRed = Color(0xFFE05A5A);
+
+bool _isCurrentUserOwner(String ownerId) {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  return uid != null && ownerId == uid;
+}
+
+String _cleanPublicAuthorName(String userName) {
+  final trimmed = userName.trim();
+  if (trimmed.isEmpty) return 'Anonymous';
+  if (trimmed.toLowerCase() == 'you') return 'Anonymous';
+  return trimmed;
+}
+
+String _postAuthorName(SocialPost post) {
+  if (!post.isSeededDemo && _isCurrentUserOwner(post.ownerId)) {
+    return 'YOU';
+  }
+
+  return _cleanPublicAuthorName(post.userName);
+}
+
+String _replyAuthorName(SocialReply reply) {
+  if (!reply.isSeededDemo && _isCurrentUserOwner(reply.ownerId)) {
+    return 'YOU';
+  }
+
+  return _cleanPublicAuthorName(reply.userName);
+}
+
 class SocialScreen extends StatefulWidget {
   const SocialScreen({super.key});
 
@@ -30,6 +60,9 @@ class _SocialScreenState extends State<SocialScreen> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _contentController = TextEditingController();
   final TextEditingController _replyController = TextEditingController();
+
+  bool _showTitleError = false;
+  bool _showContentError = false;
 
   final Set<String> _savedPostIds = {};
   final Set<String> _hiddenPostIds = {};
@@ -116,13 +149,11 @@ class _SocialScreenState extends State<SocialScreen> {
   }
 
   bool _isMyPost(SocialPost post) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    return uid != null && post.ownerId == uid && !post.isSeededDemo;
+    return !post.isSeededDemo && _isCurrentUserOwner(post.ownerId);
   }
 
   bool _isMyReply(SocialReply reply) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    return uid != null && reply.ownerId == uid && !reply.isSeededDemo;
+    return !reply.isSeededDemo && _isCurrentUserOwner(reply.ownerId);
   }
 
   @override
@@ -435,7 +466,7 @@ class _SocialScreenState extends State<SocialScreen> {
                         runSpacing: 5,
                         children: [
                           Text(
-                            post.user.toUpperCase(),
+                            _postAuthorName(post).toUpperCase(),
                             style: const TextStyle(
                               color: _deepPurple,
                               fontSize: 11,
@@ -752,11 +783,19 @@ class _SocialScreenState extends State<SocialScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Post hidden.'),
+        content: const Text(
+          'Post hidden.',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        ),
+        backgroundColor: _deepPurple,
         behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(18, 0, 18, 92),
+        elevation: 12,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         duration: const Duration(seconds: 3),
         action: SnackBarAction(
-          label: 'Undo',
+          label: 'UNDO',
+          textColor: const Color(0xFFFFF2A8),
           onPressed: () {
             setState(() {
               _hiddenPostIds.remove(post.id);
@@ -981,6 +1020,8 @@ class _SocialScreenState extends State<SocialScreen> {
   void _showCreatePostSheet() {
     _titleController.clear();
     _contentController.clear();
+    _showTitleError = false;
+    _showContentError = false;
     _createDepartment = _selectedDepartment == 'All'
         ? 'General'
         : _selectedDepartment;
@@ -1009,12 +1050,20 @@ class _SocialScreenState extends State<SocialScreen> {
                       controller: _titleController,
                       label: 'Title',
                       hint: "What's on your mind?",
+                      showError: _showTitleError,
+                      errorText: 'Title is required',
+                      onChanged: (_) {
+                        if (!_showTitleError) return;
+                        setSheetState(() {
+                          _showTitleError = false;
+                        });
+                      },
                     ),
                     const SizedBox(height: 18),
                     const _SheetLabel('Department'),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      value: _createDepartment,
+                      initialValue: _createDepartment,
                       isExpanded: true,
                       icon: const Icon(
                         Icons.keyboard_arrow_down_rounded,
@@ -1065,15 +1114,23 @@ class _SocialScreenState extends State<SocialScreen> {
                     const SizedBox(height: 18),
                     _buildSheetTextField(
                       controller: _contentController,
-                      label: 'Body',
-                      hint: 'Describe your thoughts...',
+                      label: 'Content',
+                      hint: 'Share your thoughts with the community...',
                       maxLines: 5,
+                      showError: _showContentError,
+                      errorText: 'Content is required',
+                      onChanged: (_) {
+                        if (!_showContentError) return;
+                        setSheetState(() {
+                          _showContentError = false;
+                        });
+                      },
                     ),
                     const SizedBox(height: 26),
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
-                        onPressed: _createPost,
+                        onPressed: () => _validateAndCreatePost(setSheetState),
                         style: FilledButton.styleFrom(
                           backgroundColor: _deepPurple,
                           foregroundColor: Colors.white,
@@ -1150,6 +1207,9 @@ class _SocialScreenState extends State<SocialScreen> {
     required String label,
     required String hint,
     int maxLines = 1,
+    bool showError = false,
+    String? errorText,
+    ValueChanged<String>? onChanged,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1159,6 +1219,7 @@ class _SocialScreenState extends State<SocialScreen> {
         TextField(
           controller: controller,
           maxLines: maxLines,
+          onChanged: onChanged,
           textInputAction: maxLines == 1
               ? TextInputAction.next
               : TextInputAction.newline,
@@ -1180,18 +1241,52 @@ class _SocialScreenState extends State<SocialScreen> {
               horizontal: 16,
               vertical: 15,
             ),
+            errorText: showError ? errorText : null,
+            errorStyle: const TextStyle(
+              color: _errorRed,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: _cardBorder),
+              borderSide: BorderSide(
+                color: showError ? _errorRed : _cardBorder,
+                width: showError ? 1.4 : 1,
+              ),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: _primaryPurple, width: 1.4),
+              borderSide: BorderSide(
+                color: showError ? _errorRed : _primaryPurple,
+                width: 1.4,
+              ),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: _errorRed, width: 1.4),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: _errorRed, width: 1.4),
             ),
           ),
         ),
       ],
     );
+  }
+
+  void _validateAndCreatePost(StateSetter setSheetState) {
+    final titleIsEmpty = _titleController.text.trim().isEmpty;
+    final contentIsEmpty = _contentController.text.trim().isEmpty;
+
+    setSheetState(() {
+      _showTitleError = titleIsEmpty;
+      _showContentError = contentIsEmpty;
+    });
+
+    if (titleIsEmpty || contentIsEmpty) return;
+
+    unawaited(_createPost());
   }
 
   Future<void> _createPost() async {
@@ -1201,7 +1296,7 @@ class _SocialScreenState extends State<SocialScreen> {
     if (title.isEmpty || content.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Title and body cannot be empty.'),
+          content: Text('Title and content cannot be empty.'),
           behavior: SnackBarBehavior.floating,
           duration: Duration(seconds: 2),
         ),
@@ -1449,7 +1544,7 @@ class _SavedPostTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '${post.user.toUpperCase()} • ${post.department.toUpperCase()}',
+                    '${_postAuthorName(post).toUpperCase()} • ${post.department.toUpperCase()}',
                     style: const TextStyle(
                       color: _deepPurple,
                       fontSize: 10,
@@ -1801,7 +1896,8 @@ class _ThreadDetailPanel extends StatelessWidget {
               child: ListView.separated(
                 padding: const EdgeInsets.fromLTRB(26, 28, 26, 110),
                 itemCount: replies.length + 1,
-                separatorBuilder: (_, __) => const SizedBox(height: 18),
+                separatorBuilder: (context, index) =>
+                    const SizedBox(height: 18),
                 itemBuilder: (context, index) {
                   if (index == 0) {
                     return Text(
@@ -1821,7 +1917,7 @@ class _ThreadDetailPanel extends StatelessWidget {
                     reply: reply,
                     canDelete:
                         !reply.isSeededDemo &&
-                        reply.ownerId == FirebaseAuth.instance.currentUser?.uid,
+                        _isCurrentUserOwner(reply.ownerId),
                     onDelete: () => onDeleteReply(reply),
                   );
                 },
@@ -1883,7 +1979,7 @@ class _ThreadHeader extends StatelessWidget {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(
-                          post.user.toUpperCase(),
+                          _postAuthorName(post).toUpperCase(),
                           style: const TextStyle(
                             color: _deepPurple,
                             fontSize: 11,
@@ -1967,83 +2063,124 @@ class _ThreadReplyBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _Avatar(initials: reply.initials, imageUrl: reply.avatarUrl, size: 44),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    final isMine = !reply.isSeededDemo && _isCurrentUserOwner(reply.ownerId);
+
+    final avatar = _Avatar(
+      initials: reply.initials,
+      imageUrl: reply.avatarUrl,
+      size: 44,
+    );
+
+    final bubble = Container(
+      constraints: const BoxConstraints(maxWidth: 280),
+      padding: EdgeInsets.fromLTRB(18, 14, canDelete ? 8 : 18, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: isMine
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: isMine
+                ? MainAxisAlignment.end
+                : MainAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.fromLTRB(18, 14, 12, 16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 14,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            reply.user,
-                            style: const TextStyle(
-                              color: Color(0xFF101427),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                        if (canDelete)
-                          IconButton(
-                            onPressed: onDelete,
-                            visualDensity: VisualDensity.compact,
-                            tooltip: 'Delete reply',
-                            icon: const Icon(
-                              Icons.delete_outline_rounded,
-                              color: Color(0xFFE05A5A),
-                              size: 19,
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      reply.content,
-                      style: const TextStyle(
-                        color: Color(0xFF34384A),
-                        fontSize: 14,
-                        height: 1.35,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.only(left: 2),
+              Flexible(
                 child: Text(
-                  reply.time.toUpperCase(),
+                  _replyAuthorName(reply),
+                  textAlign: isMine ? TextAlign.right : TextAlign.left,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Color(0xFF9AA0B8),
-                    fontSize: 11,
+                    color: Color(0xFF101427),
+                    fontSize: 14,
                     fontWeight: FontWeight.w900,
-                    letterSpacing: 1.1,
                   ),
                 ),
               ),
+              if (canDelete) ...[
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: onDelete,
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Delete reply',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 30,
+                    minHeight: 30,
+                  ),
+                  icon: const Icon(
+                    Icons.delete_outline_rounded,
+                    color: Color(0xFFE05A5A),
+                    size: 19,
+                  ),
+                ),
+              ],
             ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            reply.content,
+            textAlign: isMine ? TextAlign.right : TextAlign.left,
+            style: const TextStyle(
+              color: Color(0xFF34384A),
+              fontSize: 14,
+              height: 1.35,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: isMine
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: isMine
+              ? MainAxisAlignment.end
+              : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!isMine) ...[avatar, const SizedBox(width: 14)],
+            Flexible(
+              child: Align(
+                alignment: isMine
+                    ? Alignment.centerRight
+                    : Alignment.centerLeft,
+                child: bubble,
+              ),
+            ),
+            if (isMine) ...[const SizedBox(width: 14), avatar],
+          ],
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: EdgeInsets.only(
+            left: isMine ? 0 : 58,
+            right: isMine ? 58 : 0,
+          ),
+          child: Text(
+            reply.time.toUpperCase(),
+            textAlign: isMine ? TextAlign.right : TextAlign.left,
+            style: const TextStyle(
+              color: Color(0xFF9AA0B8),
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.1,
+            ),
           ),
         ),
       ],
