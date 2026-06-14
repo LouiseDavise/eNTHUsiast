@@ -1072,7 +1072,7 @@ class _SocialScreenState extends State<SocialScreen> {
                     const _SheetLabel('Department'),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      initialValue: _createDepartment,
+                      value: _createDepartment,
                       isExpanded: true,
                       icon: const Icon(
                         Icons.keyboard_arrow_down_rounded,
