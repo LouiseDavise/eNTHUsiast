@@ -81,6 +81,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .httpsCallable('linkGmailAccount')
           .call(fullPayload);
 
+          
+
       if (!mounted) return;
 
       if (result.data['success'] == true) {

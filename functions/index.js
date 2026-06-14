@@ -3,11 +3,10 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const { google } = require('googleapis');
 const path = require('path');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { defineSecret } = require('firebase-functions/params');
 const pdfParse = require("pdf-parse");
 
-const geminiApiKey = defineSecret('GEMINI_API_KEY');
+const openRouterApiKey = defineSecret('OPENROUTER_API_KEY');
 const gmailCredentials = defineSecret('GMAIL_CREDENTIALS');
 
 const serviceAccount = require("./serviceAccountKey.json");
@@ -22,16 +21,10 @@ const ALLOWED_SENDERS = [
     'no-reply@nthu.edu.tw',
 ];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// BUG 1 FIX: Recursively find the text/plain part in nested multipart emails.
-// Gmail wraps content in nested parts; parts[0].body.data is often null.
-// ─────────────────────────────────────────────────────────────────────────────
 function findPlainTextPart(payload) {
-    // Base case: this part itself is text/plain
     if (payload.mimeType === 'text/plain' && payload.body && payload.body.data) {
         return payload.body.data;
     }
-    // Recursive case: search nested parts
     if (payload.parts && payload.parts.length > 0) {
         for (const part of payload.parts) {
             const found = findPlainTextPart(part);
@@ -39,6 +32,40 @@ function findPlainTextPart(payload) {
         }
     }
     return null;
+}
+
+async function callOpenRouter(prompt, { jsonMode = false, model = "openrouter/free" } = {}) {
+    const body = {
+        model: model,
+        messages: [{ role: "user", content: prompt }],
+    };
+
+    if (jsonMode) {
+        body.response_format = { type: "json_object" };
+    }
+
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${openRouterApiKey.value()}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`OpenRouter request failed (${response.status}): ${errText}`);
+    }
+
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content;
+
+    if (!text) {
+        throw new Error("OpenRouter returned no content.");
+    }
+
+    return text;
 }
 
 async function authenticateGmail(refreshToken) {
@@ -57,8 +84,6 @@ async function authenticateGmail(refreshToken) {
     return google.gmail({ version: 'v1', auth: oAuth2Client });
 }
 
-// BUG 3 FIX: Web users have accessToken instead of refreshToken.
-// Authenticate using accessToken directly (short-lived, ~1hr).
 async function authenticateGmailWithAccessToken(accessToken) {
     const credentials = JSON.parse(gmailCredentials.value());
     const { client_secret, client_id, redirect_uris } = credentials.installed || credentials.web;
@@ -69,7 +94,6 @@ async function authenticateGmailWithAccessToken(accessToken) {
         redirect_uris ? redirect_uris[0] : ""
     );
 
-    // Set accessToken directly — no refresh token needed for short-lived reads
     oAuth2Client.setCredentials({ access_token: accessToken });
 
     return google.gmail({ version: 'v1', auth: oAuth2Client });
@@ -93,12 +117,6 @@ async function clearCollection(collectionRef) {
 }
 
 async function checkAndParseEmails() {
-    const genAI = new GoogleGenerativeAI(geminiApiKey.value());
-    const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash-lite",
-        generationConfig: { responseMimeType: "application/json" }
-    });
-
     const usersSnapshot = await db.collection('ccxpUsers').get();
     if (usersSnapshot.empty) {
         console.log("No CCXP users found in database.");
@@ -106,16 +124,15 @@ async function checkAndParseEmails() {
     }
 
     for (const userDoc of usersSnapshot.docs) {
-        const uid = userDoc.id;                          // doc ID is now Firebase Auth UID
+        const uid = userDoc.id;
         const userData = userDoc.data();
 
         const email = userData.email;
         const refreshToken = userData.refreshToken;
         const accessToken = userData.accessToken;
         const platform = userData.gmailLinkPlatform;
-        const studentId = userData.studentId || userData.accountStudentId || uid; // for logging only
+        const studentId = userData.studentId || userData.accountStudentId || uid;
 
-        // Skip only if BOTH tokens are missing
         if (!email || (!refreshToken && !accessToken)) {
             console.log(`Skipping user uid=${uid}: no Gmail credentials linked.`);
             continue;
@@ -124,12 +141,10 @@ async function checkAndParseEmails() {
         console.log(`Checking emails for uid: ${uid} (studentId: ${studentId}, email: ${email}), platform: ${platform}`);
 
         try {
-            // BUG 3 FIX: Choose auth method based on which token is available
             let gmail;
             if (refreshToken) {
                 gmail = await authenticateGmail(refreshToken);
             } else {
-                // Web user — use accessToken (may fail if expired ~1hr)
                 console.log(`Using web accessToken for ${studentId} (expires after ~1hr)`);
                 gmail = await authenticateGmailWithAccessToken(accessToken);
             }
@@ -154,12 +169,10 @@ async function checkAndParseEmails() {
                 const subjectHeader = headers.find(h => h.name.toLowerCase() === 'subject');
                 const subject = subjectHeader ? subjectHeader.value : '';
 
-                // BUG 1 FIX: Use recursive search instead of parts[0].body.data
                 const base64Data = findPlainTextPart(payload);
 
                 if (!base64Data) {
                     console.warn(`No text/plain content found for message ${msg.id}. Skipping.`);
-                    // Still mark as read to avoid re-processing
                     await gmail.users.messages.modify({
                         userId: 'me',
                         id: msg.id,
@@ -174,7 +187,6 @@ async function checkAndParseEmails() {
                 console.log(`Processing message ${msg.id}, subject: "${subject}"`);
                 console.log(`cleanText preview: ${cleanText.substring(0, 100)}`);
 
-                // BUG 2 NOTE: Subject check is now the primary gate; cleanText is fallback
                 const isBulletin = subject.includes("<NTHU Bulletin Board>") || cleanText.includes("<NTHU Bulletin Board>");
 
                 if (isBulletin) {
@@ -200,7 +212,7 @@ async function checkAndParseEmails() {
                     console.log(`✓ Bulletin saved to Firestore.`);
 
                 } else {
-                    console.log(`→ Identified as UPCOMING TASK for ${studentId}, sending to Gemini...`);
+                    console.log(`→ Identified as UPCOMING TASK for ${studentId}, sending to OpenRouter...`);
 
                     const prompt = `You are an assistant for a university app. Read the following email
 and extract the task details into a strict JSON format.
@@ -216,8 +228,8 @@ Email Text:
 ${cleanText}`;
 
                     try {
-                        const result = await model.generateContent(prompt);
-                        const aiData = JSON.parse(result.response.text());
+                        const responseText = await callOpenRouter(prompt, { jsonMode: true });
+                        const aiData = JSON.parse(responseText);
 
                         let firestoreDueDate = null;
                         if (aiData.dueDate && aiData.dueDate !== "") {
@@ -238,11 +250,10 @@ ${cleanText}`;
                         console.log(`✓ Upcoming task "${aiData.title}" saved for ${studentId}.`);
 
                     } catch (e) {
-                        console.error(`Gemini Parsing Error for message ${msg.id}:`, e);
+                        console.error(`OpenRouter Parsing Error for message ${msg.id}:`, e);
                     }
                 }
 
-                // Mark as read so it isn't processed again
                 await gmail.users.messages.modify({
                     userId: 'me',
                     id: msg.id,
@@ -257,7 +268,7 @@ ${cleanText}`;
 
 exports.nthuEmailParser = onSchedule({
     schedule: "every 1 minutes",
-    secrets: [geminiApiKey, gmailCredentials]
+    secrets: [openRouterApiKey, gmailCredentials]
 }, async (event) => {
     await checkAndParseEmails();
 });
@@ -267,7 +278,6 @@ exports.linkGmailAccount = onCall({
 }, async (request) => {
     const { serverAuthCode, accessToken, email, studentId, uid, platform } = request.data;
 
-    // uid is required — it is the Firebase Auth UID, which is the Firestore doc key
     if (!email || !uid) {
         throw new HttpsError('invalid-argument', 'Missing email or uid.');
     }
@@ -323,18 +333,12 @@ exports.linkGmailAccount = onCall({
     }
 });
 
-// --- CLOUD FUNCTION 3: Parse Curriculum PDF Without Saving PDF ---
-// Flutter sends PDF bytes as base64.
-// Function parses the PDF.
-// Function saves only parsed curriculum JSON to Firestore:
-// users/{uid}/curriculum/current
-
 function extractCurriculumJsonObject(text) {
     const start = text.indexOf("{");
     const end = text.lastIndexOf("}");
 
     if (start === -1 || end === -1 || end <= start) {
-        throw new Error("No JSON object found in Gemini response.");
+        throw new Error("No JSON object found in OpenRouter response.");
     }
 
     return text.substring(start, end + 1);
@@ -352,7 +356,7 @@ exports.parseCurriculumPdfFromBytes = onCall(
         region: "us-central1",
         memory: "1GiB",
         timeoutSeconds: 300,
-        secrets: [geminiApiKey],
+        secrets: [openRouterApiKey],
     },
     async (request) => {
         if (!request.auth) {
@@ -432,11 +436,6 @@ exports.parseCurriculumPdfFromBytes = onCall(
                 );
             }
 
-            const genAI = new GoogleGenerativeAI(geminiApiKey.value());
-            const model = genAI.getGenerativeModel({
-                model: "gemini-2.5-flash",
-            });
-
             const prompt = `
 You convert university curriculum PDF text into clean JSON.
 
@@ -481,8 +480,7 @@ PDF text:
 ${pdfText.slice(0, 45000)}
 `;
 
-            const result = await model.generateContent(prompt);
-            const responseText = result.response.text();
+            const responseText = await callOpenRouter(prompt, { jsonMode: true });
 
             const cleanedText = cleanCurriculumGeminiText(responseText);
             const jsonText = extractCurriculumJsonObject(cleanedText);

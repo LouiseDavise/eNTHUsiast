@@ -138,9 +138,7 @@ class _SettingsTileState extends State<_SettingsTile> {
                 // Trailing or animated chevron
                 widget.trailing ??
                     AnimatedSlide(
-                      offset: _isHovered
-                          ? const Offset(0.15, 0)
-                          : Offset.zero,
+                      offset: _isHovered ? const Offset(0.15, 0) : Offset.zero,
                       duration: const Duration(milliseconds: 200),
                       curve: Curves.easeOut,
                       child: Icon(
@@ -197,7 +195,6 @@ class AccountScreen extends StatefulWidget {
 }
 
 class _AccountScreenState extends State<AccountScreen> {
-
   // ── Navigation helpers (preserved from original SettingsMenuWidget) ─────────
 
   void _openProfileScreen() {
@@ -421,7 +418,6 @@ class _AccountScreenState extends State<AccountScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-
         // ── ACCOUNT ─────────────────────────────────────────────────────────
         const _SectionLabel('Account'),
         _SettingsTile(
@@ -499,6 +495,7 @@ class _AccountScreenState extends State<AccountScreen> {
           isDanger: true,
           onTap: _onLogout,
         ),
+        const SizedBox(height: 70),
       ],
     );
   }

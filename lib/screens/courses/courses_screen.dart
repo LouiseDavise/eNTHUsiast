@@ -117,9 +117,7 @@ class CoursesScreen extends StatelessWidget {
                       },
                     ),
                   ),
-
                   const SizedBox(width: 14),
-
                   Expanded(
                     child: MenuSquareButton(
                       title: 'Course\nPlanner',
@@ -159,6 +157,7 @@ class CoursesScreen extends StatelessWidget {
                   );
                 },
               ),
+              const SizedBox(height: 85),
             ],
           ),
         ),
