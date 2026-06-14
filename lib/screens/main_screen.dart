@@ -28,46 +28,64 @@ class _MainScreenState extends State<MainScreen> {
     final isChinese = LanguageScope.isChinese(context);
 
     return Scaffold(
-      body: _pages[_currentIndex],
-      bottomNavigationBar: Container(
-        height: 100,
-        padding: const EdgeInsets.only(bottom: 10, top: 10),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, -5),
+      backgroundColor: Colors.transparent,
+      extendBody: true,
+      body: Stack(
+        children: [
+          // Page content fills the full screen
+          Positioned.fill(
+            child: _pages[_currentIndex],
+          ),
+
+          // Floating nav overlapping the bottom
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 12,
+            child: SafeArea(
+              top: false,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildNavItem(
+                      index: 0,
+                      icon: Icons.home_rounded,
+                      label: isChinese ? '首頁' : 'Home',
+                    ),
+                    _buildNavItem(
+                      index: 1,
+                      icon: Icons.explore_rounded,
+                      label: isChinese ? '社群' : 'Social',
+                    ),
+                    _buildNavItem(
+                      index: 2,
+                      icon: Icons.menu_book_rounded,
+                      label: isChinese ? '課程' : 'Courses',
+                    ),
+                    _buildNavItem(
+                      index: 3,
+                      icon: Icons.person_rounded,
+                      label: isChinese ? '我的' : 'Account',
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            _buildNavItem(
-              index: 0,
-              icon: Icons.home_outlined,
-              label: isChinese ? '首頁' : 'HOME',
-            ),
-            _buildNavItem(
-              index: 1,
-              icon: Icons.near_me_outlined,
-              label: isChinese ? '社群' : 'SOCIAL',
-            ),
-            _buildNavItem(
-              index: 2,
-              icon: Icons.menu_book_outlined,
-              label: isChinese ? '課程' : 'COURSES',
-            ),
-            _buildNavItem(
-              index: 3,
-              icon: Icons.person_outline,
-              label: isChinese ? '我的' : 'ACCOUNT',
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -82,50 +100,52 @@ class _MainScreenState extends State<MainScreen> {
     const Color primaryColor = Color(0xFF7A3392);
     const Color inactiveColor = Color(0xFFB0B3C7);
 
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _currentIndex = index;
-        });
-      },
-      behavior: HitTestBehavior.opaque,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: isActive ? primaryColor : Colors.transparent,
-              shape: BoxShape.circle,
-              boxShadow: isActive
-                  ? [
-                      BoxShadow(
-                        color: primaryColor.withOpacity(0.25),
-                        blurRadius: 12,
-                        spreadRadius: 4,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : [],
-            ),
-            child: Icon(
-              icon,
-              color: isActive ? Colors.white : inactiveColor,
-              size: 26,
-            ),
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isActive
+                ? primaryColor.withOpacity(0.1)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
           ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: TextStyle(
-              color: isActive ? primaryColor : inactiveColor,
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              letterSpacing: LanguageScope.isChinese(context) ? 0.4 : 1.2,
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: isActive ? primaryColor : inactiveColor,
+                size: 24,
+              ),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                child: isActive
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          label,
+                          style: const TextStyle(
+                            color: primaryColor,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

@@ -43,6 +43,15 @@ class MyApp extends StatelessWidget {
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
 
+          builder: (context, child) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.transparent, // or use a gradient here
+              ),
+              child: child,
+            );
+          },
+
           // 2. Remove initialRoute and use the Gatekeeper as the home widget
           home: const GatekeeperScreen(),
 
@@ -105,7 +114,7 @@ class GatekeeperScreen extends StatelessWidget {
             final preferences = userData?['preferences'];
             final hasCompletedPreferences =
                 preferences is Map<String, dynamic> &&
-                preferences['completed'] == true;
+                    preferences['completed'] == true;
 
             if (graduationData != null && schedule != null) {
               // Hydrate your global Provider model so other pages can consume the data safely
