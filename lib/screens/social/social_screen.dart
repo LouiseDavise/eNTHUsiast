@@ -13,7 +13,7 @@ import '../../services/social_firestore_service.dart';
 const Color _primaryPurple = Color(0xFFA77CCB);
 const Color _deepPurple = Color(0xFF722E85);
 const Color _black = Color(0xFF1A1A1A);
-const Color _backgroundWhite = Color(0xFFF9F9F8);
+const Color _backgroundWhite = Color(0xFFFFFFFF);
 const Color _mainTextGrey = Color(0xFF767993);
 const Color _darkGreyText = Color(0xFF34384A);
 const Color _hintTextGrey = Color(0xFFB3B7C8);
@@ -423,7 +423,7 @@ class _SocialScreenState extends State<SocialScreen> {
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.96),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: _cardBorder),
+          border: Border.all(color: _cardBorder, width: 0.6),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.045),
@@ -1539,7 +1539,7 @@ class _SavedPostTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: _cardBorder),
+          border: Border.all(color: _cardBorder, width: 0.6),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.04),
@@ -1726,17 +1726,17 @@ class _SocialWallpaper extends StatelessWidget {
         Positioned(
           top: 90,
           left: -80,
-          child: _BlurBlob(size: 190, opacity: 0.13),
+          child: _BlurBlob(size: 190, opacity: 0.05),
         ),
         Positioned(
           top: 360,
           right: -90,
-          child: _BlurBlob(size: 220, opacity: 0.12),
+          child: _BlurBlob(size: 220, opacity: 0.045),
         ),
         Positioned(
           bottom: 80,
           left: 30,
-          child: _BlurBlob(size: 160, opacity: 0.10),
+          child: _BlurBlob(size: 160, opacity: 0.04),
         ),
       ],
     );
