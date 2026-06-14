@@ -11,6 +11,7 @@ class AppEvent {
   int progress;
   final DateTime dueDate;
   final List<Subtask> subtasks;
+  final String? summary;
 
   AppEvent({
     required this.id,
@@ -23,6 +24,7 @@ class AppEvent {
     this.progress = 0,
     required this.dueDate,
     this.subtasks = const [],
+    this.summary,
   });
 }
 

@@ -153,6 +153,7 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
               progress: data['progress'] ?? 0,
               dueDate: parsedDate,
               subtasks: parsedSubtasks,
+              summary: data['summary'] as String?
             );
           }).toList();
 

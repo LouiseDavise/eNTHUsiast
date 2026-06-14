@@ -6,7 +6,7 @@ const path = require('path');
 const { defineSecret } = require('firebase-functions/params');
 const pdfParse = require("pdf-parse");
 
-const openRouterApiKey = defineSecret('OPENROUTER_API_KEY');
+const openRouterApiKey = defineSecret('OPENROUTER_API_KEY_2');
 const gmailCredentials = defineSecret('GMAIL_CREDENTIALS');
 
 const serviceAccount = require("./serviceAccountKey.json");
@@ -138,6 +138,12 @@ async function checkAndParseEmails() {
             continue;
         }
 
+        const scheduleData = userData.scheduleData || [];
+        const courseListText = scheduleData
+            .filter(c => c && c.code && c.title)
+            .map(c => `${c.code} - ${c.title}`)
+            .join('\n');
+
         console.log(`Checking emails for uid: ${uid} (studentId: ${studentId}, email: ${email}), platform: ${platform}`);
 
         try {
@@ -173,11 +179,6 @@ async function checkAndParseEmails() {
 
                 if (!base64Data) {
                     console.warn(`No text/plain content found for message ${msg.id}. Skipping.`);
-                    await gmail.users.messages.modify({
-                        userId: 'me',
-                        id: msg.id,
-                        requestBody: { removeLabelIds: ['UNREAD'] }
-                    });
                     continue;
                 }
 
@@ -217,12 +218,20 @@ async function checkAndParseEmails() {
                     const prompt = `You are an assistant for a university app. Read the following email
 and extract the task details into a strict JSON format.
 
-The JSON must have exactly these keys:
+The student is currently enrolled in these courses (format: CODE - Course Name):
+${courseListText || "(no course schedule available)"}
+
+If the email relates to one of these courses, use the matching course's CODE for the "code" field
+and incorporate the course name into the "title" if helpful. If the email does not match any
+listed course, leave "code" as "" and determine the title from the email content alone.
+
+The JSON must have exactly these keys try your best to fill it all:
 - title: A short, clear name for the task
-- code: The course code. If none, return ""
+- code: The course code. If none, return 
 - time: The time of the class or deadline. If none, return ""
 - type: Must be one of: "Homework", "Midterm", "Final", "Quiz", "Project", or "Other"
-- dueDate: The deadline format as YYYY-MM-DD. If none, return ""
+- dueDate: The deadline format as YYYY-MM-DD. Try your best to find the dueDate
+- summary: A concise 1-3 sentence summary of the email content, written for a student to quickly understand what is being asked
 
 Email Text:
 ${cleanText}`;
@@ -242,6 +251,8 @@ ${cleanText}`;
                             time: aiData.time || "",
                             type: aiData.type || "Other",
                             dueDate: firestoreDueDate,
+                            summary: aiData.summary || "",
+                            source: "email",
                             id: msg.id,
                             status: "Incomplete",
                             timestamp: admin.firestore.FieldValue.serverTimestamp()
@@ -253,12 +264,6 @@ ${cleanText}`;
                         console.error(`OpenRouter Parsing Error for message ${msg.id}:`, e);
                     }
                 }
-
-                await gmail.users.messages.modify({
-                    userId: 'me',
-                    id: msg.id,
-                    requestBody: { removeLabelIds: ['UNREAD'] }
-                });
             }
         } catch (error) {
             console.error(`Failed to process emails for ${email}:`, error);
@@ -267,7 +272,7 @@ ${cleanText}`;
 }
 
 exports.nthuEmailParser = onSchedule({
-    schedule: "every 1 minutes",
+    schedule: "every 30 minutes",
     secrets: [openRouterApiKey, gmailCredentials]
 }, async (event) => {
     await checkAndParseEmails();
