@@ -83,7 +83,7 @@ class CurriculumUploadService {
   Future<bool> pickAndUploadCurriculumPdf() async {
     final studentId = await _getCurrentStudentId();
 
-    final FilePickerResult? result = await FilePicker.pickFiles(
+    final FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf'],
       withData: true,
