@@ -1,18 +1,30 @@
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onCall, HttpsError, onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const { google } = require('googleapis');
-const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { defineSecret } = require('firebase-functions/params');
 const pdfParse = require("pdf-parse");
 
 const geminiApiKey = defineSecret('GEMINI_API_KEY');
 const gmailCredentials = defineSecret('GMAIL_CREDENTIALS');
+const openaiApiKey = defineSecret('OPENAI_API_KEY');
+// const serviceAccount = require("./serviceAccountKey.json");
 
-const serviceAccount = require("./serviceAccountKey.json");
+const express = require("express");
+const cors = require("cors");
+
+// Your custom modules
+const { ccxpKeyGetter } = require("./scrapper/key_getter.js");
+const { scrapTranscriptPage, scrapCurrentCourse} = require("./scrapper/ccxp_scrapper.js");
+const {scrapEeclass} = require("./scrapper/eeclass_scrapper.js");
+const { parseGraduationData, parseSchedule } = require("./parser/parser.js");
+
+
+
+// admin.initializeApp();
 admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+    // credential: admin.credential.cert(serviceAccount)
 });
 const db = admin.firestore();
 
@@ -530,3 +542,57 @@ ${pdfText.slice(0, 45000)}
         }
     }
 );
+
+
+//
+
+const app = express();
+
+// Enable CORS for all incoming requests
+app.use(cors({ origin: true }));
+app.use(express.json());
+
+// --- ENDPOINTS ---
+
+app.post('/login', async (req, res) => {
+    try {
+        const { uid, pw } = req.body;
+        const sessKey = await ccxpKeyGetter(uid, pw);
+        res.send({ sessKey: sessKey });
+    } catch (error) {
+        console.error("Login Error:", error);
+        res.status(500).send({ error: error.message });
+    }
+});
+
+app.post('/graduationData', async (req, res) => {
+    try {
+        const { sessKey } = req.body;
+        const graduationData = await scrapTranscriptPage(sessKey);
+        res.json(graduationData);
+    } catch (error) {
+        console.error("Graduation Data Error:", error);
+        res.status(500).send({ error: error.message });
+    }
+});
+
+app.post('/schedule', async (req, res) => {
+    try {
+        const { sessKey } = req.body;
+        const schedule = await scrapCurrentCourse(sessKey);
+        const courses = await scrapEeclass(sessKey,schedule);
+        res.json(courses);
+    } catch (error) {
+        console.error("Schedule Error:", error);
+        res.status(500).send({ error: error.message });
+    }
+});
+
+// --- FIREBASE EXPORT ---
+// Wrapping the Express app in Firebase's HTTPS trigger.
+// Adjusted memory and timeout to handle the heavy load of a web scraper.
+exports.api = onRequest({
+    memory: "2GiB",
+    timeoutSeconds: 300,
+    secrets: [openaiApiKey],
+}, app);
