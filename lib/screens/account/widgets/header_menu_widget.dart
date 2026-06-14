@@ -1,10 +1,13 @@
+import 'package:enthusiast/providers/language_provider.dart';
 import 'package:enthusiast/widgets/button_circle_back.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class HeaderMenuWidget extends StatelessWidget implements PreferredSizeWidget {
   final String title;
+  final String? titleZh;
   final String subTitle;
+  final String? subTitleZh;
   final bool showActionIcon;
   final IconData actionIcon;
   final VoidCallback? onActionTap;
@@ -13,7 +16,9 @@ class HeaderMenuWidget extends StatelessWidget implements PreferredSizeWidget {
   const HeaderMenuWidget({
     super.key,
     required this.title,
+    this.titleZh,
     required this.subTitle,
+    this.subTitleZh,
     this.showActionIcon = false,
     this.actionIcon = Icons.download_rounded,
     this.onActionTap,
@@ -22,6 +27,11 @@ class HeaderMenuWidget extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isChinese = LanguageScope.watch(context).isChinese;
+    final displayTitle = (isChinese && titleZh != null) ? titleZh! : title;
+    final displaySubTitle =
+        (isChinese && subTitleZh != null) ? subTitleZh! : subTitle;
+
     return AppBar(
       automaticallyImplyLeading: false,
       backgroundColor: Colors.white,
@@ -39,7 +49,7 @@ class HeaderMenuWidget extends StatelessWidget implements PreferredSizeWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            title,
+            displayTitle,
             style: GoogleFonts.dmSans(
               fontSize: 24,
               fontWeight: FontWeight.bold,
@@ -49,7 +59,7 @@ class HeaderMenuWidget extends StatelessWidget implements PreferredSizeWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            subTitle,
+            displaySubTitle,
             style: GoogleFonts.dmSans(
               fontSize: 12,
               fontWeight: FontWeight.w600,

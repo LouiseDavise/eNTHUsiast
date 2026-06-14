@@ -174,9 +174,8 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
 
     final startMins = _classTimeCheckpoints[_timeIndexRange.start.toInt()];
     final endMins = _classTimeCheckpoints[_timeIndexRange.end.toInt()];
-    final languagePreference = _selectedLanguageIndex == 0
-        ? 'English Taught'
-        : 'Chinese Taught';
+    final languagePreference =
+        _selectedLanguageIndex == 0 ? 'English Taught' : 'Chinese Taught';
 
     await FirebaseFirestore.instance.collection('ccxpUsers').doc(uid).set({
       'preferences': {
@@ -233,10 +232,16 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
 
   void _previousStep() {
     if (_currentStep > 0) {
+      // Mundur ke langkah sebelumnya jika bukan langkah pertama
       setState(() {
         _currentStep--;
       });
+    } else if (widget.returnToPrevious && Navigator.canPop(context)) {
+      // Jika di langkah pertama dan dibuka dari AccountScreen, kembali ke sana
+      Navigator.pop(context);
     }
+    // Jika returnToPrevious=false (dari GatekeeperScreen/main.dart),
+    // tombol back di step 0 tidak melakukan apa-apa — user harus menyelesaikan wizard
   }
 
   // --- Helper: Dynamic Career Options (Q4) ---
@@ -337,27 +342,27 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
                     switchOutCurve: Curves.easeInCubic,
                     transitionBuilder:
                         (Widget child, Animation<double> animation) {
-                          final curved = CurvedAnimation(
-                            parent: animation,
-                            curve: Curves.easeOutCubic,
-                          );
-                          return SlideTransition(
-                            position: Tween<Offset>(
-                              begin: const Offset(0.0, 0.04),
-                              end: Offset.zero,
-                            ).animate(curved),
-                            child: ScaleTransition(
-                              scale: Tween<double>(
-                                begin: 0.985,
-                                end: 1,
-                              ).animate(curved),
-                              child: FadeTransition(
-                                opacity: animation,
-                                child: child,
-                              ),
-                            ),
-                          );
-                        },
+                      final curved = CurvedAnimation(
+                        parent: animation,
+                        curve: Curves.easeOutCubic,
+                      );
+                      return SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0.0, 0.04),
+                          end: Offset.zero,
+                        ).animate(curved),
+                        child: ScaleTransition(
+                          scale: Tween<double>(
+                            begin: 0.985,
+                            end: 1,
+                          ).animate(curved),
+                          child: FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          ),
+                        ),
+                      );
+                    },
                     child: Container(
                       key: ValueKey<int>(_currentStep),
                       alignment: Alignment.center,
@@ -520,9 +525,8 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
                   vertical: 20,
                 ),
                 decoration: BoxDecoration(
-                  color: isSelected
-                      ? nthuPurple.withOpacity(0.05)
-                      : Colors.white,
+                  color:
+                      isSelected ? nthuPurple.withOpacity(0.05) : Colors.white,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: isSelected ? nthuPurple : Colors.grey.shade300,
@@ -545,9 +549,8 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
                       _creditOptions[index],
                       style: TextStyle(
                         fontSize: 18,
-                        fontWeight: isSelected
-                            ? FontWeight.w700
-                            : FontWeight.w500,
+                        fontWeight:
+                            isSelected ? FontWeight.w700 : FontWeight.w500,
                         color: isSelected ? nthuPurple : Colors.black87,
                       ),
                     ),
@@ -743,9 +746,8 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 12,
-                          fontWeight: isSelected
-                              ? FontWeight.w700
-                              : FontWeight.w500,
+                          fontWeight:
+                              isSelected ? FontWeight.w700 : FontWeight.w500,
                           color: isSelected ? nthuPurple : Colors.black87,
                         ),
                       ),
@@ -802,9 +804,9 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
             itemBuilder: (context, index) {
               final category = _geCategories[index];
               final String title = category['title'].toString().replaceAll(
-                '\n',
-                ' ',
-              ); // Flatten text for wider cards
+                    '\n',
+                    ' ',
+                  ); // Flatten text for wider cards
               final IconData icon = category['icon'];
               final Color iconColor = category['color'];
               final bool isSelected = _selectedGECategories.contains(title);
@@ -1123,8 +1125,7 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
       isButtonDisabled = true;
     }
 
-    final shouldShowInfoCard =
-        _currentStep < _totalSteps - 1 &&
+    final shouldShowInfoCard = _currentStep < _totalSteps - 1 &&
         _currentStep != 3 &&
         _currentStep != 4;
 

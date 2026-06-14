@@ -2,7 +2,7 @@ import 'package:enthusiast/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../screens/account/settings/settings_screen.dart';
+import '../screens/account/settings_screen.dart';
 import '../theme/app_theme.dart';
 
 class SettingsMenuWidget extends StatelessWidget {

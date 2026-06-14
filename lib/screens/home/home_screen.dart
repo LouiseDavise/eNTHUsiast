@@ -25,8 +25,11 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _showTutorial = false;
   bool _isFabHovered = false;
   bool _isTutorialShortcutHovered = false;
+  bool _showFab = false;
   DateTime _currentDate = DateTime.now();
   DateTime _selectedDate = DateTime.now();
+
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -39,6 +42,25 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     };
+
+    _scrollController.addListener(_handleScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_handleScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _handleScroll() {
+    const threshold = 80.0;
+    final shouldShow = _scrollController.offset > threshold;
+    if (shouldShow != _showFab) {
+      setState(() {
+        _showFab = shouldShow;
+      });
+    }
   }
 
   Future<void> _checkTutorialStatus() async {
@@ -105,28 +127,40 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: Container(
-        margin: const EdgeInsets.only(right: 16, bottom: 16),
-        child: SizedBox(
-          key: TutorialTargetRegistry.get('fab-button'),
-          width: 56,
-          height: 56,
-          child: MouseRegion(
-            onEnter: (_) => setState(() => _isFabHovered = true),
-            onExit: (_) => setState(() => _isFabHovered = false),
-            child: AnimatedScale(
-              scale: _isFabHovered ? 1.08 : 1.0,
-              duration: const Duration(milliseconds: 150),
-              curve: Curves.easeOutBack,
-              child: FloatingActionButton(
-                onPressed: _openAddTask,
-                backgroundColor: nthuPurple,
-                elevation: _isFabHovered ? 12 : 8,
-                shape: const CircleBorder(),
-                child: const Icon(
-                  Icons.add_rounded,
-                  color: Colors.white,
-                  size: 32,
+      floatingActionButton: AnimatedSlide(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+        offset: _showFab ? Offset.zero : const Offset(0, 2),
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: _showFab ? 1.0 : 0.0,
+          child: IgnorePointer(
+            ignoring: !_showFab,
+            child: Container(
+              margin: const EdgeInsets.only(right: 16, bottom: 100),
+              child: SizedBox(
+                key: TutorialTargetRegistry.get('fab-button'),
+                width: 56,
+                height: 56,
+                child: MouseRegion(
+                  onEnter: (_) => setState(() => _isFabHovered = true),
+                  onExit: (_) => setState(() => _isFabHovered = false),
+                  child: AnimatedScale(
+                    scale: _isFabHovered ? 1.08 : 1.0,
+                    duration: const Duration(milliseconds: 150),
+                    curve: Curves.easeOutBack,
+                    child: FloatingActionButton(
+                      onPressed: _openAddTask,
+                      backgroundColor: nthuPurple,
+                      elevation: _isFabHovered ? 12 : 8,
+                      shape: const CircleBorder(),
+                      child: const Icon(
+                        Icons.add_rounded,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -137,6 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Stack(
           children: [
             ListView(
+              controller: _scrollController,
               padding: const EdgeInsets.only(bottom: 100),
               children: [
                 // Header Area

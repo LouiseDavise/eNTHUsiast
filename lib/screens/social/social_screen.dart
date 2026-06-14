@@ -13,7 +13,7 @@ import '../../services/social_firestore_service.dart';
 const Color _primaryPurple = Color(0xFFA77CCB);
 const Color _deepPurple = Color(0xFF722E85);
 const Color _black = Color(0xFF1A1A1A);
-const Color _backgroundWhite = Color(0xFFF9F9F8);
+const Color _backgroundWhite = Color(0xFFFFFFFF);
 const Color _mainTextGrey = Color(0xFF767993);
 const Color _darkGreyText = Color(0xFF34384A);
 const Color _hintTextGrey = Color(0xFFB3B7C8);
@@ -130,12 +130,10 @@ class _SocialScreenState extends State<SocialScreen> {
     return source.where((post) {
       final notHidden = !_hiddenPostIds.contains(post.id);
 
-      final matchesDepartment =
-          _selectedDepartment == 'All' ||
+      final matchesDepartment = _selectedDepartment == 'All' ||
           post.department == _selectedDepartment;
 
-      final matchesSearch =
-          query.isEmpty ||
+      final matchesSearch = query.isEmpty ||
           post.title.toLowerCase().contains(query) ||
           post.content.toLowerCase().contains(query) ||
           post.userName.toLowerCase().contains(query);
@@ -218,9 +216,13 @@ class _SocialScreenState extends State<SocialScreen> {
             ),
           ),
           Positioned(
-            bottom: 32,
+            bottom: 131,
             right: 32,
-            child: _AnimatedAddButton(onPressed: _showCreatePostSheet),
+            child: SizedBox(
+              width: 56,
+              height: 56,
+              child: _SocialFabHover(onPressed: _showCreatePostSheet),
+            ),
           ),
         ],
       ),
@@ -421,7 +423,7 @@ class _SocialScreenState extends State<SocialScreen> {
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.96),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: _cardBorder),
+          border: Border.all(color: _cardBorder, width: 0.6),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.045),
@@ -1018,9 +1020,8 @@ class _SocialScreenState extends State<SocialScreen> {
     _contentController.clear();
     _showTitleError = false;
     _showContentError = false;
-    _createDepartment = _selectedDepartment == 'All'
-        ? 'General'
-        : _selectedDepartment;
+    _createDepartment =
+        _selectedDepartment == 'All' ? 'General' : _selectedDepartment;
 
     showModalBottomSheet<void>(
       context: context,
@@ -1048,117 +1049,118 @@ class _SocialScreenState extends State<SocialScreen> {
                   );
                 },
                 child: _SheetShell(
-                title: 'New Forum',
-                subtitle: 'Share with the community',
-                leadingIcon: Icons.mode_comment_outlined,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildSheetTextField(
-                      controller: _titleController,
-                      label: 'Title',
-                      hint: "What's on your mind?",
-                      showError: _showTitleError,
-                      errorText: 'Title is required',
-                      onChanged: (_) {
-                        if (!_showTitleError) return;
-                        setSheetState(() {
-                          _showTitleError = false;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 18),
-                    const _SheetLabel('Department'),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      value: _createDepartment,
-                      isExpanded: true,
-                      icon: const Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        color: _mainTextGrey,
+                  title: 'New Forum',
+                  subtitle: 'Share with the community',
+                  leadingIcon: Icons.mode_comment_outlined,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildSheetTextField(
+                        controller: _titleController,
+                        label: 'Title',
+                        hint: "What's on your mind?",
+                        showError: _showTitleError,
+                        errorText: 'Title is required',
+                        onChanged: (_) {
+                          if (!_showTitleError) return;
+                          setSheetState(() {
+                            _showTitleError = false;
+                          });
+                        },
                       ),
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: const Color(0xFFFBFBFD),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
+                      const SizedBox(height: 18),
+                      const _SheetLabel('Department'),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        value: _createDepartment,
+                        isExpanded: true,
+                        icon: const Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: _mainTextGrey,
                         ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: _cardBorder),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(
-                            color: _primaryPurple,
-                            width: 1.4,
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: const Color(0xFFFBFBFD),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
                           ),
-                        ),
-                      ),
-                      dropdownColor: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      style: const TextStyle(
-                        color: _darkGreyText,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      items: _departments
-                          .where((department) => department != 'All')
-                          .map(
-                            (department) => DropdownMenuItem<String>(
-                              value: department,
-                              child: Text(department),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: const BorderSide(color: _cardBorder),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: const BorderSide(
+                              color: _primaryPurple,
+                              width: 1.4,
                             ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        if (value == null) return;
-                        setSheetState(() {
-                          _createDepartment = value;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 18),
-                    _buildSheetTextField(
-                      controller: _contentController,
-                      label: 'Content',
-                      hint: 'Share your thoughts with the community...',
-                      maxLines: 5,
-                      showError: _showContentError,
-                      errorText: 'Content is required',
-                      onChanged: (_) {
-                        if (!_showContentError) return;
-                        setSheetState(() {
-                          _showContentError = false;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 26),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: () => _validateAndCreatePost(setSheetState),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _deepPurple,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          textStyle: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 3,
                           ),
                         ),
-                        child: const Text('POST'),
+                        dropdownColor: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        style: const TextStyle(
+                          color: _darkGreyText,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        items: _departments
+                            .where((department) => department != 'All')
+                            .map(
+                              (department) => DropdownMenuItem<String>(
+                                value: department,
+                                child: Text(department),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setSheetState(() {
+                            _createDepartment = value;
+                          });
+                        },
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 18),
+                      _buildSheetTextField(
+                        controller: _contentController,
+                        label: 'Content',
+                        hint: 'Share your thoughts with the community...',
+                        maxLines: 5,
+                        showError: _showContentError,
+                        errorText: 'Content is required',
+                        onChanged: (_) {
+                          if (!_showContentError) return;
+                          setSheetState(() {
+                            _showContentError = false;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 26),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: () =>
+                              _validateAndCreatePost(setSheetState),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _deepPurple,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 3,
+                            ),
+                          ),
+                          child: const Text('POST'),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
               ),
             );
           },
@@ -1230,9 +1232,8 @@ class _SocialScreenState extends State<SocialScreen> {
           controller: controller,
           maxLines: maxLines,
           onChanged: onChanged,
-          textInputAction: maxLines == 1
-              ? TextInputAction.next
-              : TextInputAction.newline,
+          textInputAction:
+              maxLines == 1 ? TextInputAction.next : TextInputAction.newline,
           style: const TextStyle(
             color: _darkGreyText,
             fontSize: 14,
@@ -1395,14 +1396,15 @@ class _Avatar extends StatelessWidget {
       child: normalizedImageUrl == null || normalizedImageUrl.isEmpty
           ? _AvatarInitials(initials: initials, size: size)
           : memoryBytes != null
-          ? Image.memory(memoryBytes, fit: BoxFit.cover, gaplessPlayback: true)
-          : Image.network(
-              normalizedImageUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return _AvatarInitials(initials: initials, size: size);
-              },
-            ),
+              ? Image.memory(memoryBytes,
+                  fit: BoxFit.cover, gaplessPlayback: true)
+              : Image.network(
+                  normalizedImageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return _AvatarInitials(initials: initials, size: size);
+                  },
+                ),
     );
   }
 
@@ -1537,7 +1539,7 @@ class _SavedPostTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: _cardBorder),
+          border: Border.all(color: _cardBorder, width: 0.6),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.04),
@@ -1724,17 +1726,17 @@ class _SocialWallpaper extends StatelessWidget {
         Positioned(
           top: 90,
           left: -80,
-          child: _BlurBlob(size: 190, opacity: 0.13),
+          child: _BlurBlob(size: 190, opacity: 0.05),
         ),
         Positioned(
           top: 360,
           right: -90,
-          child: _BlurBlob(size: 220, opacity: 0.12),
+          child: _BlurBlob(size: 220, opacity: 0.045),
         ),
         Positioned(
           bottom: 80,
           left: 30,
-          child: _BlurBlob(size: 160, opacity: 0.10),
+          child: _BlurBlob(size: 160, opacity: 0.04),
         ),
       ],
     );
@@ -1942,8 +1944,7 @@ class _ThreadDetailPanel extends StatelessWidget {
 
                   return _ThreadReplyBubble(
                     reply: reply,
-                    canDelete:
-                        !reply.isSeededDemo &&
+                    canDelete: !reply.isSeededDemo &&
                         _isCurrentUserOwner(reply.ownerId),
                     onDelete: () => onDeleteReply(reply),
                   );
@@ -2113,15 +2114,13 @@ class _ThreadReplyBubble extends StatelessWidget {
         ],
       ),
       child: Column(
-        crossAxisAlignment: isMine
-            ? CrossAxisAlignment.end
-            : CrossAxisAlignment.start,
+        crossAxisAlignment:
+            isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: isMine
-                ? MainAxisAlignment.end
-                : MainAxisAlignment.start,
+            mainAxisAlignment:
+                isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
             children: [
               Flexible(
                 child: Text(
@@ -2171,22 +2170,19 @@ class _ThreadReplyBubble extends StatelessWidget {
     );
 
     return Column(
-      crossAxisAlignment: isMine
-          ? CrossAxisAlignment.end
-          : CrossAxisAlignment.start,
+      crossAxisAlignment:
+          isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
         Row(
-          mainAxisAlignment: isMine
-              ? MainAxisAlignment.end
-              : MainAxisAlignment.start,
+          mainAxisAlignment:
+              isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (!isMine) ...[avatar, const SizedBox(width: 14)],
             Flexible(
               child: Align(
-                alignment: isMine
-                    ? Alignment.centerRight
-                    : Alignment.centerLeft,
+                alignment:
+                    isMine ? Alignment.centerRight : Alignment.centerLeft,
                 child: bubble,
               ),
             ),
@@ -2304,78 +2300,36 @@ class _SmallDot extends StatelessWidget {
   }
 }
 
-class _AnimatedAddButton extends StatefulWidget {
-  const _AnimatedAddButton({required this.onPressed});
+class _SocialFabHover extends StatefulWidget {
+  const _SocialFabHover({required this.onPressed});
 
   final VoidCallback onPressed;
 
   @override
-  State<_AnimatedAddButton> createState() => _AnimatedAddButtonState();
+  State<_SocialFabHover> createState() => _SocialFabHoverState();
 }
 
-class _AnimatedAddButtonState extends State<_AnimatedAddButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  bool _pressed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 180),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _handleTap() {
-    _controller.forward(from: 0).then((_) {
-      if (mounted) _controller.reverse();
-    });
-    widget.onPressed();
-  }
+class _SocialFabHoverState extends State<_SocialFabHover> {
+  bool _isHovered = false;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      onTap: _handleTap,
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
       child: AnimatedScale(
-        scale: _pressed ? 0.92 : 1.0,
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOut,
-        child: Material(
-          color: _deepPurple,
+        scale: _isHovered ? 1.08 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOutBack,
+        child: FloatingActionButton(
+          onPressed: widget.onPressed,
+          backgroundColor: _deepPurple,
+          elevation: _isHovered ? 12 : 8,
           shape: const CircleBorder(),
-          elevation: 10,
-          shadowColor: Colors.black.withValues(alpha: 0.3),
-          child: SizedBox(
-            width: 60,
-            height: 60,
-            child: Center(
-              child: AnimatedBuilder(
-                animation: _controller,
-                builder: (context, child) {
-                  final turns = Curves.easeOut.transform(_controller.value);
-                  return Transform.rotate(
-                    angle: turns * 0.78, // ~45 degrees at peak
-                    child: child,
-                  );
-                },
-                child: const Icon(
-                  Icons.add_rounded,
-                  size: 32,
-                  color: Colors.white,
-                ),
-              ),
-            ),
+          child: const Icon(
+            Icons.add_rounded,
+            color: Colors.white,
+            size: 32,
           ),
         ),
       ),

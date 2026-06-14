@@ -39,11 +39,11 @@ class CurriculumUploadService {
     return looksLikeStudentId ? prefix : null;
   }
 
-  Future<String> _getCurrentStudentId() async {
+  Future<String> _getCurrentStudentId({bool isChinese = false}) async {
     final user = _auth.currentUser;
 
     if (user == null) {
-      throw Exception('User is not logged in.');
+      throw Exception(isChinese ? '用戶未登入。' : 'User is not logged in.');
     }
 
     final doc = await _ccxpUserRef.get();
@@ -75,13 +75,15 @@ class CurriculumUploadService {
     }
 
     throw Exception(
-      'Cannot find student ID in ccxpUsers for current Firebase user. '
-      'Please log out, log in with CCXP again, then upload curriculum.',
+      isChinese
+          ? '在當前用戶的資料庫中找不到學號。請登出並使用 CCXP 重新登入，然後再次上傳課程表。'
+          : 'Cannot find student ID in ccxpUsers for current Firebase user. '
+            'Please log out, log in with CCXP again, then upload curriculum.',
     );
   }
 
-  Future<bool> pickAndUploadCurriculumPdf() async {
-    final studentId = await _getCurrentStudentId();
+  Future<bool> pickAndUploadCurriculumPdf({bool isChinese = false}) async {
+    final studentId = await _getCurrentStudentId(isChinese: isChinese);
 
     final FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -98,13 +100,13 @@ class CurriculumUploadService {
     final bytes = pickedFile.bytes;
 
     if (bytes == null) {
-      throw Exception('Cannot read selected PDF data.');
+      throw Exception(isChinese ? '無法讀取所選的 PDF 資料。' : 'Cannot read selected PDF data.');
     }
 
     final fileName = pickedFile.name;
 
     if (!fileName.toLowerCase().endsWith('.pdf')) {
-      throw Exception('Please upload a PDF file.');
+      throw Exception(isChinese ? '請上傳 PDF 檔案。' : 'Please upload a PDF file.');
     }
 
     await _curriculumRef.set({
@@ -136,16 +138,16 @@ class CurriculumUploadService {
       return true;
     }
 
-    throw Exception('Curriculum parser did not return success.');
+    throw Exception(isChinese ? '課程表解析器未回傳成功狀態。' : 'Curriculum parser did not return success.');
   }
 
-  Stream<DocumentSnapshot<Map<String, dynamic>>> watchCurriculumStatus() async* {
-    await _getCurrentStudentId();
+  Stream<DocumentSnapshot<Map<String, dynamic>>> watchCurriculumStatus({bool isChinese = false}) async* {
+    await _getCurrentStudentId(isChinese: isChinese);
     yield* _curriculumRef.snapshots();
   }
 
-  Future<Map<String, dynamic>?> fetchCurriculumForBaoBao() async {
-    await _getCurrentStudentId();
+  Future<Map<String, dynamic>?> fetchCurriculumForBaoBao({bool isChinese = false}) async {
+    await _getCurrentStudentId(isChinese: isChinese);
 
     final doc = await _curriculumRef.get();
     final data = doc.data();
