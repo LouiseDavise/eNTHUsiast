@@ -14,12 +14,23 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:enthusiast/providers/ccxp_data_provider.dart';
 import 'package:enthusiast/screens/account/service/curriculum_upload_service.dart';
 import 'package:enthusiast/screens/courses/services/bao_bao_course_agent.dart';
+import 'package:enthusiast/screens/courses/services/bao_bao_memory_service.dart';
 
 enum _BaoBaoStage {
   idle,
   loading,
   success,
   error,
+}
+
+class _CreditRange {
+  final int? min;
+  final int? max;
+
+  const _CreditRange({
+    required this.min,
+    required this.max,
+  });
 }
 
 class CoursePlannerAiChatDialog extends StatefulWidget {
@@ -44,6 +55,7 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
     with TickerProviderStateMixin {
   final TextEditingController _messageController = TextEditingController();
   final BaoBaoAiApi _baoBaoAiApi = BaoBaoAiApi();
+  final BaoBaoMemoryService _baoBaoMemoryService = BaoBaoMemoryService();
 
   late final AnimationController _floatController;
   late final AnimationController _pulseController;
@@ -69,6 +81,8 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
 
   List<String> pendingRecommendedIds = [];
   String? pendingResultMessage;
+  Map<String, List<String>> pendingCourseReasons = {};
+  List<String> pendingAgentTrace = [];
 
   bool get isLoading => stage == _BaoBaoStage.loading;
   bool get isSuccess => stage == _BaoBaoStage.success;
@@ -174,6 +188,30 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
       autoStarterHasCurriculum: autoStarterHasCurriculum,
     );
 
+    // Only treat direct user-typed messages as Bao-Bao memory commands.
+    // Do NOT parse auto-starter prompts or suggestion-chip prompts as memory.
+    // Those prompts contain words like "avoid completed courses", which are
+    // planning rules, not user memory.
+    if (_shouldCheckManualBaoBaoMemoryCommand(
+      text: text,
+      presetPrompt: presetPrompt,
+      hidePromptPreview: hidePromptPreview,
+    )) {
+      final memoryCommandReply = await _tryHandleBaoBaoMemoryCommand(text);
+      if (memoryCommandReply != null) {
+        if (!mounted) return;
+
+        _stopLoading();
+
+        setState(() {
+          stage = _BaoBaoStage.idle;
+          speechText = memoryCommandReply;
+        });
+
+        return;
+      }
+    }
+
     if (_isSmallTalkOnly(text)) {
       final reply = await _baoBaoAiApi.askBaoBao(text);
 
@@ -211,44 +249,192 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
     );
 
     final userPreferences = await _fetchUserPreferences();
+    final baoBaoMemory = await _baoBaoMemoryService.fetchMemory();
+    var planningPreferences = _mergePreferencesWithBaoBaoMemory(
+      userPreferences: userPreferences,
+      baoBaoMemory: baoBaoMemory,
+    );
+    planningPreferences = await _enrichPreferencesWithAiSearchProfile(
+      planningPreferences,
+    );
+
+    print('Bao-Bao memory loaded: $baoBaoMemory');
+
+    final lastRecommendationIds = _stringListFromAny(
+      baoBaoMemory['lastRecommendationCourseIds'],
+    );
+
+    final plannedCourseIds = widget.plannedCourses
+        .map((course) => course.id)
+        .where((id) => id.trim().isNotEmpty)
+        .toList();
+
+    BaoBaoCourseIntent intent;
+
+    try {
+      intent = await _baoBaoAiApi.understandBaoBaoCourseIntent(
+        userMessage: text,
+        lastRecommendationIds: lastRecommendationIds,
+        plannedCourseIds: plannedCourseIds,
+        userPreferences: planningPreferences,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Bao-Bao intent resolver failed: $error');
+      debugPrint('$stackTrace');
+
+      // If the intent resolver fails, Bao-Bao should not freeze.
+      // Continue as a normal new planning request.
+      intent = const BaoBaoCourseIntent(
+        intent: 'new_plan',
+        basePlan: 'none',
+        actions: [],
+        memoryUpdate: null,
+        needsClarification: false,
+        clarifyingQuestion: null,
+      );
+    }
+
+    print('Bao-Bao resolved intent: ${intent.toJson()}');
+
+    final intentReply = await _handleNonPlanningBaoBaoIntent(intent);
+    if (intentReply != null) {
+      if (!mounted) return;
+
+      _stopLoading();
+
+      setState(() {
+        stage = _BaoBaoStage.idle;
+        speechText = intentReply;
+      });
+
+      return;
+    }
+
+    final modifiesPreviousPlan = intent.isModifyPreviousPlan &&
+        (intent.usePreviousRecommendation ||
+            intent.basePlan == 'current_plan' ||
+            intent.basePlan == 'last_recommendation' ||
+            intent.basePlan == 'previous_recommendation');
+    final baseCourseIdsForIntent = _baseCourseIdsForIntent(
+      intent: intent,
+      baoBaoMemory: baoBaoMemory,
+    );
+    final effectiveUserMessage = modifiesPreviousPlan
+        ? _planningPromptFromIntent(
+            originalPrompt: text,
+            intent: intent,
+          )
+        : text;
+    final effectiveCourseCatalog = modifiesPreviousPlan
+        ? _courseCatalogWithoutIds(
+            courseCatalog,
+            baseCourseIdsForIntent,
+          )
+        : courseCatalog;
+
+    if (!modifiesPreviousPlan && _shouldAskFollowUpBeforePlanning(
+      prompt: text,
+      hasCurriculum: hasCurriculum,
+      graduationData: graduationData,
+      userPreferences: planningPreferences,
+    )) {
+      if (!mounted) return;
+
+      _stopLoading();
+
+      setState(() {
+        stage = _BaoBaoStage.idle;
+        speechText = _followUpQuestionForMissingContext(
+          hasCurriculum: hasCurriculum,
+          userPreferences: planningPreferences,
+        );
+      });
+
+      return;
+    }
 
     final result = await agent.planCourse(
-      userMessage: text,
-      courseCatalog: courseCatalog,
+      userMessage: effectiveUserMessage,
+      courseCatalog: effectiveCourseCatalog,
       curriculum: curriculum,
       graduationData: graduationData,
-      userPreferences: userPreferences,
+      userPreferences: planningPreferences,
+      intent: intent,
     );
 
     for (final step in result.trace) {
       print('[Bao-Bao Agent] ${step.name}: ${step.status} - ${step.message}');
     }
 
-    final recommendedIds = result.recommendedCourseIds;
+    final rawRecommendedIds = result.recommendedCourseIds;
+    final recommendedIds = modifiesPreviousPlan
+        ? _mergeIntentRecommendedIds(
+            baseCourseIds: baseCourseIdsForIntent,
+            newCourseIds: rawRecommendedIds,
+            intent: intent,
+            courseCatalog: courseCatalog,
+          )
+        : rawRecommendedIds;
 
     if (!mounted) return;
 
     _stopLoading();
 
-    if (recommendedIds.isEmpty) {
+    if (recommendedIds.isEmpty ||
+        (modifiesPreviousPlan &&
+            _intentHasAddAction(intent) &&
+            rawRecommendedIds.isEmpty)) {
       setState(() {
         stage = _BaoBaoStage.error;
-        speechText = _notFoundMessageFor(text);
+        speechText = modifiesPreviousPlan
+            ? _notFoundFollowUpMessageFor(text, intent)
+            : _notFoundMessageFor(text);
       });
 
       return;
     }
 
-    final resultMessage = _successMessageFor(
-      text,
-      recommendedIds.length,
-      hasCurriculum: hasCurriculum,
+    var resultMessage = modifiesPreviousPlan
+        ? _successMessageForIntent(
+            text,
+            recommendedIds.length,
+            intent,
+          )
+        : _successMessageFor(
+            text,
+            recommendedIds.length,
+            hasCurriculum: hasCurriculum,
+          );
+
+    final creditWarning = _creditLimitWarningForResult(
+      courseIds: recommendedIds,
+      courseCatalog: courseCatalog,
+      userPreferences: planningPreferences,
     );
+
+    if (creditWarning != null &&
+        modifiesPreviousPlan &&
+        !_userAllowsCreditOverflow(text)) {
+      setState(() {
+        stage = _BaoBaoStage.idle;
+        speechText = '$creditWarning\n\nShould Bao-Bao replace an existing course to stay within your credit range, or keep everything and exceed the range?';
+      });
+      return;
+    }
+
+    if (creditWarning != null) {
+      resultMessage = '$resultMessage\n\n$creditWarning';
+    }
+
+    final courseReasons = _courseReasonsFromResult(result.recommendedCourses);
+    final agentTrace = _agentTraceFromResult(result.trace);
 
     setState(() {
       stage = _BaoBaoStage.success;
       pendingRecommendedIds = recommendedIds;
       pendingResultMessage = resultMessage;
+      pendingCourseReasons = courseReasons;
+      pendingAgentTrace = agentTrace;
       speechText = resultMessage;
     });
   }
@@ -343,6 +529,8 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
       speechText = messages.first;
       pendingRecommendedIds = [];
       pendingResultMessage = null;
+      pendingCourseReasons = {};
+      pendingAgentTrace = [];
     });
 
     _loadingTimer = Timer.periodic(const Duration(milliseconds: 1050), (_) {
@@ -368,6 +556,8 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
     Navigator.pop(context, {
       'courseIds': pendingRecommendedIds,
       'message': pendingResultMessage,
+      'courseReasons': pendingCourseReasons,
+      'agentTrace': pendingAgentTrace,
     });
   }
 
@@ -544,6 +734,825 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
     return null;
   }
 
+  Future<Map<String, dynamic>?> _enrichPreferencesWithAiSearchProfile(
+    Map<String, dynamic>? rawPreferences,
+  ) async {
+    if (rawPreferences == null) {
+      return null;
+    }
+
+    final prefs = rawPreferences['preferences'] is Map
+        ? Map<String, dynamic>.from(rawPreferences['preferences'])
+        : Map<String, dynamic>.from(rawPreferences);
+
+    if (prefs['baoBaoSearchProfile'] is Map) {
+      return rawPreferences;
+    }
+
+    try {
+      final profile = await _baoBaoAiApi.buildBaoBaoPreferenceSearchProfile(
+        userPreferences: rawPreferences,
+      );
+
+      if (profile.isEmpty) {
+        return rawPreferences;
+      }
+
+      final copied = Map<String, dynamic>.from(rawPreferences);
+
+      if (copied['preferences'] is Map) {
+        final nested = Map<String, dynamic>.from(copied['preferences'] as Map);
+        nested['baoBaoSearchProfile'] = profile;
+        copied['preferences'] = nested;
+      } else {
+        copied['baoBaoSearchProfile'] = profile;
+      }
+
+      return copied;
+    } catch (error) {
+      debugPrint('Bao-Bao preference profile generation failed: $error');
+      return rawPreferences;
+    }
+  }
+
+  String? _creditLimitWarningForResult({
+    required List<String> courseIds,
+    required List<Map<String, dynamic>> courseCatalog,
+    required Map<String, dynamic>? userPreferences,
+  }) {
+    final range = _targetCreditRangeFromPreferences(userPreferences);
+
+    if (range.max == null) {
+      return null;
+    }
+
+    final totalCredits = _creditsForCourseIds(
+      courseIds,
+      courseCatalog,
+    );
+
+    if (totalCredits <= range.max!) {
+      return null;
+    }
+
+    final label = range.min != null && range.min != range.max
+        ? '${range.min}–${range.max}'
+        : '${range.max}';
+
+    return 'Heads up: this result has $totalCredits credits, which exceeds your $label credit preference.';
+  }
+
+  bool _userAllowsCreditOverflow(String prompt) {
+    final lower = prompt.toLowerCase();
+
+    return lower.contains('allow exceed') ||
+        lower.contains('exceed credit') ||
+        lower.contains('over credit') ||
+        lower.contains('overload') ||
+        lower.contains('keep everything') ||
+        lower.contains('keep all') ||
+        lower.contains('it is okay') ||
+        lower.contains("it's okay") ||
+        lower.contains('its okay') ||
+        lower.contains('i am okay') ||
+        lower.contains('im okay');
+  }
+
+  int _creditsForCourseIds(
+    List<String> courseIds,
+    List<Map<String, dynamic>> courseCatalog,
+  ) {
+    final ids = courseIds
+        .map((id) => id.toLowerCase().trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+
+    var total = 0;
+
+    for (final course in courseCatalog) {
+      final id = (course['id'] ?? '').toString().toLowerCase().trim();
+      final code = (course['code'] ?? '').toString().toLowerCase().trim();
+
+      if (ids.contains(id) || ids.contains(code)) {
+        total += _intFromAny(course['credits']);
+      }
+    }
+
+    return total;
+  }
+
+  _CreditRange _targetCreditRangeFromPreferences(
+    Map<String, dynamic>? rawPreferences,
+  ) {
+    if (rawPreferences == null) {
+      return const _CreditRange(min: null, max: null);
+    }
+
+    final prefs = rawPreferences['preferences'] is Map
+        ? Map<String, dynamic>.from(rawPreferences['preferences'])
+        : rawPreferences;
+
+    final value = prefs['targetCreditLoad']?.toString() ?? '';
+
+    final numbers = RegExp(r'\d+')
+        .allMatches(value)
+        .map((match) => int.tryParse(match.group(0) ?? ''))
+        .whereType<int>()
+        .toList();
+
+    if (numbers.isEmpty) {
+      return const _CreditRange(min: null, max: null);
+    }
+
+    if (numbers.length == 1) {
+      return _CreditRange(min: numbers.first, max: numbers.first);
+    }
+
+    final first = numbers.first;
+    final second = numbers[1];
+
+    return _CreditRange(
+      min: first < second ? first : second,
+      max: first > second ? first : second,
+    );
+  }
+
+  int _intFromAny(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.round();
+    if (value is num) return value.round();
+    return int.tryParse(value.toString()) ?? 0;
+  }
+
+  Future<String?> _handleNonPlanningBaoBaoIntent(
+    BaoBaoCourseIntent intent,
+  ) async {
+    if (intent.isClearMemory) {
+      await _baoBaoMemoryService.clearMemory();
+      return 'Okay, Bao-Bao cleared the course-planning memory 🐼\n\nI will stop using old liked/disliked course hints for future recommendations.';
+    }
+
+    if (intent.isMemoryUpdate) {
+      for (final keyword in intent.avoidKeywords) {
+        await _baoBaoMemoryService.rememberAvoidKeyword(keyword);
+      }
+
+      for (final keyword in intent.preferredKeywords) {
+        await _baoBaoMemoryService.rememberPreferredKeyword(keyword);
+      }
+
+      final savedParts = <String>[];
+      if (intent.avoidKeywords.isNotEmpty) {
+        savedParts.add('avoid ${intent.avoidKeywords.join(', ')}');
+      }
+      if (intent.preferredKeywords.isNotEmpty) {
+        savedParts.add('prefer ${intent.preferredKeywords.join(', ')}');
+      }
+
+      if (savedParts.isEmpty) {
+        return 'I understand you want Bao-Bao to remember something, but I need a clearer preference, like “remember I prefer AI courses” or “don’t recommend economics again” 🐼';
+      }
+
+      return 'Got it. Bao-Bao will remember to ${savedParts.join(' and ')} in future recommendations 🐼✨';
+    }
+
+    if (intent.isClarificationNeeded) {
+      return intent.clarifyingQuestion ??
+          'Do you want Bao-Bao to continue the previous recommendation, add something to your current plan, or create a new plan?';
+    }
+
+    return null;
+  }
+
+  List<String> _baseCourseIdsForIntent({
+    required BaoBaoCourseIntent intent,
+    required Map<String, dynamic> baoBaoMemory,
+  }) {
+    if (intent.basePlan == 'current_plan') {
+      return widget.plannedCourses
+          .map((course) => course.id.trim().isNotEmpty ? course.id : course.code)
+          .where((id) => id.trim().isNotEmpty)
+          .toList();
+    }
+
+    if ((intent.basePlan == 'last_recommendation' ||
+            intent.basePlan == 'previous_recommendation') &&
+        intent.usePreviousRecommendation) {
+      return _stringListFromAny(baoBaoMemory['lastRecommendationCourseIds']);
+    }
+
+    return const [];
+  }
+
+  List<Map<String, dynamic>> _courseCatalogWithoutIds(
+    List<Map<String, dynamic>> courseCatalog,
+    List<String> blockedIds,
+  ) {
+    final blocked = blockedIds.map((id) => id.toLowerCase().trim()).toSet();
+
+    if (blocked.isEmpty) return courseCatalog;
+
+    return courseCatalog.where((course) {
+      final id = (course['id'] ?? '').toString().toLowerCase().trim();
+      final code = (course['code'] ?? '').toString().toLowerCase().trim();
+
+      return !blocked.contains(id) && !blocked.contains(code);
+    }).toList();
+  }
+
+  String _planningPromptFromIntent({
+    required String originalPrompt,
+    required BaoBaoCourseIntent intent,
+  }) {
+    // Keep the search text clean. Do not add sentences like
+    // "follow-up edit to previous Bao-Bao plan" because that can confuse
+    // the course-search planner and pollute the query.
+    final intentQuery = intent.query.trim();
+    if (intentQuery.isNotEmpty) {
+      return intentQuery;
+    }
+
+    final addActions = intent.actions.where((action) {
+      return action['type']?.toString() == 'add' ||
+          action['type']?.toString() == 'replace';
+    }).toList();
+
+    final subjects = <String>[];
+
+    for (final action in addActions) {
+      final subject = (action['subject'] ?? action['withSubject'] ?? '')
+          .toString()
+          .trim();
+      if (subject.isNotEmpty) {
+        subjects.add(_expandedSubjectForIntent(subject));
+      }
+    }
+
+    if (subjects.isNotEmpty) {
+      return subjects.join(' ');
+    }
+
+    return originalPrompt;
+  }
+
+  String _expandedSubjectForIntent(String subject) {
+    final lower = subject.toLowerCase().trim();
+
+    if (lower == 'calculus' || lower == 'calc') {
+      return 'calculus, calculus i, calculus ii, calculus 1, calculus 2, 微積分, 微積分一, 微積分二';
+    }
+
+    if (lower == 'i2p') {
+      return 'I2P, introduction to programming, programming, 程式設計';
+    }
+
+    if (lower == 'database') {
+      return 'database, database systems, 資料庫';
+    }
+
+    if (lower == 'data structures') {
+      return 'data structures, data structure, DSA, 資料結構';
+    }
+
+    if (lower == 'operating systems') {
+      return 'operating systems, OS, 作業系統';
+    }
+
+    if (lower == 'linear algebra') {
+      return 'linear algebra, 線性代數';
+    }
+
+    return subject;
+  }
+
+  List<String> _mergeIntentRecommendedIds({
+    required List<String> baseCourseIds,
+    required List<String> newCourseIds,
+    required BaoBaoCourseIntent intent,
+    required List<Map<String, dynamic>> courseCatalog,
+  }) {
+    final merged = <String>{};
+
+    for (final id in baseCourseIds) {
+      final trimmed = id.trim();
+      if (trimmed.isEmpty) continue;
+      if (_intentRemovesCourseId(trimmed, intent, courseCatalog)) continue;
+      merged.add(trimmed);
+    }
+
+    for (final id in newCourseIds) {
+      final trimmed = id.trim();
+      if (trimmed.isEmpty) continue;
+      if (_intentRemovesCourseId(trimmed, intent, courseCatalog)) continue;
+      merged.add(trimmed);
+    }
+
+    return merged.toList();
+  }
+
+  bool _intentRemovesCourseId(
+    String courseId,
+    BaoBaoCourseIntent intent,
+    List<Map<String, dynamic>> courseCatalog,
+  ) {
+    final removeActions = intent.actions.where((action) {
+      return action['type']?.toString() == 'remove' ||
+          action['type']?.toString() == 'replace';
+    });
+
+    if (removeActions.isEmpty) return false;
+
+    final course = _catalogCourseById(courseId, courseCatalog);
+    if (course == null) return false;
+
+    for (final action in removeActions) {
+      final subject = (action['subject'] ?? '').toString().trim();
+      if (subject.isEmpty) continue;
+
+      if (_courseMatchesIntentSubject(course, subject)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  Map<String, dynamic>? _catalogCourseById(
+    String courseId,
+    List<Map<String, dynamic>> courseCatalog,
+  ) {
+    final key = courseId.toLowerCase().trim();
+
+    for (final course in courseCatalog) {
+      final id = (course['id'] ?? '').toString().toLowerCase().trim();
+      final code = (course['code'] ?? '').toString().toLowerCase().trim();
+
+      if (id == key || code == key) {
+        return course;
+      }
+    }
+
+    return null;
+  }
+
+  bool _courseMatchesIntentSubject(
+    Map<String, dynamic> course,
+    String subject,
+  ) {
+    final courseText = _normalizeIntentText([
+      course['id'],
+      course['code'],
+      course['title'],
+      course['titleZh'],
+      course['titleEn'],
+      course['department'],
+      course['type'],
+      course['professor'],
+    ].whereType<Object>().join(' '));
+
+    final subjectText = _normalizeIntentText(subject);
+    if (subjectText.isEmpty) return false;
+
+    for (final variant in _intentSubjectVariants(subjectText)) {
+      final normalizedVariant = _normalizeIntentText(variant);
+      if (normalizedVariant.isNotEmpty && courseText.contains(normalizedVariant)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  List<String> _intentSubjectVariants(String subject) {
+    final lower = subject.toLowerCase().trim();
+    final variants = <String>{lower};
+
+    if (lower.contains('calc') || lower.contains('calculus') || lower.contains('微積分')) {
+      variants.addAll([
+        'calculus',
+        'calculus i',
+        'calculus ii',
+        'calculus 1',
+        'calculus 2',
+        '微積分',
+        '微積分一',
+        '微積分二',
+      ]);
+    }
+
+    if (lower.contains('business english')) {
+      variants.addAll(['business english', 'communication in english']);
+    }
+
+    if (lower.contains('economics')) {
+      variants.addAll(['economics', 'principles of economics']);
+    }
+
+    return variants.toList();
+  }
+
+  bool _intentHasAddAction(BaoBaoCourseIntent intent) {
+    return intent.actions.any((action) {
+      return action['type']?.toString() == 'add' ||
+          action['type']?.toString() == 'replace';
+    });
+  }
+
+  int _toIntentCount(dynamic value) {
+    if (value is int && value > 0) return value;
+    if (value is num && value > 0) return value.round();
+
+    final parsed = int.tryParse(value?.toString() ?? '');
+    if (parsed != null && parsed > 0) return parsed;
+
+    return 1;
+  }
+
+  String _successMessageForIntent(
+    String prompt,
+    int count,
+    BaoBaoCourseIntent intent,
+  ) {
+    if (_intentHasAddAction(intent)) {
+      final subjects = intent.actions
+          .where((action) =>
+              action['type']?.toString() == 'add' ||
+              action['type']?.toString() == 'replace')
+          .map((action) => (action['subject'] ?? action['withSubject'] ?? '').toString())
+          .where((subject) => subject.trim().isNotEmpty)
+          .toSet()
+          .toList();
+
+      final subjectText = subjects.isEmpty ? 'the new course' : subjects.join(', ');
+      return 'I updated the previous Bao-Bao plan and added $subjectText 🐼✨\n\nNow the recommendation has $count courses.';
+    }
+
+    return 'I updated the previous Bao-Bao recommendation 🐼✨\n\nNow the recommendation has $count courses.';
+  }
+
+  String _notFoundFollowUpMessageFor(
+    String prompt,
+    BaoBaoCourseIntent intent,
+  ) {
+    final subjects = intent.actions
+        .where((action) =>
+            action['type']?.toString() == 'add' ||
+            action['type']?.toString() == 'replace')
+        .map((action) => (action['subject'] ?? action['withSubject'] ?? '').toString())
+        .where((subject) => subject.trim().isNotEmpty)
+        .toSet()
+        .toList();
+
+    final subjectText = subjects.isEmpty ? 'the requested course' : subjects.join(', ');
+
+    return 'I found your previous recommendation, but I could not add $subjectText 🐼\n\nIt may be unavailable, already completed/in-progress, filtered by language preference, or named differently in the course list.';
+  }
+
+  List<String> _stringListFromAny(dynamic value) {
+    if (value == null) return const [];
+
+    if (value is Iterable) {
+      return value
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+    }
+
+    final text = value.toString().trim();
+    return text.isEmpty ? const [] : [text];
+  }
+
+  String _normalizeIntentText(String value) {
+    return value
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\u4e00-\u9fff]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  bool _shouldCheckManualBaoBaoMemoryCommand({
+    required String text,
+    required String? presetPrompt,
+    required bool hidePromptPreview,
+  }) {
+    if (presetPrompt != null) {
+      return false;
+    }
+
+    if (hidePromptPreview) {
+      return false;
+    }
+
+    if (_isAutoStarterPrompt(text)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  Map<String, dynamic>? _mergePreferencesWithBaoBaoMemory({
+    required Map<String, dynamic>? userPreferences,
+    required Map<String, dynamic> baoBaoMemory,
+  }) {
+    final merged = userPreferences == null
+        ? <String, dynamic>{}
+        : Map<String, dynamic>.from(userPreferences);
+
+    if (baoBaoMemory.isNotEmpty) {
+      merged['baoBaoMemory'] = baoBaoMemory;
+    }
+
+    return merged.isEmpty ? null : merged;
+  }
+
+  bool _hasPersistentMemoryIntent(String lower) {
+    return lower.contains('remember') ||
+        lower.contains('from now on') ||
+        lower.contains('next time') ||
+        lower.contains('again') ||
+        lower.contains('anymore') ||
+        lower.contains('in the future') ||
+        lower.contains('future recommendations') ||
+        lower.contains('forever') ||
+        lower.contains('always prefer') ||
+        lower.contains('never recommend');
+  }
+
+  bool _looksLikeBaoBaoPlanningInstruction(String lower) {
+    if (lower.length > 180) {
+      return true;
+    }
+
+    return lower.contains('automatically create') ||
+        lower.contains('first check') ||
+        lower.contains('if curriculum') ||
+        lower.contains('if no curriculum') ||
+        lower.contains('graduation data') ||
+        lower.contains('completed or in-progress') ||
+        lower.contains('duplicated course') ||
+        lower.contains('duplicate sections') ||
+        lower.contains('schedule conflicts') ||
+        lower.contains('too advanced') ||
+        lower.contains('real course list') ||
+        lower.contains('plan a 20-credit') ||
+        lower.contains('plan a 20 credit');
+  }
+
+  Future<String?> _tryHandleBaoBaoMemoryCommand(String message) async {
+    final lower = message.toLowerCase().trim();
+
+    final resetMemory = lower.contains('reset bao-bao memory') ||
+        lower.contains('reset baobao memory') ||
+        lower.contains('clear bao-bao memory') ||
+        lower.contains('clear baobao memory') ||
+        lower.contains('forget bao-bao memory') ||
+        lower.contains('forget baobao memory');
+
+    if (resetMemory) {
+      await _baoBaoMemoryService.clearMemory();
+      return 'Okay, Bao-Bao cleared the course-planning memory 🐼\n\nI will stop using the old liked/disliked course hints for future recommendations.';
+    }
+
+    // Memory should be saved only when the student clearly wants Bao-Bao
+    // to remember a preference for future recommendations.
+    // Normal planning prompts such as "plan 20 credits, avoid completed courses"
+    // must continue to course generation, not become saved memory.
+    if (!_hasPersistentMemoryIntent(lower) ||
+        _looksLikeBaoBaoPlanningInstruction(lower)) {
+      return null;
+    }
+
+    final avoidKeyword = _extractMemoryKeyword(
+      message,
+      patterns: const [
+        r"(?:do not|don't|dont)\s+recommend\s+(.+)",
+        r"(?:avoid|skip)\s+(.+)",
+        r"i\s+(?:do not|don't|dont)\s+like\s+(.+)",
+        r"i\s+(?:hate|dislike)\s+(.+)",
+      ],
+    );
+
+    if (avoidKeyword != null) {
+      await _baoBaoMemoryService.rememberAvoidKeyword(avoidKeyword);
+      return 'Got it. Bao-Bao will remember to avoid “$avoidKeyword” in future course recommendations 🐼';
+    }
+
+    final preferredKeyword = _extractMemoryKeyword(
+      message,
+      patterns: const [
+        r"remember\s+(?:that\s+)?i\s+(?:prefer|like|want)\s+(.+)",
+        r"i\s+(?:prefer|like|want)\s+(.+)",
+        r"prefer\s+(.+)",
+      ],
+    );
+
+    if (preferredKeyword != null &&
+        (lower.contains('remember') || lower.contains('prefer') || lower.contains('like'))) {
+      await _baoBaoMemoryService.rememberPreferredKeyword(preferredKeyword);
+      return 'Got it. Bao-Bao will remember that you prefer “$preferredKeyword” for future recommendations 🐼✨';
+    }
+
+    return null;
+  }
+
+  String? _extractMemoryKeyword(
+    String message, {
+    required List<String> patterns,
+  }) {
+    for (final pattern in patterns) {
+      final match = RegExp(pattern, caseSensitive: false).firstMatch(message);
+      if (match == null) continue;
+
+      var value = match.group(1)?.trim() ?? '';
+      value = value
+          .replaceAll(RegExp(r'[.!?。！？]+$'), '')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+
+      value = value
+          .replaceAll(
+            RegExp(
+              r'\b(again|anymore|next time|later|please|pls|course|courses|class|classes)\b',
+              caseSensitive: false,
+            ),
+            ' ',
+          )
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+
+      if (value.isEmpty) continue;
+      if (value.length > 80) {
+        value = value.substring(0, 80).trim();
+      }
+
+      return value;
+    }
+
+    return null;
+  }
+
+  bool _shouldAskFollowUpBeforePlanning({
+    required String prompt,
+    required bool hasCurriculum,
+    required Map<String, dynamic>? graduationData,
+    required Map<String, dynamic>? userPreferences,
+  }) {
+    if (_isAutoStarterPrompt(prompt)) {
+      return false;
+    }
+
+    final lower = prompt.toLowerCase().trim();
+
+    final asksForPlanning = lower.contains('recommend') ||
+        lower.contains('plan') ||
+        lower.contains('what course') ||
+        lower.contains('which course') ||
+        lower.contains('help me choose') ||
+        lower.contains('幫我') ||
+        lower.contains('推薦');
+
+    if (!asksForPlanning) {
+      return false;
+    }
+
+    final hasSpecificDetails = lower.contains('credit') ||
+        lower.contains('core') ||
+        lower.contains('ge') ||
+        lower.contains('elective') ||
+        lower.contains('english') ||
+        lower.contains('chinese') ||
+        lower.contains('morning') ||
+        lower.contains('afternoon') ||
+        lower.contains('night') ||
+        lower.contains('professor') ||
+        lower.contains('teacher') ||
+        lower.contains('software') ||
+        lower.contains('ai') ||
+        lower.contains('data') ||
+        lower.contains('hardware') ||
+        lower.contains('business') ||
+        lower.contains('natural') ||
+        lower.contains('humanities') ||
+        lower.contains('arts');
+
+    final prefs = _safePreferenceMap(userPreferences);
+    final hasPreferenceContext = _hasNonEmptyPreference(prefs, 'careerPaths') ||
+        _hasNonEmptyPreference(prefs, 'geInterests') ||
+        _hasNonEmptyPreference(prefs, 'languagePreference') ||
+        _hasNonEmptyPreference(prefs, 'targetCreditLoad');
+
+    final hasGraduationContext = graduationData != null && graduationData.isNotEmpty;
+
+    return !hasCurriculum &&
+        !hasSpecificDetails &&
+        !hasPreferenceContext &&
+        !hasGraduationContext;
+  }
+
+  String _followUpQuestionForMissingContext({
+    required bool hasCurriculum,
+    required Map<String, dynamic>? userPreferences,
+  }) {
+    final prefs = _safePreferenceMap(userPreferences);
+    final missing = <String>[];
+
+    if (!hasCurriculum) {
+      missing.add('upload curriculum');
+    }
+
+    if (!_hasNonEmptyPreference(prefs, 'careerPaths')) {
+      missing.add('career path');
+    }
+
+    if (!_hasNonEmptyPreference(prefs, 'geInterests')) {
+      missing.add('GE interests');
+    }
+
+    if (!_hasNonEmptyPreference(prefs, 'targetCreditLoad')) {
+      missing.add('target credits');
+    }
+
+    return 'Before I build the plan, Bao-Bao needs a little more direction 🐼\n\n'
+        'Please tell me one of these:\n'
+        '• your target credits, like 15 or 20 credits\n'
+        '• your career path, like software, AI, hardware, or business\n'
+        '• your GE interests, like natural sciences, humanities, or arts\n\n'
+        'Missing now: ${missing.join(', ')}.';
+  }
+
+  Map<String, dynamic> _safePreferenceMap(Map<String, dynamic>? raw) {
+    if (raw == null) return {};
+
+    final nested = raw['preferences'];
+    if (nested is Map) {
+      return Map<String, dynamic>.from(nested);
+    }
+
+    return Map<String, dynamic>.from(raw);
+  }
+
+  bool _hasNonEmptyPreference(Map<String, dynamic> prefs, String key) {
+    final value = prefs[key];
+
+    if (value == null) return false;
+    if (value is Iterable) return value.any((item) => item.toString().trim().isNotEmpty);
+
+    return value.toString().trim().isNotEmpty;
+  }
+
+  Map<String, List<String>> _courseReasonsFromResult(
+    List<Map<String, dynamic>> courses,
+  ) {
+    final result = <String, List<String>>{};
+
+    for (final course in courses) {
+      final id = course['id']?.toString() ?? '';
+      if (id.isEmpty) continue;
+
+      final reasons = <String>[];
+      final rawReasons = course['baoBaoWhy'];
+
+      if (rawReasons is Iterable) {
+        for (final reason in rawReasons) {
+          final text = reason.toString().trim();
+          if (text.isNotEmpty && !reasons.contains(text)) {
+            reasons.add(text);
+          }
+        }
+      }
+
+      if (reasons.isEmpty) {
+        final preferenceReasons = course['preferenceReasons'];
+        if (preferenceReasons is Iterable) {
+          for (final reason in preferenceReasons) {
+            final text = reason.toString().trim();
+            if (text.isNotEmpty && !reasons.contains(text)) {
+              reasons.add(text);
+            }
+          }
+        }
+      }
+
+      final confidence = course['baoBaoConfidenceLabel']?.toString().trim();
+      if (confidence != null && confidence.isNotEmpty) {
+        reasons.insert(0, confidence);
+      }
+
+      result[id] = reasons.take(5).toList();
+    }
+
+    return result;
+  }
+
+  List<String> _agentTraceFromResult(List<BaoBaoAgentStep> trace) {
+    return trace
+        .where((step) => step.message.trim().isNotEmpty)
+        .map((step) => '${step.name}: ${step.message}')
+        .take(6)
+        .toList();
+  }
+
   Future<Map<String, dynamic>?> _fetchUserPreferences() async {
     final doc = await _currentCcxpUserDoc();
     final data = doc?.data();
@@ -589,6 +1598,14 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
     }
 
     return result.isEmpty ? null : result;
+  }
+
+  bool _asksForGe(String prompt) {
+    final lower = prompt.toLowerCase();
+
+    return RegExp(r'(^|\s)ge(\s|$)').hasMatch(lower) ||
+        lower.contains('general education') ||
+        lower.contains('通識');
   }
 
   String _successMessageFor(String prompt, int count, {bool hasCurriculum = true,}) {
@@ -638,7 +1655,7 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
       return 'I found a 20-credit course plan based on your request ✨';
     }
 
-    if (lower.contains('ge')) {
+    if (_asksForGe(prompt)) {
       return 'I found $count GE-related courses for you ✨';
     }
 
@@ -648,10 +1665,6 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
 
     if (_asksForLanguageSubject(prompt)) {
       return 'I found $count language courses based on your request 🌸';
-    }
-
-    if (lower.contains('morning') || lower.contains('early')) {
-      return 'I found $count courses that better fit your time preference 😴';
     }
 
     if (lower.contains('easy') ||

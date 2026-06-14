@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../models/courses_planner_model.dart';
 import 'services/course_planner_firestore_services.dart';
+import 'services/bao_bao_memory_service.dart';
 import 'widgets/course_planner_ai_button.dart';
 import 'widgets/course_planner_ai_chat_dialog.dart';
 import 'widgets/course_planner_card.dart';
@@ -45,11 +46,14 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
   Set<String> baoBaoRecommendedCourseIds = {};
   bool showBaoBaoRecommendationsOnly = false;
   String? baoBaoRecommendationMessage;
+  Map<String, List<String>> baoBaoCourseReasons = {};
+  List<String> baoBaoAgentTrace = [];
 
   final List<PlannerCourse> plannedCourses = [];
 
   final CoursePlannerFirestoreService _courseService =
       CoursePlannerFirestoreService();
+  final BaoBaoMemoryService _baoBaoMemoryService = BaoBaoMemoryService();
 
   List<PlannerCourse> allCourses = [];
   bool isLoadingCourses = true;
@@ -568,6 +572,17 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       debugPrint('Failed to save planned course: $error');
     });
 
+    if (baoBaoRecommendedCourseIds.contains(course.id)) {
+      _baoBaoMemoryService
+          .rememberAcceptedCourse(
+            course,
+            reasons: baoBaoCourseReasons[course.id] ?? const <String>[],
+          )
+          .catchError((error) {
+        debugPrint('Failed to save Bao-Bao accepted-course memory: $error');
+      });
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -584,6 +599,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
   }
 
   void removeCourse(PlannerCourse course) {
+    final wasBaoBaoRecommended = baoBaoRecommendedCourseIds.contains(course.id);
+
     setState(() {
       plannedCourses.removeWhere((item) => item.id == course.id);
     });
@@ -608,6 +625,17 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
 
       debugPrint('Failed to delete planned course: $error');
     });
+
+    if (wasBaoBaoRecommended) {
+      _baoBaoMemoryService
+          .rememberRejectedCourse(
+            course,
+            reason: 'User removed a Bao-Bao recommended course from My Plan.',
+          )
+          .catchError((error) {
+        debugPrint('Failed to save Bao-Bao rejected-course memory: $error');
+      });
+    }
   }
 
   bool hasScheduleConflict(PlannerCourse course) {
@@ -683,6 +711,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
         showBaoBaoRecommendationsOnly = false;
         baoBaoRecommendedCourseIds.clear();
         baoBaoRecommendationMessage = null;
+        baoBaoCourseReasons.clear();
+        baoBaoAgentTrace.clear();
       });
     }
   }
@@ -692,6 +722,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       baoBaoRecommendedCourseIds.clear();
       showBaoBaoRecommendationsOnly = false;
       baoBaoRecommendationMessage = null;
+      baoBaoCourseReasons.clear();
+      baoBaoAgentTrace.clear();
       searchQuery = '';
       selectedType = 'ALL';
       selectedCredits = null;
@@ -722,6 +754,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
 
     Set<String> recommendedIds = {};
     String? recommendationMessage;
+    Map<String, List<String>> courseReasons = {};
+    List<String> agentTrace = [];
 
     if (result is List<String>) {
       recommendedIds = result.toSet();
@@ -729,11 +763,22 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       final ids = result['courseIds'] as List<dynamic>? ?? [];
       recommendedIds = ids.map((id) => id.toString()).toSet();
       recommendationMessage = result['message']?.toString();
+      courseReasons = _parseBaoBaoCourseReasons(result['courseReasons']);
+      agentTrace = _parseBaoBaoAgentTrace(result['agentTrace']);
     }
 
     if (recommendedIds.isEmpty) {
       return;
     }
+
+    _baoBaoMemoryService
+        .rememberRecommendationSession(
+          courseIds: recommendedIds.toList(),
+          message: recommendationMessage,
+        )
+        .catchError((error) {
+      debugPrint('Failed to save Bao-Bao recommendation-session memory: $error');
+    });
 
     setState(() {
       selectedTab = 0;
@@ -744,12 +789,68 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       baoBaoRecommendedCourseIds = recommendedIds;
       showBaoBaoRecommendationsOnly = true;
       baoBaoRecommendationMessage = recommendationMessage;
+      baoBaoCourseReasons = courseReasons;
+      baoBaoAgentTrace = agentTrace;
     });
+  }
+
+  Map<String, List<String>> _parseBaoBaoCourseReasons(dynamic raw) {
+    final parsed = <String, List<String>>{};
+
+    if (raw is! Map) {
+      return parsed;
+    }
+
+    raw.forEach((key, value) {
+      final courseId = key.toString();
+      if (courseId.trim().isEmpty) return;
+
+      if (value is Iterable) {
+        parsed[courseId] = value
+            .map((item) => item.toString().trim())
+            .where((item) => item.isNotEmpty)
+            .take(5)
+            .toList();
+      } else if (value != null) {
+        final text = value.toString().trim();
+        if (text.isNotEmpty) {
+          parsed[courseId] = [text];
+        }
+      }
+    });
+
+    return parsed;
+  }
+
+  List<String> _parseBaoBaoAgentTrace(dynamic raw) {
+    if (raw is! Iterable) {
+      return const [];
+    }
+
+    return raw
+        .map((item) => item.toString().trim())
+        .where((item) => item.isNotEmpty)
+        .take(6)
+        .toList();
   }
 
   @override
   Widget build(BuildContext context) {
     final courses = filteredCourses;
+
+    void handleSearchChanged(String value) {
+      setState(() {
+        searchQuery = value;
+
+        if (value.trim().isNotEmpty) {
+          showBaoBaoRecommendationsOnly = false;
+          baoBaoRecommendedCourseIds.clear();
+          baoBaoRecommendationMessage = null;
+          baoBaoCourseReasons.clear();
+          baoBaoAgentTrace.clear();
+        }
+      });
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -770,7 +871,19 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
                 });
               },
             ),
-            const SizedBox(height: 16),
+            if (selectedTab == 0) ...[
+              const SizedBox(height: 16),
+              _PinnedDiscoverSearchBar(
+                searchQuery: searchQuery,
+                selectedType: selectedType,
+                selectedCredits: selectedCredits,
+                selectedDepartment: selectedDepartment,
+                onSearchChanged: handleSearchChanged,
+                onFilterTap: openFilter,
+              ),
+              const SizedBox(height: 18),
+            ] else
+              const SizedBox(height: 16),
             Expanded(
               child: isLoadingCourses
                   ? const _CourseLoadingView()
@@ -792,19 +905,11 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
                                   showBaoBaoRecommendationsOnly,
                               baoBaoRecommendationMessage:
                                   baoBaoRecommendationMessage,
+                              baoBaoCourseReasons: baoBaoCourseReasons,
+                              baoBaoAgentTrace: baoBaoAgentTrace,
                               onExitBaoBaoRecommendations:
                                   exitBaoBaoRecommendations,
-                              onSearchChanged: (value) {
-                                setState(() {
-                                  searchQuery = value;
-
-                                  if (value.trim().isNotEmpty) {
-                                    showBaoBaoRecommendationsOnly = false;
-                                    baoBaoRecommendedCourseIds.clear();
-                                    baoBaoRecommendationMessage = null;
-                                  }
-                                });
-                              },
+                              onSearchChanged: handleSearchChanged,
                               onFilterTap: openFilter,
                               onCourseTap: openCourseDetail,
                               onAddCourse: addCourse,
@@ -1022,6 +1127,175 @@ class _TabButton extends StatelessWidget {
   }
 }
 
+
+class _PinnedDiscoverSearchBar extends StatefulWidget {
+  final String searchQuery;
+  final String selectedType;
+  final String selectedDepartment;
+  final int? selectedCredits;
+  final ValueChanged<String> onSearchChanged;
+  final VoidCallback onFilterTap;
+
+  const _PinnedDiscoverSearchBar({
+    required this.searchQuery,
+    required this.selectedType,
+    required this.selectedDepartment,
+    required this.selectedCredits,
+    required this.onSearchChanged,
+    required this.onFilterTap,
+  });
+
+  @override
+  State<_PinnedDiscoverSearchBar> createState() =>
+      _PinnedDiscoverSearchBarState();
+}
+
+class _PinnedDiscoverSearchBarState extends State<_PinnedDiscoverSearchBar> {
+  late final TextEditingController searchController;
+  bool isFocused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    searchController = TextEditingController(text: widget.searchQuery);
+  }
+
+  @override
+  void didUpdateWidget(covariant _PinnedDiscoverSearchBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (widget.searchQuery != searchController.text) {
+      searchController.text = widget.searchQuery;
+      searchController.selection = TextSelection.collapsed(
+        offset: searchController.text.length,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasFilter = widget.selectedType != 'ALL' ||
+        widget.selectedCredits != null ||
+        widget.selectedDepartment != 'All';
+
+    final hasSearch = widget.searchQuery.trim().isNotEmpty;
+    final isSearchActive = hasSearch || hasFilter || isFocused;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 28),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        height: 52,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: isSearchActive
+                ? const Color(0xFFD8B4FE)
+                : const Color(0xFFE5E7EB),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: isSearchActive
+                  ? const Color(0xFF9333EA).withValues(alpha: 0.16)
+                  : Colors.black.withValues(alpha: 0.04),
+              blurRadius: isSearchActive ? 14 : 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.search_rounded,
+              color: isSearchActive
+                  ? const Color(0xFF9333EA)
+                  : const Color(0xFFCBD5E1),
+              size: 22,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Focus(
+                onFocusChange: (value) {
+                  setState(() {
+                    isFocused = value;
+                  });
+                },
+                child: TextField(
+                  controller: searchController,
+                  onChanged: widget.onSearchChanged,
+                  cursorColor: const Color(0xFF9333EA),
+                  decoration: const InputDecoration(
+                    hintText: 'Search code, name, teacher...',
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    hintStyle: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFFCBD5E1),
+                    ),
+                  ),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            InkWell(
+              borderRadius: BorderRadius.circular(99),
+              onTap: widget.onFilterTap,
+              child: Stack(
+                alignment: Alignment.center,
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(
+                    Icons.filter_alt_outlined,
+                    color: hasFilter
+                        ? const Color(0xFF7E3291)
+                        : const Color(0xFF94A3B8),
+                    size: 24,
+                  ),
+                  if (hasFilter)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF7E3291),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white,
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _DiscoverView extends StatefulWidget {
   final List<PlannerCourse> courses;
   final String searchQuery;
@@ -1030,6 +1304,8 @@ class _DiscoverView extends StatefulWidget {
   final Set<String> recommendedCourseIds;
   final bool showBaoBaoRecommendationsOnly;
   final String? baoBaoRecommendationMessage;
+  final Map<String, List<String>> baoBaoCourseReasons;
+  final List<String> baoBaoAgentTrace;
   final int? selectedCredits;
   final ValueChanged<String> onSearchChanged;
   final VoidCallback onFilterTap;
@@ -1047,6 +1323,8 @@ class _DiscoverView extends StatefulWidget {
     required this.recommendedCourseIds,
     required this.showBaoBaoRecommendationsOnly,
     required this.baoBaoRecommendationMessage,
+    required this.baoBaoCourseReasons,
+    required this.baoBaoAgentTrace,
     required this.onExitBaoBaoRecommendations,
     required this.onSearchChanged,
     required this.onFilterTap,
@@ -1089,121 +1367,9 @@ class _DiscoverViewState extends State<_DiscoverView> {
 
   @override
   Widget build(BuildContext context) {
-    final hasFilter = widget.selectedType != 'ALL' ||
-        widget.selectedCredits != null ||
-        widget.selectedDepartment != 'All';
-
-    final hasSearch = widget.searchQuery.trim().isNotEmpty;
-
-    final isSearchActive = hasSearch || hasFilter || isFocused;
-
     return ListView(
       padding: const EdgeInsets.fromLTRB(28, 0, 28, 100),
       children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          height: 52,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: isSearchActive
-                  ? const Color(0xFFD8B4FE)
-                  : const Color(0xFFE5E7EB),
-              width: 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: isSearchActive
-                    ? const Color(0xFF9333EA).withValues(alpha: 0.16)
-                    : Colors.black.withValues(alpha: 0.04),
-                blurRadius: isSearchActive ? 14 : 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.search_rounded,
-                color: isSearchActive
-                    ? const Color(0xFF9333EA)
-                    : const Color(0xFFCBD5E1),
-                size: 22,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Focus(
-                  onFocusChange: (value) {
-                    setState(() {
-                      isFocused = value;
-                    });
-                  },
-                  child: TextField(
-                    controller: searchController,
-                    onChanged: widget.onSearchChanged,
-                    cursorColor: const Color(0xFF9333EA),
-                    decoration: const InputDecoration(
-                      hintText: 'Search code, name, teacher...',
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
-                      hintStyle: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFFCBD5E1),
-                      ),
-                    ),
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              InkWell(
-                borderRadius: BorderRadius.circular(99),
-                onTap: widget.onFilterTap,
-                child: Stack(
-                  alignment: Alignment.center,
-                  clipBehavior: Clip.none,
-                  children: [
-                    Icon(
-                      Icons.filter_alt_outlined,
-                      color: hasFilter
-                          ? const Color(0xFF7E3291)
-                          : const Color(0xFF94A3B8),
-                      size: 24,
-                    ),
-                    if (hasFilter)
-                      Positioned(
-                        right: 0,
-                        top: 0,
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF7E3291),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white,
-                              width: 1.5,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 18),
         if (widget.showBaoBaoRecommendationsOnly) ...[
           Container(
             width: double.infinity,
@@ -1265,6 +1431,16 @@ class _DiscoverViewState extends State<_DiscoverView> {
             widget.baoBaoRecommendationMessage != null) ...[
           _BaoBaoResultBubble(
             message: widget.baoBaoRecommendationMessage!,
+          ),
+          const SizedBox(height: 14),
+        ],
+        if (widget.showBaoBaoRecommendationsOnly &&
+            (widget.baoBaoCourseReasons.isNotEmpty ||
+                widget.baoBaoAgentTrace.isNotEmpty)) ...[
+          _BaoBaoReasonPanel(
+            courses: widget.courses,
+            courseReasons: widget.baoBaoCourseReasons,
+            agentTrace: widget.baoBaoAgentTrace,
           ),
           const SizedBox(height: 18),
         ],
@@ -1344,6 +1520,194 @@ class _DiscoverViewState extends State<_DiscoverView> {
             },
           ),
       ],
+    );
+  }
+}
+
+class _BaoBaoReasonPanel extends StatelessWidget {
+  final List<PlannerCourse> courses;
+  final Map<String, List<String>> courseReasons;
+  final List<String> agentTrace;
+
+  const _BaoBaoReasonPanel({
+    required this.courses,
+    required this.courseReasons,
+    required this.agentTrace,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleCourses = courses
+        .where((course) => courseReasons.containsKey(course.id))
+        .take(4)
+        .toList();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFFE9D5FF),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF7E3291).withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.psychology_alt_rounded,
+                size: 18,
+                color: Color(0xFF7E3291),
+              ),
+              SizedBox(width: 8),
+              Text(
+                'WHY BAO-BAO PICKED THESE',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.7,
+                  color: Color(0xFF7E3291),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (visibleCourses.isNotEmpty) ...[
+            ...visibleCourses.map((course) {
+              final reasons = courseReasons[course.id] ?? const <String>[];
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _BaoBaoCourseReasonRow(
+                  course: course,
+                  reasons: reasons,
+                ),
+              );
+            }),
+          ],
+          if (agentTrace.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(left: 2, bottom: 4),
+              dense: true,
+              title: const Text(
+                'Agent steps',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+              children: agentTrace.map((step) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '• ',
+                        style: TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          step,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            height: 1.35,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BaoBaoCourseReasonRow extends StatelessWidget {
+  final PlannerCourse course;
+  final List<String> reasons;
+
+  const _BaoBaoCourseReasonRow({
+    required this.course,
+    required this.reasons,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 11),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFF1F5F9),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            course.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 7),
+          ...reasons.take(3).map((reason) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    size: 13,
+                    color: Color(0xFF7E3291),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      reason,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        height: 1.3,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 }

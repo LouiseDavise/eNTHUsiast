@@ -23,6 +23,7 @@ class BaoBaoCourseAgent {
     required Map<String, dynamic>? curriculum,
     required Map<String, dynamic>? graduationData,
     Map<String, dynamic>? userPreferences,
+    BaoBaoCourseIntent? intent,
   }) async {
     final trace = <BaoBaoAgentStep>[];
 
@@ -63,6 +64,19 @@ class BaoBaoCourseAgent {
       ),
     );
 
+    final baoBaoMemory = _memoryMap(userPreferences);
+    final memorySummary = _memorySummary(baoBaoMemory);
+
+    trace.add(
+      BaoBaoAgentStep(
+        name: 'loadBaoBaoMemory',
+        status: baoBaoMemory.isEmpty ? 'skipped' : 'done',
+        message: baoBaoMemory.isEmpty
+            ? 'No saved Bao-Bao preference memory yet.'
+            : 'Loaded Bao-Bao memory: $memorySummary.',
+      ),
+    );
+
     final bucketedCourses = _attachCurriculumBuckets(
       rawAvailableCourses,
       curriculum,
@@ -86,18 +100,41 @@ class BaoBaoCourseAgent {
       userPreferences: userPreferences,
     );
 
-    final policyAwareCourses = _applyPreferenceAwareCoreAndGeRules(
+    final memoryAwareCourses = _attachBaoBaoMemoryInsights(
       courses: preferenceAwareCourses,
-      hasCurriculum: hasCurriculum,
-      curriculum: curriculum,
-      graduationData: graduationData,
       userPreferences: userPreferences,
     );
 
-    final languageAwareCourses = _filterByUserLanguagePreference(
-      courses: policyAwareCourses,
-      userPreferences: userPreferences,
-    );
+    final isDirectLookup = _isFreshDirectLookup(intent);
+    final isOpenEndedGoalPlan = _isOpenEndedGoalPlan(intent);
+    print('Bao-Bao direct lookup mode: $isDirectLookup');
+    print('Bao-Bao open-ended goal planning mode: $isOpenEndedGoalPlan');
+
+    final shouldBypassStrictPolicy = isDirectLookup || isOpenEndedGoalPlan;
+
+    final policyAwareCourses = shouldBypassStrictPolicy
+        ? memoryAwareCourses
+        : _applyPreferenceAwareCoreAndGeRules(
+            courses: memoryAwareCourses,
+            hasCurriculum: hasCurriculum,
+            curriculum: curriculum,
+            graduationData: graduationData,
+            userPreferences: userPreferences,
+          );
+
+    final memoryFilteredCourses = isDirectLookup
+        ? policyAwareCourses
+        : _filterByBaoBaoMemory(
+            courses: policyAwareCourses,
+            userPreferences: userPreferences,
+          );
+
+    final languageAwareCourses = isDirectLookup
+        ? memoryFilteredCourses
+        : _filterByUserLanguagePreference(
+            courses: memoryFilteredCourses,
+            userPreferences: userPreferences,
+          );
 
    final bucketCountsBeforeFilter = _bucketCounts(languageAwareCourses);
 
@@ -142,6 +179,7 @@ class BaoBaoCourseAgent {
       courseCatalog: availableCourses,
       curriculum: curriculum,
       userPreferences: userPreferences,
+      intent: intent,
     );
 
     final recommendedCourses = availableCourses.where((course) {
@@ -149,6 +187,19 @@ class BaoBaoCourseAgent {
       final code = course['code']?.toString() ?? '';
 
       return recommendedIds.contains(id) || recommendedIds.contains(code);
+    }).map((course) {
+      final copied = Map<String, dynamic>.from(course);
+      final reasons = _buildBaoBaoCourseReasons(
+        course: copied,
+        hasCurriculum: hasCurriculum,
+        userPreferences: userPreferences,
+      );
+
+      copied['baoBaoWhy'] = reasons;
+      copied['baoBaoConfidenceLabel'] = _baoBaoConfidenceLabel(copied);
+      copied['baoBaoConfidenceScore'] = _baoBaoConfidenceScore(copied);
+
+      return copied;
     }).toList();
 
     trace.add(
@@ -198,6 +249,279 @@ class BaoBaoCourseAgent {
       explanation: explanation,
       trace: trace,
     );
+  }
+
+
+  bool _isFreshDirectLookup(BaoBaoCourseIntent? intent) {
+    if (intent == null) {
+      return false;
+    }
+
+    // For a follow-up like "same as before but add calculus" or
+    // "add professor X's class to my plan", Bao-Bao should search the
+    // real catalog for the NEW requested course using direct lookup rules.
+    // The dialog layer will merge the new IDs with the previous/current plan.
+    if (!intent.isDirectSearch && !intent.isModifyPreviousPlan) {
+      return false;
+    }
+
+    final mode = intent.searchMode.toLowerCase().trim();
+
+    return mode == 'instructor' ||
+        mode == 'subject' ||
+        mode == 'time' ||
+        mode == 'course_type' ||
+        mode == 'credit_mix';
+  }
+
+
+  bool _isOpenEndedGoalPlan(BaoBaoCourseIntent? intent) {
+    if (intent == null) {
+      return false;
+    }
+
+    return intent.intent == 'new_plan' &&
+        intent.searchMode.toLowerCase().trim() == 'general_plan';
+  }
+
+  Map<String, dynamic> _memoryMap(Map<String, dynamic>? rawPreferences) {
+    final prefs = _preferenceMap(rawPreferences);
+    final rawMemory = prefs['baoBaoMemory'];
+
+    if (rawMemory is Map) {
+      return Map<String, dynamic>.from(rawMemory);
+    }
+
+    return {};
+  }
+
+  String _memorySummary(Map<String, dynamic> memory) {
+    final liked = _stringListFromAny(memory['likedCourseIds']).length;
+    final disliked = _stringListFromAny(memory['dislikedCourseIds']).length;
+    final preferred = _stringListFromAny(memory['preferredKeywords']).take(3).join(', ');
+    final avoid = _stringListFromAny(memory['avoidKeywords']).take(3).join(', ');
+
+    final parts = <String>[];
+    if (liked > 0) parts.add('$liked liked courses');
+    if (disliked > 0) parts.add('$disliked avoided courses');
+    if (preferred.isNotEmpty) parts.add('prefers $preferred');
+    if (avoid.isNotEmpty) parts.add('avoids $avoid');
+
+    return parts.isEmpty ? 'empty memory' : parts.join('; ');
+  }
+
+  List<Map<String, dynamic>> _attachBaoBaoMemoryInsights({
+    required List<Map<String, dynamic>> courses,
+    required Map<String, dynamic>? userPreferences,
+  }) {
+    final memory = _memoryMap(userPreferences);
+    if (memory.isEmpty) return courses;
+
+    final likedIds = _stringListFromAny(memory['likedCourseIds']).toSet();
+    final likedCodes = _stringListFromAny(memory['likedCourseCodes']).toSet();
+    final preferredKeywords = _stringListFromAny(memory['preferredKeywords']);
+
+    return courses.map((course) {
+      final copied = Map<String, dynamic>.from(course);
+      final reasons = List<String>.from(
+        (copied['preferenceReasons'] is Iterable)
+            ? copied['preferenceReasons'] as Iterable
+            : const [],
+      );
+      var score = _toInt(copied['preferenceFitScore']);
+
+      final id = copied['id']?.toString() ?? '';
+      final code = copied['code']?.toString() ?? '';
+      final courseText = _normalizeText(_courseMemoryText(copied));
+
+      if (likedIds.contains(id) || likedCodes.contains(code)) {
+        score += 500;
+        reasons.add('Bao-Bao memory: you accepted this course before');
+      }
+
+      for (final keyword in preferredKeywords) {
+        final normalizedKeyword = _normalizeText(keyword);
+        if (normalizedKeyword.isNotEmpty && courseText.contains(normalizedKeyword)) {
+          score += 260;
+          reasons.add('Bao-Bao memory: matches your saved preference “$keyword”');
+          break;
+        }
+      }
+
+      copied['preferenceFitScore'] = score;
+      copied['preferenceReasons'] = reasons.toSet().toList();
+
+      return copied;
+    }).toList();
+  }
+
+  List<Map<String, dynamic>> _filterByBaoBaoMemory({
+    required List<Map<String, dynamic>> courses,
+    required Map<String, dynamic>? userPreferences,
+  }) {
+    final memory = _memoryMap(userPreferences);
+    if (memory.isEmpty) return courses;
+
+    final dislikedIds = _stringListFromAny(memory['dislikedCourseIds']).toSet();
+    final dislikedCodes = _stringListFromAny(memory['dislikedCourseCodes']).toSet();
+    final avoidKeywords = _stringListFromAny(memory['avoidKeywords']);
+
+    return courses.where((course) {
+      final id = course['id']?.toString() ?? '';
+      final code = course['code']?.toString() ?? '';
+
+      if (dislikedIds.contains(id) || dislikedCodes.contains(code)) {
+        return false;
+      }
+
+      final courseText = _normalizeText(_courseMemoryText(course));
+      for (final keyword in avoidKeywords) {
+        final normalizedKeyword = _normalizeText(keyword);
+        if (normalizedKeyword.isNotEmpty && courseText.contains(normalizedKeyword)) {
+          return false;
+        }
+      }
+
+      return true;
+    }).toList();
+  }
+
+  String _courseMemoryText(Map<String, dynamic> course) {
+    return [
+      course['id'],
+      course['code'],
+      course['title'],
+      course['titleZh'],
+      course['titleEn'],
+      course['professor'],
+      course['department'],
+      course['type'],
+      course['curriculumBucket'],
+      course['curriculumCategory'],
+      course['curriculumRequiredCourseName'],
+    ].whereType<Object>().join(' ');
+  }
+
+  List<String> _buildBaoBaoCourseReasons({
+    required Map<String, dynamic> course,
+    required bool hasCurriculum,
+    required Map<String, dynamic>? userPreferences,
+  }) {
+    final reasons = <String>[];
+    final prefs = _preferenceMap(userPreferences);
+    final type = (course['type'] ?? '').toString().toUpperCase();
+    final bucket = (course['curriculumBucket'] ?? '').toString().toUpperCase();
+    final matchedBy = (course['curriculumMatchedBy'] ?? '').toString().toLowerCase();
+    final languagePreference = _normalizedInstructionLanguagePreference(
+      (prefs['languagePreference'] ?? '').toString(),
+    );
+
+    void addReason(String reason) {
+      final trimmed = reason.trim();
+      if (trimmed.isEmpty) return;
+      if (!reasons.contains(trimmed)) reasons.add(trimmed);
+    }
+
+    if (hasCurriculum && _hasExactCurriculumMatch(course)) {
+      addReason('Matches your uploaded curriculum requirement');
+    } else if (hasCurriculum && bucket.isNotEmpty && bucket != 'UNKNOWN') {
+      addReason('Fits curriculum bucket: ${_friendlyBucketName(bucket)}');
+    }
+
+    if (!hasCurriculum && type == 'CORE') {
+      addReason('CORE kept only because it fits your career path or department');
+    }
+
+    final preferenceReasons = course['preferenceReasons'];
+    if (preferenceReasons is Iterable) {
+      for (final reason in preferenceReasons) {
+        addReason(reason.toString());
+      }
+    }
+
+    if (languagePreference == 'english' && _matchesInstructionLanguage(course, 'english')) {
+      addReason('Matches English-taught preference');
+    }
+
+    if (languagePreference == 'chinese' && _matchesInstructionLanguage(course, 'chinese')) {
+      addReason('Matches Chinese-taught preference');
+    }
+
+    if (_toInt(course['yearFitScore']) > 0) {
+      addReason('Suitable for your current student year');
+    }
+
+    final limit = _toInt(course['limit']);
+    if (limit > 0) {
+      addReason('Has a valid class capacity');
+    }
+
+    if (matchedBy == 'fallback' && hasCurriculum) {
+      addReason('Not an exact curriculum match, but kept as a useful fallback');
+    }
+
+    if (reasons.isEmpty) {
+      addReason('Best available match from the real course list');
+    }
+
+    return reasons.take(5).toList();
+  }
+
+  int _baoBaoConfidenceScore(Map<String, dynamic> course) {
+    var score = 0;
+
+    score += _toInt(course['preferenceFitScore']);
+    score += _toInt(course['yearFitScore']);
+
+    if (_hasExactCurriculumMatch(course)) {
+      score += 400;
+    }
+
+    final preferenceReasons = course['preferenceReasons'];
+    if (preferenceReasons is Iterable &&
+        preferenceReasons.any((reason) =>
+            reason.toString().toLowerCase().contains('bao-bao memory'))) {
+      score += 260;
+    }
+
+    if (_toInt(course['limit']) > 0) {
+      score += 60;
+    }
+
+    return score;
+  }
+
+  String _baoBaoConfidenceLabel(Map<String, dynamic> course) {
+    final score = _baoBaoConfidenceScore(course);
+
+    if (score >= 650) return 'Strong match';
+    if (score >= 300) return 'Good match';
+    return 'Safe fallback';
+  }
+
+  String _friendlyBucketName(String bucket) {
+    switch (bucket) {
+      case 'DEPT_REQUIRED':
+        return 'department required';
+      case 'BASIC_CORE':
+        return 'basic core';
+      case 'CORE_COURSE':
+        return 'core course';
+      case 'PROFESSIONAL':
+        return 'professional elective';
+      case 'LAB':
+        return 'lab';
+      case 'GE':
+        return 'general education';
+      case 'LANGUAGE':
+        return 'language';
+      case 'FREE_ELECTIVE':
+        return 'free elective';
+      case 'SCHOOL_COMPULSORY':
+        return 'school compulsory';
+      default:
+        return bucket.toLowerCase().replaceAll('_', ' ');
+    }
   }
 
   List<Map<String, dynamic>> _filterByUserLanguagePreference({
@@ -526,13 +850,29 @@ class BaoBaoCourseAgent {
       }
     }
 
+    final profileKeywords = _searchProfileKeywords(
+      prefs,
+      const [
+        'careerKeywords',
+        'departmentKeywords',
+        'coreCourseHints',
+        'electiveHints',
+      ],
+    );
+
+    for (final keyword in profileKeywords) {
+      final normalizedKeyword = _normalizeText(keyword);
+      if (normalizedKeyword.isNotEmpty && courseText.contains(normalizedKeyword)) {
+        return true;
+      }
+    }
+
+    // Fallback only when the AI preference profile is unavailable.
     final careerPaths = _stringListFromAny(prefs['careerPaths']);
     for (final career in careerPaths) {
-      for (final keyword in _careerKeywords(_normalizeText(career))) {
-        final normalizedKeyword = _normalizeText(keyword);
-        if (normalizedKeyword.isNotEmpty && courseText.contains(normalizedKeyword)) {
-          return true;
-        }
+      final careerText = _normalizeText(career);
+      if (careerText.isNotEmpty && courseText.contains(careerText)) {
+        return true;
       }
     }
 
@@ -849,6 +1189,35 @@ class BaoBaoCourseAgent {
     return Map<String, dynamic>.from(raw);
   }
 
+  Map<String, dynamic> _searchProfileMap(Map<String, dynamic> prefs) {
+    final rawProfile = prefs['baoBaoSearchProfile'];
+
+    if (rawProfile is Map) {
+      return Map<String, dynamic>.from(rawProfile);
+    }
+
+    return {};
+  }
+
+  List<String> _searchProfileKeywords(
+    Map<String, dynamic> prefs,
+    List<String> keys,
+  ) {
+    final profile = _searchProfileMap(prefs);
+    if (profile.isEmpty) return const [];
+
+    final result = <String>{};
+
+    for (final key in keys) {
+      result.addAll(_stringListFromAny(profile[key]));
+    }
+
+    return result
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+
   _PreferenceFitResult _preferenceFitForCourse(
     Map<String, dynamic> course,
     Map<String, dynamic> prefs,
@@ -876,14 +1245,33 @@ class BaoBaoCourseAgent {
     final languagePreference =
         (prefs['languagePreference'] ?? '').toString().toLowerCase();
 
-    for (final career in careerPaths) {
-      final careerText = _normalizeText(career);
-      final careerKeywords = _careerKeywords(careerText);
+    final profileCareerKeywords = _searchProfileKeywords(
+      prefs,
+      const [
+        'careerKeywords',
+        'departmentKeywords',
+        'coreCourseHints',
+        'electiveHints',
+      ],
+    );
 
-      for (final keyword in careerKeywords) {
+    if (profileCareerKeywords.isNotEmpty) {
+      for (final keyword in profileCareerKeywords) {
         final normalizedKeyword = _normalizeText(keyword);
 
         if (normalizedKeyword.isNotEmpty && text.contains(normalizedKeyword)) {
+          score += 220;
+          reasons.add('matches AI-resolved career/profile hint');
+          break;
+        }
+      }
+    } else {
+      // Fallback only when the AI preference profile is unavailable.
+      // Do not expand careers with hardcoded job-specific mappings here.
+      for (final career in careerPaths) {
+        final careerText = _normalizeText(career);
+
+        if (careerText.isNotEmpty && text.contains(careerText)) {
           score += 180;
           reasons.add('matches career goal: $career');
           break;
@@ -949,77 +1337,10 @@ class BaoBaoCourseAgent {
   }
 
   List<String> _careerKeywords(String careerText) {
-    final keywords = <String>{careerText};
-
-    if (careerText.contains('software')) {
-      keywords.addAll([
-        'software',
-        'programming',
-        'data structures',
-        'algorithms',
-        'database',
-        'operating systems',
-        'computer networks',
-        'software studio',
-        'computer architecture',
-        'web',
-        'app',
-        'backend',
-      ]);
-    }
-
-    if (careerText.contains('devops') ||
-        careerText.contains('sre') ||
-        careerText.contains('cloud')) {
-      keywords.addAll([
-        'devops',
-        'cloud',
-        'network',
-        'computer networks',
-        'operating systems',
-        'linux',
-        'system',
-        'distributed',
-        'database',
-        'security',
-        'software',
-        'backend',
-        'web',
-        'computer architecture',
-      ]);
-    }
-
-    if (careerText.contains('ai') ||
-        careerText.contains('machine learning') ||
-        careerText.contains('data')) {
-      keywords.addAll([
-        'machine learning',
-        'artificial intelligence',
-        'data',
-        'statistics',
-        'probability',
-        'linear algebra',
-        'algorithm',
-        'python',
-      ]);
-    }
-
-    if (careerText.contains('hardware') ||
-        careerText.contains('embedded') ||
-        careerText.contains('chip')) {
-      keywords.addAll([
-        'logic design',
-        'electronics',
-        'electric circuits',
-        'computer architecture',
-        'embedded',
-        'microelectronics',
-        'signals and systems',
-      ]);
-    }
-
-    return keywords.toList();
+    final cleaned = careerText.trim();
+    return cleaned.isEmpty ? const [] : [cleaned];
   }
+
 
   List<String> _stringListFromAny(dynamic value) {
     if (value == null) return [];
