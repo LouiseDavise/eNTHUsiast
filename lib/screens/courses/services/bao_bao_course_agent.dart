@@ -86,7 +86,12 @@ class BaoBaoCourseAgent {
       userPreferences: userPreferences,
     );
 
-   final bucketCountsBeforeFilter = _bucketCounts(preferenceAwareCourses);
+    final languageAwareCourses = _filterByUserLanguagePreference(
+      courses: preferenceAwareCourses,
+      userPreferences: userPreferences,
+    );
+
+   final bucketCountsBeforeFilter = _bucketCounts(languageAwareCourses);
 
     trace.add(
       BaoBaoAgentStep(
@@ -99,7 +104,7 @@ class BaoBaoCourseAgent {
     );
 
     final availableCourses = _dedupeSameCourse(
-      preferenceAwareCourses.where((course) {
+      languageAwareCourses.where((course) {
         return !_courseMatchesBlockedList(course, completedCourses) &&
             !_isTooAdvancedForStudentYear(course, studentYear);
       }).toList(),
@@ -183,6 +188,44 @@ class BaoBaoCourseAgent {
       explanation: explanation,
       trace: trace,
     );
+  }
+
+  List<Map<String, dynamic>> _filterByUserLanguagePreference({
+  required List<Map<String, dynamic>> courses,
+  required Map<String, dynamic>? userPreferences,
+}) {
+  final prefs = _preferenceMap(userPreferences);
+  final languagePreference =
+      (prefs['languagePreference'] ?? '').toString().toLowerCase();
+
+  if (!languagePreference.contains('english')) {
+    return courses;
+  }
+
+  final englishCourses = courses.where(_isEnglishTaughtCourse).toList();
+
+  // Safety fallback: if Firestore language data is incomplete,
+  // do not accidentally return zero courses.
+  if (englishCourses.isEmpty) {
+    return courses;
+  }
+
+  return englishCourses;
+}
+
+  bool _isEnglishTaughtCourse(Map<String, dynamic> course) {
+    final text = [
+      course['language'],
+      course['instructionLanguage'],
+      course['languageOfInstruction'],
+      course['teachingLanguage'],
+      course['remarks'],
+    ].whereType<Object>().join(' ').toLowerCase();
+
+    return text.contains('english') ||
+        text.contains('eng') ||
+        text.contains('英文') ||
+        text.contains('英語');
   }
 
   List<Map<String, dynamic>> _attachUserPreferenceInsights({

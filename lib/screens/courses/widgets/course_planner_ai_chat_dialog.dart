@@ -25,17 +25,20 @@ enum _BaoBaoStage {
 class CoursePlannerAiChatDialog extends StatefulWidget {
   final List<PlannerCourse> allCourses;
   final List<PlannerCourse> plannedCourses;
+  final String? initialPrompt;
 
   const CoursePlannerAiChatDialog({
     super.key,
     required this.allCourses,
     required this.plannedCourses,
+    this.initialPrompt,
   });
 
   @override
   State<CoursePlannerAiChatDialog> createState() =>
       _CoursePlannerAiChatDialogState();
 }
+
 
 class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
     with TickerProviderStateMixin {
@@ -45,6 +48,13 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
   late final AnimationController _floatController;
   late final AnimationController _pulseController;
   late final AnimationController _sparkleController;
+
+  bool _isAutoStarterPrompt(String prompt) {
+    final lower = prompt.toLowerCase();
+
+    return lower.contains('automatically create a useful first starter recommendation') ||
+        lower.contains('automatically create a smart starter course plan');
+  }
 
   Timer? _loadingTimer;
 
@@ -64,9 +74,49 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
   bool get isSuccess => stage == _BaoBaoStage.success;
   bool get isError => stage == _BaoBaoStage.error;
 
+  List<String> get _autoIntroDialogueTexts {
+    if (_autoIntroHasCurriculum) {
+      return const [
+        "Okay, Bao-Bao will try to plan for you by himself 🐼",
+        "I found your uploaded curriculum, so I can check your real requirement groups.",
+        "I will look for missing department required, basic core, core, professional, and lab courses.",
+        "Then I will remove courses you already passed or are currently taking.",
+        "After that, I will use your preferences to make the recommendation more personal.",
+        "Tap one more time and I will generate your first smart course cards ✨",
+      ];
+    }
+
+    return const [
+      "Okay, Bao-Bao will try to plan for you by himself 🐼",
+      "I do not see an uploaded curriculum yet, so I will not guess your exact requirements.",
+      "For now, I will use your graduation data, preferences, student year, and the real course list.",
+      "I will avoid courses you already passed or are currently taking.",
+      "After you upload your curriculum later, I can make a more accurate requirement-based plan.",
+      "Tap one more time and I will generate your first starter course cards ✨",
+    ];
+  }
+
+  String? _pendingInitialPrompt;
+  bool _autoIntroDialogueMode = false;
+  bool _autoIntroTransitionMode = false;
+  bool _autoIntroPreparing = false;
+  int _autoIntroDialogueIndex = 0;
+  bool _autoIntroHasCurriculum = false;
+
   @override
   void initState() {
     super.initState();
+
+    final initialPrompt = widget.initialPrompt?.trim();
+
+    if (initialPrompt != null && initialPrompt.isNotEmpty) {
+      _pendingInitialPrompt = initialPrompt;
+      _autoIntroPreparing = true;
+      _autoIntroDialogueMode = true;
+      _autoIntroDialogueIndex = 0;
+      stage = _BaoBaoStage.idle;
+      speechText = "Bao-Bao is checking what data I can use first... 🐼";
+    }
 
     _floatController = AnimationController(
       vsync: this,
@@ -82,6 +132,15 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
       vsync: this,
       duration: const Duration(milliseconds: 1300),
     )..repeat();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final prompt = widget.initialPrompt?.trim();
+
+      if (!mounted || prompt == null || prompt.isEmpty) {
+        return;
+      }
+
+      _prepareAutoIntroDialogue(prompt);
+    });
   }
 
   @override
@@ -94,7 +153,11 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
     super.dispose();
   }
 
-  Future<void> sendPrompt([String? presetPrompt]) async {
+  Future<void> sendPrompt({
+    String? presetPrompt,
+    bool hidePromptPreview = false,
+    bool? autoStarterHasCurriculum,
+  }) async {
     final text = (presetPrompt ?? _messageController.text).trim();
     
     FocusScope.of(context).unfocus();
@@ -105,7 +168,11 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
 
     _messageController.clear();
 
-    _startLoading(text);
+    _startLoading(
+      text,
+      hidePromptPreview: hidePromptPreview,
+      autoStarterHasCurriculum: autoStarterHasCurriculum,
+    );
 
     if (_isSmallTalkOnly(text)) {
       final reply = await _baoBaoAiApi.askBaoBao(text);
@@ -128,6 +195,7 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
     print('Bao-Bao first course sample: ${courseCatalog.isNotEmpty ? courseCatalog.first : "EMPTY"}');
 
     final curriculum = await CurriculumUploadService().fetchCurriculumForBaoBao();
+    final hasCurriculum = curriculum != null && curriculum.isNotEmpty;
     print('Bao-Bao curriculum loaded: ${curriculum != null}');
     print('Bao-Bao curriculum keys: ${curriculum?.keys.toList()}');
     print('Bao-Bao program name: ${curriculum?['programName']}');
@@ -171,7 +239,11 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
       return;
     }
 
-    final resultMessage = _successMessageFor(text, recommendedIds.length);
+    final resultMessage = _successMessageFor(
+      text,
+      recommendedIds.length,
+      hasCurriculum: hasCurriculum,
+    );
 
     setState(() {
       stage = _BaoBaoStage.success;
@@ -181,14 +253,91 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
     });
   }
 
-  void _startLoading(String prompt) {
+  Future<void> _prepareAutoIntroDialogue(String prompt) async {
+    Map<String, dynamic>? curriculum;
+
+    try {
+      curriculum = await CurriculumUploadService().fetchCurriculumForBaoBao();
+    } catch (error) {
+      debugPrint('Bao-Bao auto intro curriculum check failed: $error');
+    }
+
+    if (!mounted) return;
+
+    final hasCurriculum = curriculum != null && curriculum.isNotEmpty;
+
+    setState(() {
+      _pendingInitialPrompt = prompt;
+      _autoIntroHasCurriculum = hasCurriculum;
+      _autoIntroPreparing = false;
+      _autoIntroDialogueMode = true;
+      _autoIntroDialogueIndex = 0;
+      stage = _BaoBaoStage.idle;
+      speechText = _autoIntroDialogueTexts.first;
+    });
+  }
+
+  Future<void> _advanceAutoIntroDialogue() async {
+    if (!_autoIntroDialogueMode || isLoading || _autoIntroTransitionMode) {
+      return;
+    }
+
+    final introTexts = _autoIntroDialogueTexts;
+    final isLast = _autoIntroDialogueIndex >= introTexts.length - 1;
+
+    if (!isLast) {
+      setState(() {
+        _autoIntroDialogueIndex++;
+        speechText = introTexts[_autoIntroDialogueIndex];
+      });
+
+      return;
+    }
+
+    final prompt = _pendingInitialPrompt;
+
+    setState(() {
+      _autoIntroTransitionMode = true;
+      speechText =
+          "Nice. Bao-Bao has checked what data is available 🐼\n\nNow I will generate your first course cards.";
+    });
+
+    await Future<void>.delayed(const Duration(milliseconds: 950));
+
+    if (!mounted) return;
+
+    setState(() {
+      _autoIntroDialogueMode = false;
+      _autoIntroTransitionMode = false;
+      _autoIntroDialogueIndex = 0;
+    });
+
+    if (prompt == null || prompt.trim().isEmpty) {
+      return;
+    }
+
+    await sendPrompt(
+      presetPrompt: prompt,
+      hidePromptPreview: true,
+      autoStarterHasCurriculum: _autoIntroHasCurriculum,
+    );
+  }
+
+  void _startLoading(
+    String prompt, {
+    bool hidePromptPreview = false,
+    bool? autoStarterHasCurriculum,
+  }) {
     _loadingTimer?.cancel();
 
-    final messages = _loadingMessagesFor(prompt);
+    final messages = _loadingMessagesFor(
+      prompt,
+      autoStarterHasCurriculum: autoStarterHasCurriculum,
+    );
 
     setState(() {
       stage = _BaoBaoStage.loading;
-      lastUserPrompt = prompt;
+      lastUserPrompt = hidePromptPreview ? '' : prompt;
       loadingMessages = messages;
       loadingIndex = 0;
       speechText = messages.first;
@@ -222,8 +371,30 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
     });
   }
 
-  List<String> _loadingMessagesFor(String prompt) {
+  List<String> _loadingMessagesFor(String prompt, {
+    bool? autoStarterHasCurriculum,
+  }) {
     final lower = prompt.toLowerCase();
+
+    if (_isAutoStarterPrompt(prompt)) {
+      if (autoStarterHasCurriculum == true) {
+        return const [
+          'Reading your uploaded curriculum...',
+          'Checking exact missing requirement groups...',
+          'Removing completed or in-progress courses...',
+          'Matching your preferences with real course cards...',
+          'Almost done building your requirement-based starter plan...',
+        ];
+      }
+
+      return const [
+        'Checking what data Bao-Bao can use...',
+        'Reading your graduation data and preferences...',
+        'Checking your student year and completed courses...',
+        'Searching the real course list for a safe starter plan...',
+        'Almost done building your first starter recommendation...',
+      ];
+    }
 
     if (lower.contains('morning') ||
         lower.contains('night') ||
@@ -259,6 +430,26 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
         'Matching your subject with the instruction language...',
         'Filtering out unrelated courses...',
         'Almost done finding the right course cards...',
+      ];
+    }
+
+    if (_isAutoStarterPrompt(prompt)) {
+      if (autoStarterHasCurriculum == true) {
+        return const [
+          'Reading your uploaded curriculum...',
+          'Checking exact missing requirement groups...',
+          'Removing completed or in-progress courses...',
+          'Matching your preferences with real course cards...',
+          'Almost done building your requirement-based starter plan...',
+        ];
+      }
+
+      return const [
+        'Checking what data Bao-Bao can use...',
+        'Reading your graduation data and preferences...',
+        'Checking your student year and completed courses...',
+        'Searching the real course list for a safe starter plan...',
+        'Almost done building your first starter recommendation...',
       ];
     }
 
@@ -331,7 +522,7 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
     return null;
   }
 
-  String _successMessageFor(String prompt, int count) {
+  String _successMessageFor(String prompt, int count, {bool hasCurriculum = true,}) {
     final courseLabel = _specificCourseLabel(prompt);
     final instructionLanguage = _instructionLanguageLabel(prompt);
     final isOne = count == 1;
@@ -353,6 +544,14 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
     }
 
     final lower = prompt.toLowerCase();
+
+    if (lower.contains('automatically create a smart starter course plan')) {
+      if (hasCurriculum) {
+        return 'I found $count starter courses using your curriculum, graduation data, preferences, and real course list 🐼✨';
+      }
+
+      return 'I found $count starter courses using your graduation data, preferences, and real course list 🐼✨\n\nUpload your curriculum later so Bao-Bao can check exact missing requirements.';
+    }
 
     if (_asksForCurriculumBucketPlanning(prompt)) {
       return 'I found $count courses using your curriculum buckets and graduation data 🐼✨';
@@ -714,7 +913,13 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
       color: Colors.transparent,
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
-        onTap: isSuccess ? _continueWithResults : null,
+        onTap: isSuccess
+          ? _continueWithResults
+          : _autoIntroDialogueMode
+              ? () {
+                  _advanceAutoIntroDialogue();
+                }
+              : null,
         child: Stack(
           children: [
             Positioned.fill(
@@ -775,20 +980,26 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
                                   duration: const Duration(milliseconds: 240),
                                   curve: Curves.easeOut,
                                   child: isLoading || isSuccess
-                                      ? _ThinkingStatus(stage: stage)
-                                      : Column(
-                                          children: [
-                                            _PromptInput(
-                                              controller: _messageController,
-                                              isDisabled: isLoading,
-                                              onSend: () => sendPrompt(),
-                                            ),
-                                            const SizedBox(height: 14),
-                                            _SuggestionChips(
-                                              onSelected: sendPrompt,
-                                            ),
-                                    ],
-                                  ),
+                                    ? _ThinkingStatus(stage: stage)
+                                    : _autoIntroDialogueMode
+                                      ? _AutoIntroDialogueHint(
+                                          currentIndex: _autoIntroDialogueIndex,
+                                          totalCount: _autoIntroDialogueTexts.length,
+                                          isPreparing: _autoIntroTransitionMode || _autoIntroPreparing,
+                                        )
+                                        : Column(
+                                            children: [
+                                              _PromptInput(
+                                                controller: _messageController,
+                                                isDisabled: isLoading,
+                                                onSend: () => sendPrompt(),
+                                              ),
+                                              const SizedBox(height: 14),
+                                              _SuggestionChips(
+                                                onSelected: (value) => sendPrompt(presetPrompt: value),
+                                              ),
+                                            ],
+                                          ),
                                 ),
                               ],
                             ),
@@ -827,6 +1038,77 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AutoIntroDialogueHint extends StatelessWidget {
+  final int currentIndex;
+  final int totalCount;
+  final bool isPreparing;
+
+  const _AutoIntroDialogueHint({
+    required this.currentIndex,
+    required this.totalCount,
+    this.isPreparing = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isLast = currentIndex >= totalCount - 1;
+
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 22,
+            vertical: 13,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.95),
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.10),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Text(
+            isPreparing
+              ? '🐼 Preparing your starter plan...'
+              : isLast
+                  ? '✨ Tap to let Bao-Bao generate'
+                  : '☝️ Tap anywhere to continue',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF7E3291),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(totalCount, (index) {
+            final active = index == currentIndex;
+
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              width: active ? 20 : 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: active
+                    ? const Color(0xFFFDE68A)
+                    : Colors.white.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            );
+          }),
+        ),
+      ],
     );
   }
 }
