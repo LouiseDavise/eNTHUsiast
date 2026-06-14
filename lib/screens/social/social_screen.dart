@@ -217,18 +217,12 @@ class _SocialScreenState extends State<SocialScreen> {
               ),
             ),
           ),
+          Positioned(
+            bottom: 32,
+            right: 32,
+            child: _AnimatedAddButton(onPressed: _showCreatePostSheet),
+          ),
         ],
-      ),
-      floatingActionButton: Transform.translate(
-        offset: const Offset(8, 5),
-        child: FloatingActionButton(
-          onPressed: _showCreatePostSheet,
-          backgroundColor: _deepPurple,
-          foregroundColor: Colors.white,
-          elevation: 10,
-          shape: const CircleBorder(),
-          child: const Icon(Icons.add_rounded, size: 32),
-        ),
       ),
     );
   }
@@ -1040,7 +1034,20 @@ class _SocialScreenState extends State<SocialScreen> {
 
             return Padding(
               padding: EdgeInsets.only(bottom: bottomInset),
-              child: _SheetShell(
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOutCubic,
+                builder: (context, value, child) {
+                  return Opacity(
+                    opacity: value,
+                    child: Transform.translate(
+                      offset: Offset(0, (1 - value) * 24),
+                      child: child,
+                    ),
+                  );
+                },
+                child: _SheetShell(
                 title: 'New Forum',
                 subtitle: 'Share with the community',
                 leadingIcon: Icons.mode_comment_outlined,
@@ -1151,6 +1158,7 @@ class _SocialScreenState extends State<SocialScreen> {
                     ),
                   ],
                 ),
+              ),
               ),
             );
           },
@@ -2291,6 +2299,85 @@ class _SmallDot extends StatelessWidget {
       decoration: const BoxDecoration(
         color: Color(0xFFD1D5DC),
         shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
+class _AnimatedAddButton extends StatefulWidget {
+  const _AnimatedAddButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  State<_AnimatedAddButton> createState() => _AnimatedAddButtonState();
+}
+
+class _AnimatedAddButtonState extends State<_AnimatedAddButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  bool _pressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleTap() {
+    _controller.forward(from: 0).then((_) {
+      if (mounted) _controller.reverse();
+    });
+    widget.onPressed();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: _handleTap,
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        child: Material(
+          color: _deepPurple,
+          shape: const CircleBorder(),
+          elevation: 10,
+          shadowColor: Colors.black.withValues(alpha: 0.3),
+          child: SizedBox(
+            width: 60,
+            height: 60,
+            child: Center(
+              child: AnimatedBuilder(
+                animation: _controller,
+                builder: (context, child) {
+                  final turns = Curves.easeOut.transform(_controller.value);
+                  return Transform.rotate(
+                    angle: turns * 0.78, // ~45 degrees at peak
+                    child: child,
+                  );
+                },
+                child: const Icon(
+                  Icons.add_rounded,
+                  size: 32,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

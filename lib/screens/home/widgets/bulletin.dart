@@ -42,6 +42,8 @@ class _BulletinWidgetState extends State<BulletinWidget> {
   int _currentIndex = 0;
   Timer? _timer;
   bool _isAutoScrolling = false;
+  bool _isWrappingBulletin = false;
+  bool _isCollapseArrowHovered = false;
   int _bulletinCount = 0;
 
   static const Color nthuPurple = Color(0xFF7E22CE);
@@ -69,14 +71,17 @@ class _BulletinWidgetState extends State<BulletinWidget> {
 
       final String fullText = (data['fullText'] ?? '').toString();
       final String snippet = (data['snippet'] ?? '').toString();
-      final String titleFromFirebase = (data['title'] ?? 'Campus Announcements').toString();
+      final String titleFromFirebase = (data['title'] ?? 'Campus Announcements')
+          .toString();
 
       if (fullText.trim().isEmpty) {
         results.add(
           DynamicBulletin(
             category: 'ANNOUNCEMENT',
             title: titleFromFirebase,
-            fullText: snippet.isNotEmpty ? snippet : 'No additional details provided.',
+            fullText: snippet.isNotEmpty
+                ? snippet
+                : 'No additional details provided.',
             gradient: const [Color(0xFF7E22CE), Color(0xFF3B82F6)],
             icon: Icons.campaign_rounded,
           ),
@@ -108,12 +113,15 @@ class _BulletinWidgetState extends State<BulletinWidget> {
         final String category = chunk.substring(0, asteriskIdx).trim();
         final String rest = chunk.substring(asteriskIdx + 1).trim();
 
-        final List<String> lines = rest.split('\n')
+        final List<String> lines = rest
+            .split('\n')
             .map((line) => line.trim())
             .where((line) => line.isNotEmpty && !line.startsWith('<http'))
             .toList();
 
-        final String title = lines.isNotEmpty ? lines.first : 'Click to view details';
+        final String title = lines.isNotEmpty
+            ? lines.first
+            : 'Click to view details';
 
         final String cleanBody = rest
             .replaceAll(RegExp(r'<http[^>]+>'), '')
@@ -136,19 +144,26 @@ class _BulletinWidgetState extends State<BulletinWidget> {
   }
 
   List<Color> _gradientForCategory(String category) {
-    if (category.contains('Administrative')) return const [Color(0xFF8B5CF6), Color(0xFF6D28D9)];
-    if (category.contains('Lectures')) return const [Color(0xFF3B82F6), Color(0xFF1D4ED8)];
-    if (category.contains('Performance') || category.contains('Art')) return const [Color(0xFFEC4899), Color(0xFFBE185D)];
-    if (category.contains('Activities')) return const [Color(0xFFF59E0B), Color(0xFFD97706)];
-    if (category.contains('Learning')) return const [Color(0xFF10B981), Color(0xFF047857)];
-    if (category.contains('Others')) return const [Color(0xFF64748B), Color(0xFF334155)];
+    if (category.contains('Administrative'))
+      return const [Color(0xFF8B5CF6), Color(0xFF6D28D9)];
+    if (category.contains('Lectures'))
+      return const [Color(0xFF3B82F6), Color(0xFF1D4ED8)];
+    if (category.contains('Performance') || category.contains('Art'))
+      return const [Color(0xFFEC4899), Color(0xFFBE185D)];
+    if (category.contains('Activities'))
+      return const [Color(0xFFF59E0B), Color(0xFFD97706)];
+    if (category.contains('Learning'))
+      return const [Color(0xFF10B981), Color(0xFF047857)];
+    if (category.contains('Others'))
+      return const [Color(0xFF64748B), Color(0xFF334155)];
     return const [Color(0xFF7E22CE), Color(0xFF4C1D95)];
   }
 
   IconData _iconForCategory(String category) {
     if (category.contains('Administrative')) return Icons.assignment_rounded;
     if (category.contains('Lectures')) return Icons.record_voice_over_rounded;
-    if (category.contains('Performance') || category.contains('Art')) return Icons.palette_rounded;
+    if (category.contains('Performance') || category.contains('Art'))
+      return Icons.palette_rounded;
     if (category.contains('Activities')) return Icons.event_rounded;
     if (category.contains('Learning')) return Icons.menu_book_rounded;
     if (category.contains('Others')) return Icons.info_outline_rounded;
@@ -174,9 +189,9 @@ class _BulletinWidgetState extends State<BulletinWidget> {
     _timer?.cancel();
 
     if (!widget.isCollapsed && _bulletinCount > 1) {
-      _timer = Timer.periodic(const Duration(seconds: 10), (timer) async { 
+      _timer = Timer.periodic(const Duration(seconds: 10), (timer) async {
         if (!_pageController.hasClients || _bulletinCount == 0) return;
-        
+
         final int nextIndex = (_currentIndex + 1) % _bulletinCount;
         _isAutoScrolling = true;
 
@@ -229,7 +244,9 @@ class _BulletinWidgetState extends State<BulletinWidget> {
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
                 decoration: BoxDecoration(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(32),
+                  ),
                   gradient: LinearGradient(
                     colors: item.gradient,
                     begin: Alignment.topLeft,
@@ -286,7 +303,9 @@ class _BulletinWidgetState extends State<BulletinWidget> {
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(24),
                   child: Text(
-                    item.fullText.isEmpty ? 'No additional details provided.' : item.fullText,
+                    item.fullText.isEmpty
+                        ? 'No additional details provided.'
+                        : item.fullText,
                     style: GoogleFonts.dmSans(
                       fontSize: 16,
                       color: const Color(0xFF374151),
@@ -302,91 +321,153 @@ class _BulletinWidgetState extends State<BulletinWidget> {
     );
   }
 
+  Future<void> _wrapBulletinPage(int targetIndex) async {
+    if (_isWrappingBulletin ||
+        !_pageController.hasClients ||
+        _bulletinCount < 2) {
+      return;
+    }
+
+    _isWrappingBulletin = true;
+    _isAutoScrolling = true;
+    await _pageController.animateToPage(
+      targetIndex,
+      duration: const Duration(milliseconds: 360),
+      curve: Curves.easeOutCubic,
+    );
+
+    if (mounted) {
+      setState(() => _currentIndex = targetIndex);
+    }
+    _isAutoScrolling = false;
+    _isWrappingBulletin = false;
+    _startTimer();
+    TutorialTargetRegistry.fireAction();
+  }
+
   Widget _buildContent({
     required List<DynamicBulletin> items,
     required bool isLoading,
     String? errorMessage,
   }) {
-    return AnimatedContainer(
-      key: TutorialTargetRegistry.get('bulletin-board-card'),
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeInOut,
-      margin: const EdgeInsets.symmetric(horizontal: 24),
-      padding: EdgeInsets.only(
-        top: 24,
-        bottom: widget.isCollapsed ? 24 : 8,
-        left: 24,
-        right: 24,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(40),
-        border: Border.all(color: Colors.grey.shade100),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildHeader(items.length),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeInOut,
-            child: widget.isCollapsed
-                ? const SizedBox.shrink()
-                : Column(
-                    children: [
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        height: 180,
-                        child: isLoading
-                            ? const Center(child: CircularProgressIndicator(color: nthuPurple))
-                            : errorMessage != null
-                                ? Center(
-                                    child: Text(
-                                      errorMessage,
-                                      textAlign: TextAlign.center,
-                                      style: GoogleFonts.dmSans(color: const Color(0xFFEF4444), fontWeight: FontWeight.w700),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: AnimatedContainer(
+        key: TutorialTargetRegistry.get('bulletin-board-card'),
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+        padding: EdgeInsets.only(
+          top: 24,
+          bottom: widget.isCollapsed ? 24 : 8,
+          left: 24,
+          right: 24,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(40),
+          border: Border.all(color: Colors.grey.shade100),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildHeader(items.length),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeInOut,
+              child: widget.isCollapsed
+                  ? const SizedBox.shrink()
+                  : Column(
+                      children: [
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          height: 180,
+                          child: isLoading
+                              ? const Center(
+                                  child: CircularProgressIndicator(
+                                    color: nthuPurple,
+                                  ),
+                                )
+                              : errorMessage != null
+                              ? Center(
+                                  child: Text(
+                                    errorMessage,
+                                    textAlign: TextAlign.center,
+                                    style: GoogleFonts.dmSans(
+                                      color: const Color(0xFFEF4444),
+                                      fontWeight: FontWeight.w700,
                                     ),
-                                  )
-                                : items.isEmpty
-                                    ? Center(child: Text('No new announcements.', style: GoogleFonts.dmSans()))
-                                    : PageView.builder(
-                                        controller: _pageController,
-                                        scrollBehavior: ScrollConfiguration.of(context).copyWith(
+                                  ),
+                                )
+                              : items.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    'No new announcements.',
+                                    style: GoogleFonts.dmSans(),
+                                  ),
+                                )
+                              : NotificationListener<OverscrollNotification>(
+                                  onNotification: (notification) {
+                                    if (notification.metrics.axis !=
+                                        Axis.horizontal) {
+                                      return false;
+                                    }
+                                    if (notification.overscroll < 0 &&
+                                        _currentIndex == 0) {
+                                      _wrapBulletinPage(items.length - 1);
+                                    } else if (notification.overscroll > 0 &&
+                                        _currentIndex == items.length - 1) {
+                                      _wrapBulletinPage(0);
+                                    }
+                                    return false;
+                                  },
+                                  child: PageView.builder(
+                                    controller: _pageController,
+                                    scrollBehavior:
+                                        ScrollConfiguration.of(
+                                          context,
+                                        ).copyWith(
                                           dragDevices: {
                                             PointerDeviceKind.touch,
                                             PointerDeviceKind.mouse,
                                             PointerDeviceKind.trackpad,
                                           },
                                         ),
-                                        onPageChanged: (index) {
-                                          setState(() => _currentIndex = index);
-                                          if (!_isAutoScrolling) TutorialTargetRegistry.fireAction();
-                                          _startTimer();
-                                        },
-                                        itemCount: items.length,
-                                        itemBuilder: (context, index) {
-                                          final item = items[index];
-                                          return _InteractiveBulletinCard(
-                                            item: item, 
-                                            onTap: () => _showBulletinDetails(context, item)
-                                          );
-                                        },
-                                      ),
-                      ),
-                      const SizedBox(height: 16),
-                      if (!isLoading && errorMessage == null && items.isNotEmpty)
-                        _buildDots(items.length),
-                    ],
-                  ),
-          ),
-        ],
+                                    onPageChanged: (index) {
+                                      setState(() => _currentIndex = index);
+                                      if (!_isAutoScrolling) {
+                                        TutorialTargetRegistry.fireAction();
+                                      }
+                                      _startTimer();
+                                    },
+                                    itemCount: items.length,
+                                    itemBuilder: (context, index) {
+                                      final item = items[index];
+                                      return _InteractiveBulletinCard(
+                                        item: item,
+                                        onTap: () =>
+                                            _showBulletinDetails(context, item),
+                                      );
+                                    },
+                                  ),
+                                ),
+                        ),
+                        const SizedBox(height: 16),
+                        if (!isLoading &&
+                            errorMessage == null &&
+                            items.isNotEmpty)
+                          _buildDots(items.length),
+                      ],
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -407,7 +488,11 @@ class _BulletinWidgetState extends State<BulletinWidget> {
                   color: nthuPurpleLight,
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Icon(Icons.notifications_active_rounded, color: nthuPurple, size: 20),
+                child: const Icon(
+                  Icons.notifications_active_rounded,
+                  color: nthuPurple,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
               Row(
@@ -442,13 +527,23 @@ class _BulletinWidgetState extends State<BulletinWidget> {
               ),
             ],
           ),
-          // Adding animated rotation to the arrow
-          AnimatedRotation(
-            turns: widget.isCollapsed ? 0 : 0.5,
-            duration: const Duration(milliseconds: 300),
-            child: Icon(
-              Icons.keyboard_arrow_down_rounded,
-              color: Colors.grey.shade400,
+          MouseRegion(
+            onEnter: (_) => setState(() => _isCollapseArrowHovered = true),
+            onExit: (_) => setState(() => _isCollapseArrowHovered = false),
+            child: AnimatedScale(
+              scale: _isCollapseArrowHovered ? 1.22 : 1.0,
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeOutBack,
+              child: AnimatedRotation(
+                turns: widget.isCollapsed ? 0 : 0.5,
+                duration: const Duration(milliseconds: 300),
+                child: Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: _isCollapseArrowHovered
+                      ? Colors.black54
+                      : Colors.grey.shade400,
+                ),
+              ),
             ),
           ),
         ],
@@ -466,7 +561,9 @@ class _BulletinWidgetState extends State<BulletinWidget> {
           curve: Curves.easeOutCubic,
           margin: const EdgeInsets.symmetric(horizontal: 3),
           height: 4,
-          width: _currentIndex == index ? 24 : 6, // Made active dot slightly longer
+          width: _currentIndex == index
+              ? 24
+              : 6, // Made active dot slightly longer
           decoration: BoxDecoration(
             color: _currentIndex == index ? nthuPurple : Colors.grey.shade300,
             borderRadius: BorderRadius.circular(2),
@@ -481,9 +578,14 @@ class _BulletinWidgetState extends State<BulletinWidget> {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _bulletinsStream,
       builder: (context, snapshot) {
-        final bool isLoading = snapshot.connectionState == ConnectionState.waiting;
+        final bool isLoading =
+            snapshot.connectionState == ConnectionState.waiting;
         if (snapshot.hasError) {
-          return _buildContent(items: const [], isLoading: false, errorMessage: 'Failed to load bulletins from Firebase.');
+          return _buildContent(
+            items: const [],
+            isLoading: false,
+            errorMessage: 'Failed to load bulletins from Firebase.',
+          );
         }
 
         final docs = snapshot.data?.docs ?? [];
@@ -506,12 +608,12 @@ class _InteractiveBulletinCard extends StatefulWidget {
   const _InteractiveBulletinCard({required this.item, required this.onTap});
 
   @override
-  State<_InteractiveBulletinCard> createState() => _InteractiveBulletinCardState();
+  State<_InteractiveBulletinCard> createState() =>
+      _InteractiveBulletinCardState();
 }
 
 class _InteractiveBulletinCardState extends State<_InteractiveBulletinCard> {
   bool _isHovered = false;
-  bool _isPressed = false;
 
   @override
   Widget build(BuildContext context) {
@@ -519,17 +621,14 @@ class _InteractiveBulletinCardState extends State<_InteractiveBulletinCard> {
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
-        onTapDown: (_) => setState(() => _isPressed = true),
-        onTapUp: (_) {
-          setState(() => _isPressed = false);
-          widget.onTap();
-        },
-        onTapCancel: () => setState(() => _isPressed = false),
+        onTap: widget.onTap,
         child: AnimatedScale(
-          scale: _isPressed ? 0.95 : (_isHovered ? 1.02 : 1.0),
+          scale: _isHovered ? 1.02 : 1.0,
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutBack,
-          child: AnimatedContainer(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: AnimatedContainer(
             duration: const Duration(milliseconds: 300),
             margin: const EdgeInsets.symmetric(horizontal: 4),
             padding: const EdgeInsets.all(24),
@@ -540,9 +639,15 @@ class _InteractiveBulletinCardState extends State<_InteractiveBulletinCard> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              boxShadow: _isHovered 
-                ? [BoxShadow(color: widget.item.gradient.last.withOpacity(0.4), blurRadius: 15, offset: const Offset(0, 8))]
-                : [],
+              boxShadow: _isHovered
+                  ? [
+                      BoxShadow(
+                        color: widget.item.gradient.last.withOpacity(0.4),
+                        blurRadius: 15,
+                        offset: const Offset(0, 8),
+                      ),
+                    ]
+                  : [],
             ),
             child: Stack(
               children: [
@@ -589,20 +694,29 @@ class _InteractiveBulletinCardState extends State<_InteractiveBulletinCard> {
                     const SizedBox(height: 16),
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         // The button illuminates fully when hovered!
-                        color: _isHovered ? Colors.white : Colors.white.withValues(alpha: 0.2),
+                        color: _isHovered
+                            ? Colors.white
+                            : Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: _isHovered ? Colors.transparent : Colors.white.withValues(alpha: 0.3),
+                          color: _isHovered
+                              ? Colors.transparent
+                              : Colors.white.withValues(alpha: 0.3),
                         ),
                       ),
                       child: Text(
                         'LEARN MORE',
                         style: GoogleFonts.dmSans(
                           // The text color flips dynamically
-                          color: _isHovered ? widget.item.gradient.first : Colors.white,
+                          color: _isHovered
+                              ? widget.item.gradient.first
+                              : Colors.white,
                           fontSize: 10,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 1.5,
@@ -614,6 +728,7 @@ class _InteractiveBulletinCardState extends State<_InteractiveBulletinCard> {
               ],
             ),
           ),
+          ), // ClipRRect
         ),
       ),
     );

@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import '../utilities/models.dart';
 import 'tutorial.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:provider/provider.dart';
-import '../../../providers/ccxp_data_provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SubtaskManagerPopup extends StatefulWidget {
   final AppEvent event;
@@ -37,41 +36,28 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
     setState(() => _isUpdating = true);
 
     try {
-      final ccxpData = Provider.of<CcxpDataProvider>(context, listen: false);
-
-      if (ccxpData.graduationData == null ||
-          ccxpData.graduationData!["studentInfo"] == null ||
-          ccxpData.graduationData!["studentInfo"]["studentId"] == null) {
-        throw Exception("Could not find Student ID. Please log in again.");
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) {
+        throw Exception("Not logged in to Firebase. Please log in again.");
       }
 
-      final String studentId = ccxpData
-          .graduationData!["studentInfo"]["studentId"]
-          .toString();
-
-      // Convert your List<Subtask> into a List of Maps for Firebase
       final List<Map<String, dynamic>> subtasksMap = widget.subtasks
           .map(
             (st) => {'id': st.id, 'text': st.text, 'completed': st.completed},
           )
           .toList();
 
-      // Update the specific task document in Firestore
       await FirebaseFirestore.instance
           .collection('ccxpUsers')
-          .doc(studentId)
+          .doc(uid)
           .collection('upcoming')
-          .doc(
-            widget.event.id,
-          ) // Make sure your AppEvent model has the document ID!
+          .doc(widget.event.id)
           .update({
             'progress': currentProgress,
             'subtasks': subtasksMap,
-            'lastUpdated':
-                FieldValue.serverTimestamp(), // Good practice to track edits
+            'lastUpdated': FieldValue.serverTimestamp(),
           });
 
-      // Update local state and trigger callbacks
       widget.event.progress = currentProgress;
       widget.onUpdate();
       TutorialTargetRegistry.fireAction();
@@ -182,7 +168,6 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                 ],
               ),
               const SizedBox(height: 32),
-
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -198,7 +183,7 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                   ),
                   Text(
                     "$progress%",
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
                       color: Colors.black87,
@@ -224,7 +209,6 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                 ),
               ),
               const SizedBox(height: 24),
-
               Row(
                 key: TutorialTargetRegistry.get('subtask-add-row'),
                 children: [
@@ -287,6 +271,12 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                             elevation: _isAddHovered ? 8 : 0,
                             shadowColor: nthuPurple.withOpacity(0.4),
                             padding: EdgeInsets.zero,
+                            side: BorderSide(
+                              color: _isAddHovered
+                                  ? Colors.white.withOpacity(0.85)
+                                  : Colors.transparent,
+                              width: 1.5,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
                             ),
@@ -302,7 +292,6 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                   ),
                 ],
               ),
-
               if (widget.subtasks.isNotEmpty) ...[
                 const SizedBox(height: 24),
                 ConstrainedBox(
@@ -313,7 +302,7 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                     itemBuilder: (context, index) {
                       final st = widget.subtasks[index];
                       return _InteractiveSubtaskRow(
-                        key: index == widget.subtasks.length - 1
+                        tutorialKey: index == widget.subtasks.length - 1
                             ? TutorialTargetRegistry.get('subtask-new-item')
                             : null,
                         subtask: st,
@@ -326,53 +315,58 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                   ),
                 ),
               ],
-
               const SizedBox(height: 32),
-
               MouseRegion(
                 onEnter: (_) => setState(() => _isUpdateHovered = true),
                 onExit: (_) => setState(() => _isUpdateHovered = false),
-                child: AnimatedScale(
-                  scale: _isUpdateHovered ? 1.02 : 1.0,
-                  duration: const Duration(milliseconds: 150),
-                  curve: Curves.easeOutBack,
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    // Fix: Just ONE ElevatedButton!
-                    child: ElevatedButton(
-                      key: TutorialTargetRegistry.get('subtask-update-btn'),
-                      onPressed: _isUpdating
-                          ? null
-                          : () => _saveToFirestore(
-                              progress,
-                            ), // Calls your new function
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: nthuPurple,
-                        elevation: _isUpdateHovered ? 10 : 0,
-                        shadowColor: nthuPurple.withOpacity(0.4),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                child: SizedBox(
+                  key: TutorialTargetRegistry.get('subtask-update-btn'),
+                  width: double.infinity,
+                  height: 56,
+                  child: AnimatedScale(
+                    scale: _isUpdateHovered ? 1.02 : 1.0,
+                    duration: const Duration(milliseconds: 150),
+                    curve: Curves.easeOutBack,
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: _isUpdating
+                            ? null
+                            : () => _saveToFirestore(progress),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: nthuPurple,
+                          elevation: _isUpdateHovered ? 10 : 0,
+                          shadowColor: nthuPurple.withOpacity(0.4),
+                          side: BorderSide(
+                            color: _isUpdateHovered
+                                ? Colors.white.withOpacity(0.85)
+                                : Colors.transparent,
+                            width: 1.5,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
                         ),
+                        child: _isUpdating
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text(
+                                "UPDATE",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.5,
+                                  fontSize: 12,
+                                ),
+                              ),
                       ),
-                      child: _isUpdating
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Text(
-                              "UPDATE",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.5,
-                                fontSize: 12,
-                              ),
-                            ),
                     ),
                   ),
                 ),
@@ -385,15 +379,14 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
   }
 }
 
-// ----------------------------------------------------------------------
-// INTERACTIVE SUBTASK ROW (NEW)
-// ----------------------------------------------------------------------
 class _InteractiveSubtaskRow extends StatefulWidget {
+  final Key? tutorialKey;
   final Subtask subtask;
   final VoidCallback onToggle;
 
   const _InteractiveSubtaskRow({
     Key? key,
+    this.tutorialKey,
     required this.subtask,
     required this.onToggle,
   }) : super(key: key);
@@ -404,7 +397,6 @@ class _InteractiveSubtaskRow extends StatefulWidget {
 
 class _InteractiveSubtaskRowState extends State<_InteractiveSubtaskRow> {
   bool _isHovered = false;
-  bool _isPressed = false;
 
   @override
   Widget build(BuildContext context) {
@@ -412,81 +404,85 @@ class _InteractiveSubtaskRowState extends State<_InteractiveSubtaskRow> {
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
-        onTapDown: (_) => setState(() => _isPressed = true),
-        onTapUp: (_) {
-          setState(() => _isPressed = false);
-          widget.onToggle();
-        },
-        onTapCancel: () => setState(() => _isPressed = false),
-        child: AnimatedScale(
-          scale: _isPressed ? 0.96 : (_isHovered ? 1.02 : 1.0),
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOutBack,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: _isHovered ? Colors.white : Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: _isHovered ? Colors.grey.shade200 : Colors.transparent,
-              ),
-              boxShadow: _isHovered
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
+        onTap: widget.onToggle,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Container(
+            key: widget.tutorialKey,
+            child: AnimatedScale(
+              scale: _isHovered ? 1.02 : 1.0,
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeOutBack,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: _isHovered ? Colors.white : Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: _isHovered
+                        ? Colors.grey.shade200
+                        : Colors.transparent,
+                  ),
+                  boxShadow: _isHovered
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ]
+                      : [],
+                ),
+                child: Row(
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: widget.subtask.completed
+                            ? Colors.green
+                            : Colors.white,
+                        border: Border.all(
+                          color: widget.subtask.completed
+                              ? Colors.green
+                              : Colors.grey.shade300,
+                          width: 2,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                    ]
-                  : [],
-            ),
-            child: Row(
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: widget.subtask.completed
-                        ? Colors.green
-                        : Colors.white,
-                    border: Border.all(
-                      color: widget.subtask.completed
-                          ? Colors.green
-                          : Colors.grey.shade300,
-                      width: 2,
+                      child: widget.subtask.completed
+                          ? const Icon(
+                              Icons.check_rounded,
+                              size: 16,
+                              color: Colors.white,
+                            )
+                          : null,
                     ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: widget.subtask.completed
-                      ? const Icon(
-                          Icons.check_rounded,
-                          size: 16,
-                          color: Colors.white,
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 200),
-                    style: TextStyle(
-                      fontFamily: DefaultTextStyle.of(context).style.fontFamily,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: widget.subtask.completed
-                          ? Colors.grey
-                          : Colors.black87,
-                      decoration: widget.subtask.completed
-                          ? TextDecoration.lineThrough
-                          : TextDecoration.none,
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 200),
+                        style: TextStyle(
+                          fontFamily: DefaultTextStyle.of(
+                            context,
+                          ).style.fontFamily,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: widget.subtask.completed
+                              ? Colors.grey
+                              : Colors.black87,
+                          decoration: widget.subtask.completed
+                              ? TextDecoration.lineThrough
+                              : TextDecoration.none,
+                        ),
+                        child: Text(widget.subtask.text),
+                      ),
                     ),
-                    child: Text(widget.subtask.text),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 
 // ── 1. GLOBAL REGISTRY ───────────────────────────────────────────────────────
 class TutorialTargetRegistry {
@@ -9,22 +10,30 @@ class TutorialTargetRegistry {
     return _keys[id]!;
   }
 
+  static String? activeTargetId;
+  static bool activeStepIsSwipeOnly = false;
+
   static VoidCallback? onActionTriggered;
-  static void fireAction() {
+  static void fireAction({String? sourceId}) {
+    if (sourceId != null && sourceId != activeTargetId) return;
     onActionTriggered?.call();
+  }
+
+  static bool shouldSuppressTap(String targetId) {
+    return activeStepIsSwipeOnly && activeTargetId == targetId;
   }
 
   static VoidCallback? forceBulletinOpen;
   static VoidCallback? forceCalendarWeekView;
-  static VoidCallback? forceCalendarToJune; 
+  static VoidCallback? forceCalendarToJune;
 }
 
 // ── 2. TUTORIAL ACTIONS & MODELS ─────────────────────────────────────────────
-enum TutorialAction { 
-  actionTrigger,     
-  button,            
-  waitForDisappear,  
-  waitForNextAppear, 
+enum TutorialAction {
+  actionTrigger,
+  button,
+  waitForDisappear,
+  waitForNextAppear,
 }
 
 class TutorialStep {
@@ -34,6 +43,7 @@ class TutorialStep {
   final TutorialAction action;
   final double padding;
   final double borderRadius;
+  final bool swipeOnly;
 
   const TutorialStep({
     required this.targetId,
@@ -42,6 +52,7 @@ class TutorialStep {
     required this.action,
     this.padding = 16.0,
     this.borderRadius = 24.0,
+    this.swipeOnly = false,
   });
 }
 
@@ -60,120 +71,159 @@ class TutorialOverlay extends StatefulWidget {
   State<TutorialOverlay> createState() => _TutorialOverlayState();
 }
 
-class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderStateMixin {
+class _TutorialOverlayState extends State<TutorialOverlay>
+    with TickerProviderStateMixin {
   OverlayEntry? _overlayEntry;
   int _currentStep = 0;
   Rect? _highlightRect;
-  Rect? _lastHighlightRect; 
+  Rect? _lastHighlightRect;
   Timer? _positionTimer;
   bool _isAdvancing = false;
-  
+
   String? _feedbackTitle;
   String? _feedbackContent;
-  Completer<void>? _feedbackCompleter; 
+  Completer<void>? _feedbackCompleter;
 
   late AnimationController _pulseController;
 
-  late final List<TutorialStep> _steps = const [
+  late final List<TutorialStep> _steps;
+
+  // The two emergency steps inserted when user has no upcoming tasks
+  static const List<TutorialStep> _emergencySteps = [
     TutorialStep(
-      targetId: 'bulletin-board-card',
-      title: 'Bulletin Board',
-      content: 'Swipe left or right to see news.',
-      action: TutorialAction.actionTrigger,
-      padding: 0,
-      borderRadius: 30,
-    ),
-    TutorialStep(
-      targetId: 'calendar-week-view',
-      title: 'Week View',
-      content: 'Swipe left or right to navigate upcoming weeks.',
-      action: TutorialAction.actionTrigger,
-    ),
-    TutorialStep(
-      targetId: 'calendar-full-view-btn',
-      title: 'Full View',
-      content: 'Tap here to expand to full calendar.',
+      targetId: 'fab-button',
+      title: 'Add a Task',
+      content:
+          'Tap the + button to create your first task — you\'ll need one for the next part of the tour.',
       action: TutorialAction.waitForNextAppear,
-      padding: 0, 
-      borderRadius: 16,
-    ),
-    TutorialStep(
-      targetId: 'calendar-day-21', 
-      title: 'Check Assignments',
-      content: 'Take a look at your schedule for June 21st.',
-      action: TutorialAction.waitForNextAppear, 
-      padding: 4,
-      borderRadius: 16,
-    ),
-    TutorialStep(
-      targetId: 'calendar-details-popup-content',
-      title: '', 
-      content: '',
-      action: TutorialAction.waitForDisappear, 
       padding: 0,
-      borderRadius: 48,
+      borderRadius: 28,
     ),
     TutorialStep(
-      targetId: 'upcoming-item-0',
-      title: 'Upcoming Events',
-      content: 'Tap an exam to manage its subtasks and progress.',
-      action: TutorialAction.waitForNextAppear, 
-    ),
-    TutorialStep(
-      targetId: 'subtask-add-row',
-      title: 'Create a subtask',
-      content: 'Create a subtask to help finish your goal.',
-      action: TutorialAction.waitForNextAppear, 
+      targetId: 'add-task-popup',
+      title: 'Fill in the Details',
+      content: 'Give your task a title and a due date, then tap SAVE.',
+      action: TutorialAction.waitForDisappear,
       padding: 0,
-      borderRadius: 16,
-    ),
-    TutorialStep(
-      targetId: 'subtask-new-item',
-      title: 'Check it as done',
-      content: 'Tap the checkbox to mark your new task as complete.',
-      action: TutorialAction.actionTrigger, 
-      padding: -4,
-      borderRadius: 24,
-    ),
-    TutorialStep(
-      targetId: 'subtask-update-btn',
-      title: 'Save Changes',
-      content: 'Tap update to save your changes.',
-      action: TutorialAction.waitForDisappear, 
-      padding: 0,
-      borderRadius: 16,
-    ),
-    TutorialStep(
-      targetId: 'upcoming-item-0',
-      title: 'Clear Completed',
-      content: 'Swipe the exam left or right to clear it from the list!',
-      action: TutorialAction.actionTrigger,
+      borderRadius: 40,
     ),
   ];
+
+  // Whether we took the emergency branch (used to adjust displayIndex)
+  bool _tookEmergencyBranch = false;
 
   @override
   void initState() {
     super.initState();
 
+    // Build the base step list (without emergency branch — that's injected later
+    // in _nextStep if needed when we reach the upcoming-item-0 decision point).
+    _steps = [
+      const TutorialStep(
+        targetId: 'bulletin-board-card',
+        title: 'Bulletin Board',
+        content: 'Swipe left or right to see news.',
+        action: TutorialAction.actionTrigger,
+        padding: 0,
+        borderRadius: 40,
+        swipeOnly: true,
+      ),
+      const TutorialStep(
+        targetId: 'calendar-week-view',
+        title: 'Week View',
+        content: 'Swipe left or right to navigate upcoming weeks.',
+        action: TutorialAction.actionTrigger,
+        swipeOnly: true,
+      ),
+      const TutorialStep(
+        targetId: 'calendar-full-view-btn',
+        title: 'Full View',
+        content: 'Tap here to expand to full calendar.',
+        action: TutorialAction.waitForNextAppear,
+        padding: 0,
+        borderRadius: 16,
+      ),
+      const TutorialStep(
+        targetId: 'calendar-day-21',
+        title: 'Check Assignments',
+        content: 'Take a look at your schedule for June 21st.',
+        action: TutorialAction.waitForNextAppear,
+        padding: 4,
+        borderRadius: 16,
+      ),
+      const TutorialStep(
+        targetId: 'calendar-details-popup-content',
+        title: '',
+        content: '',
+        action: TutorialAction.waitForDisappear,
+        padding: 0,
+        borderRadius: 48,
+      ),
+      // Index 5: upcoming-item-0 — or the emergency branch if no tasks exist.
+      // The branch is decided dynamically in _nextStep when _currentStep == 4.
+      const TutorialStep(
+        targetId: 'upcoming-item-0',
+        title: 'Upcoming Events',
+        content: 'Tap an event to manage its subtasks and progress.',
+        action: TutorialAction.waitForNextAppear,
+      ),
+      const TutorialStep(
+        targetId: 'subtask-add-row',
+        title: 'Create a subtask',
+        content: 'Create a subtask to help finish your goal.',
+        action: TutorialAction.waitForNextAppear,
+        padding: 0,
+        borderRadius: 16,
+      ),
+      const TutorialStep(
+        targetId: 'subtask-new-item',
+        title: 'Check it as done',
+        content: 'Tap the checkbox to mark your new task as complete.',
+        action: TutorialAction.actionTrigger,
+        padding: 0,
+        borderRadius: 20,
+      ),
+      const TutorialStep(
+        targetId: 'subtask-update-btn',
+        title: 'Save Changes',
+        content: 'Tap update to save your changes.',
+        action: TutorialAction.waitForDisappear,
+        padding: 0,
+        borderRadius: 16,
+      ),
+      const TutorialStep(
+        targetId: 'upcoming-item-0',
+        title: 'Clear Completed',
+        content: 'Swipe the exam left or right to clear it from the list!',
+        action: TutorialAction.actionTrigger,
+        swipeOnly: true,
+      ),
+    ];
+
     _pulseController = AnimationController(
-      vsync: this, 
+      vsync: this,
       duration: const Duration(milliseconds: 1200),
     )..repeat(reverse: true);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       TutorialTargetRegistry.forceBulletinOpen?.call();
-      TutorialTargetRegistry.forceCalendarToJune?.call(); 
+      TutorialTargetRegistry.forceCalendarToJune?.call();
       TutorialTargetRegistry.forceCalendarWeekView?.call();
     });
 
-    _positionTimer = Timer.periodic(const Duration(milliseconds: 30), (_) => _calcTargetPosition());
-    
+    _positionTimer = Timer.periodic(
+      const Duration(milliseconds: 30),
+      (_) => _calcTargetPosition(),
+    );
+
     TutorialTargetRegistry.onActionTriggered = () {
       _nextStep();
     };
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _overlayEntry = OverlayEntry(builder: (context) => _buildOverlayContent(context));
+      _overlayEntry = OverlayEntry(
+        builder: (context) => _buildOverlayContent(context),
+      );
       Overlay.of(context, rootOverlay: true).insert(_overlayEntry!);
     });
   }
@@ -182,7 +232,9 @@ class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderSt
   void dispose() {
     _positionTimer?.cancel();
     TutorialTargetRegistry.onActionTriggered = null;
-    
+    TutorialTargetRegistry.activeTargetId = null;
+    TutorialTargetRegistry.activeStepIsSwipeOnly = false;
+
     _pulseController.dispose();
     _overlayEntry?.remove();
     super.dispose();
@@ -197,44 +249,61 @@ class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderSt
 
   void _calcTargetPosition() {
     if (_currentStep >= _steps.length || _feedbackTitle != null) return;
-    
+    if (_isAdvancing) return;
+
     final stepInfo = _steps[_currentStep];
     final targetKey = TutorialTargetRegistry.get(stepInfo.targetId);
+    TutorialTargetRegistry.activeTargetId = stepInfo.targetId;
+    TutorialTargetRegistry.activeStepIsSwipeOnly = stepInfo.swipeOnly;
 
     if (stepInfo.action == TutorialAction.waitForDisappear) {
       if (_highlightRect != null && targetKey.currentContext == null) {
-         _nextStep();
-         return;
+        _nextStep();
+        return;
       }
     } else if (stepInfo.action == TutorialAction.waitForNextAppear) {
       if (_currentStep + 1 < _steps.length) {
-        final nextKey = TutorialTargetRegistry.get(_steps[_currentStep + 1].targetId);
+        final nextKey = TutorialTargetRegistry.get(
+          _steps[_currentStep + 1].targetId,
+        );
         if (nextKey.currentContext != null) {
-           _nextStep();
-           return;
+          _nextStep();
+          return;
         }
       }
     }
 
-    if (targetKey.currentContext == null || !targetKey.currentContext!.mounted) {
+    if (targetKey.currentContext == null ||
+        !targetKey.currentContext!.mounted) {
       if (_highlightRect != null) _rebuildOverlay(() => _highlightRect = null);
       return;
     }
 
     final renderObject = targetKey.currentContext!.findRenderObject();
-    
+
     if (renderObject == null || !renderObject.attached) {
       if (_highlightRect != null) _rebuildOverlay(() => _highlightRect = null);
       return;
     }
     final RenderBox renderBox = renderObject as RenderBox;
-    if (!renderBox.hasSize) return; 
+    if (!renderBox.hasSize) return;
 
     final size = renderBox.size;
     final position = renderBox.localToGlobal(Offset.zero);
-    
-    final rect = Rect.fromLTWH(position.dx, position.dy, size.width, size.height);
+
+    final rect = Rect.fromLTWH(
+      position.dx,
+      position.dy,
+      size.width,
+      size.height,
+    );
     if (_highlightRect != rect) _rebuildOverlay(() => _highlightRect = rect);
+  }
+
+  /// Returns true if upcoming-item-0 is currently mounted (user has a task).
+  bool _hasUpcomingTask() {
+    final key = TutorialTargetRegistry.get('upcoming-item-0');
+    return key.currentContext != null && key.currentContext!.mounted;
   }
 
   Future<void> _nextStep() async {
@@ -243,33 +312,75 @@ class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderSt
 
     _lastHighlightRect = _highlightRect;
 
-    if (mounted) {
-      _rebuildOverlay(() {
-        _highlightRect = null;
-      });
+    // ── Emergency branch injection ──────────────────────────────────────────
+    // We're about to leave the calendar-details-popup step (index 4).
+    // If upcoming-item-0 doesn't exist yet, splice in the two emergency steps
+    // RIGHT BEFORE the upcoming-item-0 step so the tutorial teaches the user
+    // to create a task first.
+    if (_currentStep == 4 && !_hasUpcomingTask() && !_tookEmergencyBranch) {
+      _tookEmergencyBranch = true;
+      // Insert emergency steps at position 5 (just before upcoming-item-0).
+      _steps.insertAll(5, _emergencySteps);
     }
 
-    // Delay 1.5s ONLY for specific requested steps (swipes and dynamic changes)
-    final needsDelay = [0, 1, 7, 9].contains(_currentStep);
-    
+    // Steps that need a longer settling delay before the next tooltip appears.
+    // We use the actual step targetId rather than hardcoded indices so the list
+    // stays correct regardless of emergency-branch injection.
+    final currentTargetId = _steps[_currentStep].targetId;
+    final needsDelay =
+        {
+          'bulletin-board-card', // swipe gesture settle
+          'calendar-week-view', // swipe gesture settle
+          'subtask-new-item', // checkbox animation
+          'upcoming-item-0', // swipe-to-dismiss settle (last occurrence)
+        }.contains(currentTargetId) &&
+        // Only the LAST upcoming-item-0 (swipe step) needs the delay,
+        // not the first one (tap step).
+        !(_steps[_currentStep].targetId == 'upcoming-item-0' &&
+            _steps[_currentStep].action == TutorialAction.waitForNextAppear);
+
     if (needsDelay) {
-      await Future.delayed(const Duration(milliseconds: 1500));
+      await Future.delayed(const Duration(milliseconds: 1000));
     } else {
-      // Tiny 50ms buffer just to let Flutter render the next frame seamlessly
       await Future.delayed(const Duration(milliseconds: 50));
     }
 
     int nextStepIndex = _currentStep + 1;
 
     if (nextStepIndex >= _steps.length) {
-      await _showFeedback(title: "You're all set!", content: "Now you're ready to explore on your own! Good luck 😉.", onDone: widget.onComplete);
+      await _showFeedback(
+        title: "You're all set!",
+        content: "Now you're ready to explore on your own! Good luck 😉.",
+        onDone: widget.onComplete,
+      );
       return;
     }
 
-    if (nextStepIndex == 1) {
-      await _showFeedback(title: "Great!", content: "Now let's take a look at the Calendar feature!");
-    } else if (nextStepIndex == 5) {
-      await _showFeedback(title: "Nice.", content: "Next, let's view our upcoming events.");
+    // ── Feedback cards between major sections ───────────────────────────────
+    final nextTargetId = _steps[nextStepIndex].targetId;
+
+    if (nextTargetId == 'calendar-week-view') {
+      await _showFeedback(
+        title: "Great!",
+        content: "Now let's take a look at the Calendar feature!",
+      );
+    } else if (nextTargetId == 'fab-button') {
+      // Transitioning into the emergency branch
+      await _showFeedback(
+        title: "One more thing.",
+        content:
+            "You need at least one task to continue. Let's create one now!",
+      );
+    } else if (nextTargetId == 'upcoming-item-0' &&
+        _steps[nextStepIndex].action == TutorialAction.waitForNextAppear) {
+      // Arriving at upcoming-item-0 for the first time (tap step),
+      // whether via normal path or after emergency branch
+      await _showFeedback(
+        title: _tookEmergencyBranch ? "Task added!" : "Nice.",
+        content: _tookEmergencyBranch
+            ? "Now let's explore your new task."
+            : "Next, let's view our upcoming events.",
+      );
     }
 
     if (mounted) {
@@ -277,23 +388,23 @@ class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderSt
         _currentStep = nextStepIndex;
         _highlightRect = null;
       });
-      
+
       final nextKey = TutorialTargetRegistry.get(_steps[_currentStep].targetId);
-      
+
       Future.delayed(const Duration(milliseconds: 350), () {
         if (mounted && nextKey.currentContext != null) {
-           try {
-             Scrollable.ensureVisible(
-               nextKey.currentContext!, 
-               duration: const Duration(milliseconds: 400), 
-               curve: Curves.easeInOut, 
-               alignment: 0.5
-             );
-           } catch (_) {}
+          try {
+            Scrollable.ensureVisible(
+              nextKey.currentContext!,
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeInOut,
+              alignment: 0.5,
+            );
+          } catch (_) {}
         }
       });
     }
-    
+
     await Future.delayed(const Duration(milliseconds: 300));
     _isAdvancing = false;
   }
@@ -305,32 +416,36 @@ class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderSt
     _lastHighlightRect = _highlightRect;
 
     await _showFeedback(
-      title: "You're all set!", 
-      content: "Now you're ready to explore on your own! Good luck 😉.", 
-      onDone: widget.onComplete
+      title: "You're all set!",
+      content: "Now you're ready to explore on your own! Good luck 😉.",
+      onDone: widget.onComplete,
     );
 
     _isAdvancing = false;
   }
 
-  Future<void> _showFeedback({required String title, String? content, VoidCallback? onDone}) async {
+  Future<void> _showFeedback({
+    required String title,
+    String? content,
+    VoidCallback? onDone,
+  }) async {
     _feedbackCompleter = Completer<void>();
-    
+
     _rebuildOverlay(() {
       _feedbackTitle = title;
       _feedbackContent = content;
       _highlightRect = null;
     });
-    
-    await _feedbackCompleter!.future; 
-    
+
+    await _feedbackCompleter!.future;
+
     if (mounted) {
       _rebuildOverlay(() {
         _feedbackTitle = null;
         _feedbackContent = null;
       });
     }
-    
+
     if (onDone != null) onDone();
   }
 
@@ -348,24 +463,45 @@ class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderSt
     return AnimatedBuilder(
       animation: _pulseController,
       builder: (context, child) {
-        final pulseExpansion = _pulseController.value * 8.0; 
-        final rect = _highlightRect?.inflate(currentStepInfo.padding + pulseExpansion);
-        
+        final pulseExpansion = _pulseController.value * 8.0;
+        final bool keepHighlightTight = {
+          'fab-button',
+          'bulletin-board-card',
+          'subtask-new-item',
+          'subtask-update-btn',
+        }.contains(currentStepInfo.targetId);
+        final effectivePulseExpansion = keepHighlightTight
+            ? 0.0
+            : pulseExpansion;
+        final rect = _highlightRect?.inflate(
+          currentStepInfo.padding + effectivePulseExpansion,
+        );
+
         final borderWidth = 2.0 + (_pulseController.value * 3.0);
-        final borderColor = localPurple.withOpacity(0.5 + (_pulseController.value * 0.5));
+        final outlineRect = keepHighlightTight
+            ? rect?.inflate(borderWidth / 2)
+            : rect;
+        final borderColor = localPurple.withOpacity(
+          0.5 + (_pulseController.value * 0.5),
+        );
 
         return Stack(
           children: [
             ClipPath(
-              clipper: HoleClipper(holeRect: rect, radius: currentStepInfo.borderRadius + (pulseExpansion / 2)),
+              clipper: HoleClipper(
+                holeRect: rect,
+                radius:
+                    currentStepInfo.borderRadius +
+                    (effectivePulseExpansion / 2),
+              ),
               child: GestureDetector(
-                onTap: () {}, 
-                onPanDown: (_) {}, 
+                onTap: () {},
+                onPanDown: (_) {},
                 child: TweenAnimationBuilder<double>(
                   key: ValueKey('dimming_$_currentStep'),
                   duration: const Duration(milliseconds: 800),
                   curve: Curves.easeOutCubic,
-                  tween: Tween<double>(begin: 3.0, end: 1.2), 
+                  tween: Tween<double>(begin: 3.0, end: 1.2),
                   builder: (context, scaleVal, child) {
                     return Container(
                       width: double.infinity,
@@ -388,16 +524,25 @@ class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderSt
 
             if (rect != null)
               Positioned.fromRect(
-                rect: rect,
+                rect: outlineRect!,
                 child: IgnorePointer(
                   child: Container(
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(currentStepInfo.borderRadius + (pulseExpansion / 2)), 
-                      border: Border.all(color: borderColor, width: borderWidth)
+                      borderRadius: BorderRadius.circular(
+                        currentStepInfo.borderRadius +
+                            (effectivePulseExpansion / 2),
+                      ),
+                      border: Border.all(
+                        color: borderColor,
+                        width: borderWidth,
+                      ),
                     ),
                   ),
                 ),
               ),
+
+            if (rect != null && currentStepInfo.swipeOnly)
+              Positioned.fromRect(rect: rect, child: _SwipeOnlyGuard()),
 
             if (_highlightRect != null)
               _buildTooltip(context, currentStepInfo, rect),
@@ -419,7 +564,7 @@ class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderSt
 
       if (spaceAbove > spaceBelow && spaceAbove > 200) {
         bottom = size.height - _lastHighlightRect!.top + 12;
-        double maxBottom = size.height - padding.top - 210; 
+        double maxBottom = size.height - padding.top - 210;
         if (bottom > maxBottom) bottom = maxBottom;
       } else if (spaceBelow > 200) {
         top = _lastHighlightRect!.bottom + 12;
@@ -436,10 +581,11 @@ class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderSt
       children: [
         GestureDetector(
           onTap: () {
-            if (_feedbackCompleter != null && !_feedbackCompleter!.isCompleted) {
+            if (_feedbackCompleter != null &&
+                !_feedbackCompleter!.isCompleted) {
               _feedbackCompleter!.complete();
             }
-          }, 
+          },
           child: TweenAnimationBuilder<double>(
             key: ValueKey('feedback_dimming_$_feedbackTitle'),
             duration: const Duration(milliseconds: 800),
@@ -463,9 +609,12 @@ class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderSt
             },
           ),
         ),
-        
+
         Positioned(
-          top: top, bottom: bottom, left: 0, right: 0,
+          top: top,
+          bottom: bottom,
+          left: 0,
+          right: 0,
           child: Center(
             child: TweenAnimationBuilder<double>(
               key: ValueKey(_feedbackTitle),
@@ -475,26 +624,30 @@ class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderSt
               builder: (context, scale, child) {
                 return Transform.scale(
                   scale: scale,
-                  child: Opacity(
-                    opacity: scale.clamp(0.0, 1.0),
-                    child: child,
-                  ),
+                  child: Opacity(opacity: scale.clamp(0.0, 1.0), child: child),
                 );
               },
               child: GestureDetector(
-                 onTap: () {
-                  if (_feedbackCompleter != null && !_feedbackCompleter!.isCompleted) {
+                onTap: () {
+                  if (_feedbackCompleter != null &&
+                      !_feedbackCompleter!.isCompleted) {
                     _feedbackCompleter!.complete();
                   }
                 },
                 child: Container(
-                  constraints: const BoxConstraints(maxWidth: 290), 
+                  constraints: const BoxConstraints(maxWidth: 290),
                   padding: const EdgeInsets.all(24),
                   margin: const EdgeInsets.symmetric(horizontal: 24),
                   decoration: BoxDecoration(
-                    color: Colors.white, 
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(24),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 25, offset: const Offset(0, 10))],
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 25,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
                   ),
                   child: Material(
                     color: Colors.transparent,
@@ -502,35 +655,66 @@ class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderSt
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(color: localPurple.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                          child: const Text("TUTORIAL GUIDE", style: TextStyle(color: localPurple, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0)),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: localPurple.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            "TUTORIAL GUIDE",
+                            style: TextStyle(
+                              color: localPurple,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 10,
+                              letterSpacing: 1.0,
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 20),
-                        Text(_feedbackTitle!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black)),
+                        Text(
+                          _feedbackTitle!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                        ),
                         if (_feedbackContent != null) ...[
                           const SizedBox(height: 12),
-                          Text(_feedbackContent!, textAlign: TextAlign.center, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.grey.shade700, height: 1.4)),
+                          Text(
+                            _feedbackContent!,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey.shade700,
+                              height: 1.4,
+                            ),
+                          ),
                         ],
                         const SizedBox(height: 24),
-                        
+
                         AnimatedBuilder(
                           animation: _pulseController,
                           builder: (context, child) {
                             return Opacity(
                               opacity: 0.4 + (_pulseController.value * 0.6),
                               child: Text(
-                                "Tap anywhere to continue...", 
+                                "Tap anywhere to continue...",
                                 style: TextStyle(
-                                  color: Colors.grey.shade500, 
-                                  fontSize: 12, 
+                                  color: Colors.grey.shade500,
+                                  fontSize: 12,
                                   fontStyle: FontStyle.italic,
-                                  fontWeight: FontWeight.bold
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
                             );
-                          }
-                        )
+                          },
+                        ),
                       ],
                     ),
                   ),
@@ -543,16 +727,146 @@ class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderSt
     );
   }
 
-  Widget _buildTooltip(BuildContext context, TutorialStep stepInfo, Rect? targetRect) {
-    if (_currentStep == 4) return const SizedBox.shrink();
+  Widget _buildTooltip(
+    BuildContext context,
+    TutorialStep stepInfo,
+    Rect? targetRect,
+  ) {
+    // The calendar-details-popup step has empty title/content — no tooltip card.
+    if (stepInfo.targetId == 'calendar-details-popup-content')
+      return const SizedBox.shrink();
 
     const Color localPurple = Color(0xFF7A1B7B);
     final size = MediaQuery.of(context).size;
     final padding = MediaQuery.of(context).padding;
     double? top, bottom;
 
-    final int displayIndex = _currentStep < 4 ? _currentStep + 1 : _currentStep;
-    final int totalVisibleTips = _steps.length - 1; 
+    // Count only visible tip steps (skip the silent popup-wait step) for the
+    // progress counter. This stays correct whether or not the emergency branch
+    // was injected.
+    final int totalVisibleTips = _steps
+        .where((s) => s.targetId != 'calendar-details-popup-content')
+        .length;
+
+    // displayIndex = position among visible steps only (1-based).
+    int displayIndex = 0;
+    for (int i = 0; i <= _currentStep; i++) {
+      if (_steps[i].targetId != 'calendar-details-popup-content') {
+        displayIndex++;
+      }
+    }
+
+    // ── add-task-popup: compact bar above popup, never touching its edges ─────
+    if (stepInfo.targetId == 'add-task-popup') {
+      final popupTop = targetRect?.top ?? (size.height * 0.18);
+      // Card is ~90 px tall; sit 12 px above the popup with a 24 px side margin.
+      final barTop = (popupTop - 102).clamp(
+        padding.top + 12,
+        size.height - 120,
+      );
+
+      return Positioned(
+        top: barTop.toDouble(),
+        left: 24,
+        right: 24,
+        child: TweenAnimationBuilder<double>(
+          key: ValueKey('tooltip_$_currentStep'),
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeOutBack,
+          tween: Tween<double>(begin: 0.0, end: 1.0),
+          builder: (context, scale, child) {
+            return Transform.scale(
+              scale: scale,
+              child: Opacity(opacity: scale.clamp(0.0, 1.0), child: child),
+            );
+          },
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.22),
+                    blurRadius: 16,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: localPurple.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          "TIP $displayIndex OF $totalVisibleTips",
+                          style: const TextStyle(
+                            color: localPurple,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 9,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: LinearProgressIndicator(
+                            minHeight: 4,
+                            value: displayIndex / totalVisibleTips,
+                            backgroundColor: localPurple.withOpacity(0.12),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              localPurple,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    stepInfo.content,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                      height: 1.3,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  GestureDetector(
+                    onTap: _skipTutorial,
+                    child: Text(
+                      "Skip tutorial »",
+                      style: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontSize: 10,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     if (targetRect != null) {
       double spaceAbove = targetRect.top;
@@ -560,7 +874,7 @@ class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderSt
 
       if (spaceAbove > spaceBelow && spaceAbove > 200) {
         bottom = size.height - targetRect.top + 12;
-        double maxBottom = size.height - padding.top - 210; 
+        double maxBottom = size.height - padding.top - 210;
         if (bottom > maxBottom) bottom = maxBottom;
       } else if (spaceBelow > 200) {
         top = targetRect.bottom + 12;
@@ -574,23 +888,35 @@ class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderSt
     }
 
     return Positioned(
-      top: top, bottom: bottom, left: 0, right: 0,
+      top: top,
+      bottom: bottom,
+      left: 0,
+      right: 0,
       child: TweenAnimationBuilder<double>(
-        key: ValueKey('tooltip_$_currentStep'), 
+        key: ValueKey('tooltip_$_currentStep'),
         duration: const Duration(milliseconds: 500),
-        curve: Curves.easeOutBack, 
+        curve: Curves.easeOutBack,
         tween: Tween<double>(begin: 0.0, end: 1.0),
         builder: (context, scale, child) {
-          return Transform.scale(scale: scale, child: Opacity(opacity: scale.clamp(0.0, 1.0), child: child));
+          return Transform.scale(
+            scale: scale,
+            child: Opacity(opacity: scale.clamp(0.0, 1.0), child: child),
+          );
         },
-        child: Center( 
+        child: Center(
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 290), 
-            padding: const EdgeInsets.all(24), 
+            constraints: const BoxConstraints(maxWidth: 290),
+            padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(24),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 25, offset: const Offset(0, 10))],
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 25,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
             child: Material(
               color: Colors.transparent,
@@ -599,27 +925,62 @@ class _TutorialOverlayState extends State<TutorialOverlay> with TickerProviderSt
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(color: localPurple.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                    child: Text("TIP $displayIndex OF $totalVisibleTips", style: const TextStyle(color: localPurple, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: localPurple.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      "TIP $displayIndex OF $totalVisibleTips",
+                      style: const TextStyle(
+                        color: localPurple,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 10,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      minHeight: 5,
+                      value: displayIndex / totalVisibleTips,
+                      backgroundColor: localPurple.withOpacity(0.12),
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        localPurple,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    stepInfo.content, 
-                    textAlign: TextAlign.center, 
-                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Colors.black87, height: 1.4)
+                    stepInfo.content,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                      height: 1.4,
+                    ),
                   ),
-                  
+
                   if (stepInfo.action == TutorialAction.button) ...[
                     const SizedBox(height: 16),
-                    _InteractiveTutorialButton(text: "NEXT", color: localPurple, onPressed: _nextStep)
+                    _InteractiveTutorialButton(
+                      text: "NEXT",
+                      color: localPurple,
+                      onPressed: _nextStep,
+                    ),
                   ] else ...[
-                     const SizedBox(height: 14),
-                     Align(
-                       alignment: Alignment.centerRight,
-                       child: _InteractiveSkipButton(onTap: _skipTutorial),
-                     )
-                  ]
+                    const SizedBox(height: 14),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _InteractiveSkipButton(onTap: _skipTutorial),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -638,12 +999,17 @@ class HoleClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
     final path = Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
-    if (holeRect != null) path.addRRect(RRect.fromRectAndRadius(holeRect!, Radius.circular(radius)));
-    path.fillType = PathFillType.evenOdd; 
+    if (holeRect != null)
+      path.addRRect(
+        RRect.fromRectAndRadius(holeRect!, Radius.circular(radius)),
+      );
+    path.fillType = PathFillType.evenOdd;
     return path;
   }
+
   @override
-  bool shouldReclip(covariant HoleClipper oldClipper) => oldClipper.holeRect != holeRect || oldClipper.radius != radius;
+  bool shouldReclip(covariant HoleClipper oldClipper) =>
+      oldClipper.holeRect != holeRect || oldClipper.radius != radius;
 }
 
 class _InteractiveTutorialButton extends StatefulWidget {
@@ -651,15 +1017,20 @@ class _InteractiveTutorialButton extends StatefulWidget {
   final Color color;
   final VoidCallback onPressed;
 
-  const _InteractiveTutorialButton({required this.text, required this.color, required this.onPressed});
+  const _InteractiveTutorialButton({
+    required this.text,
+    required this.color,
+    required this.onPressed,
+  });
 
   @override
-  State<_InteractiveTutorialButton> createState() => _InteractiveTutorialButtonState();
+  State<_InteractiveTutorialButton> createState() =>
+      _InteractiveTutorialButtonState();
 }
 
-class _InteractiveTutorialButtonState extends State<_InteractiveTutorialButton> {
+class _InteractiveTutorialButtonState
+    extends State<_InteractiveTutorialButton> {
   bool _isHovered = false;
-  bool _isPressed = false;
 
   @override
   Widget build(BuildContext context) {
@@ -667,14 +1038,9 @@ class _InteractiveTutorialButtonState extends State<_InteractiveTutorialButton> 
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
-        onTapDown: (_) => setState(() => _isPressed = true),
-        onTapUp: (_) {
-          setState(() => _isPressed = false);
-          widget.onPressed();
-        },
-        onTapCancel: () => setState(() => _isPressed = false),
+        onTap: widget.onPressed,
         child: AnimatedScale(
-          scale: _isPressed ? 0.95 : (_isHovered ? 1.03 : 1.0),
+          scale: _isHovered ? 1.03 : 1.0,
           duration: const Duration(milliseconds: 150),
           curve: Curves.easeOutBack,
           child: AnimatedContainer(
@@ -684,9 +1050,30 @@ class _InteractiveTutorialButtonState extends State<_InteractiveTutorialButton> 
             decoration: BoxDecoration(
               color: widget.color,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: _isHovered ? [BoxShadow(color: widget.color.withOpacity(0.4), blurRadius: 12, offset: const Offset(0, 4))] : [],
+              border: Border.all(
+                color: _isHovered
+                    ? Colors.white.withOpacity(0.85)
+                    : Colors.transparent,
+                width: 1.5,
+              ),
+              boxShadow: _isHovered
+                  ? [
+                      BoxShadow(
+                        color: widget.color.withOpacity(0.4),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : [],
             ),
-            child: Text(widget.text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: Text(
+              widget.text,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ),
       ),
@@ -718,13 +1105,51 @@ class _InteractiveSkipButtonState extends State<_InteractiveSkipButton> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text("Skip tutorial", style: TextStyle(color: _isHovered ? Colors.grey.shade600 : Colors.grey.shade400, fontSize: 12, decoration: TextDecoration.underline)),
+              Text(
+                "Skip tutorial",
+                style: TextStyle(
+                  color: _isHovered
+                      ? Colors.grey.shade600
+                      : Colors.grey.shade400,
+                  fontSize: 12,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
               const SizedBox(width: 4),
-              Icon(Icons.keyboard_double_arrow_right_rounded, color: _isHovered ? Colors.grey.shade600 : Colors.grey.shade400, size: 14),
+              Icon(
+                Icons.keyboard_double_arrow_right_rounded,
+                color: _isHovered ? Colors.grey.shade600 : Colors.grey.shade400,
+                size: 14,
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SwipeOnlyGuard extends StatelessWidget {
+  const _SwipeOnlyGuard();
+
+  @override
+  Widget build(BuildContext context) {
+    return RawGestureDetector(
+      gestures: {
+        // Claim taps exclusively — they stop here, never reach the widget below
+        TapGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+              () => TapGestureRecognizer(),
+              (instance) {
+                instance.onTap = () {}; // consume silently
+              },
+            ),
+        // Do NOT list any pan/swipe recognizer here.
+        // Flutter's arena will see no competing pan claim from this layer,
+        // so pan gestures fall through to the real widget underneath.
+      },
+      behavior: HitTestBehavior.translucent, // still visible to hit testing
+      child: const SizedBox.expand(),
     );
   }
 }

@@ -95,7 +95,7 @@ async function clearCollection(collectionRef) {
 async function checkAndParseEmails() {
     const genAI = new GoogleGenerativeAI(geminiApiKey.value());
     const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-flash-lite",
         generationConfig: { responseMimeType: "application/json" }
     });
 
@@ -106,21 +106,22 @@ async function checkAndParseEmails() {
     }
 
     for (const userDoc of usersSnapshot.docs) {
-        const studentId = userDoc.id;
+        const uid = userDoc.id;                          // doc ID is now Firebase Auth UID
         const userData = userDoc.data();
 
         const email = userData.email;
         const refreshToken = userData.refreshToken;
         const accessToken = userData.accessToken;
         const platform = userData.gmailLinkPlatform;
+        const studentId = userData.studentId || userData.accountStudentId || uid; // for logging only
 
-        // BUG 3 FIX: Skip only if BOTH tokens are missing, not just refreshToken
+        // Skip only if BOTH tokens are missing
         if (!email || (!refreshToken && !accessToken)) {
-            console.log(`Skipping user ${studentId}: no Gmail credentials linked.`);
+            console.log(`Skipping user uid=${uid}: no Gmail credentials linked.`);
             continue;
         }
 
-        console.log(`Checking emails for user: ${studentId} (${email}), platform: ${platform}`);
+        console.log(`Checking emails for uid: ${uid} (studentId: ${studentId}, email: ${email}), platform: ${platform}`);
 
         try {
             // BUG 3 FIX: Choose auth method based on which token is available
@@ -139,7 +140,7 @@ async function checkAndParseEmails() {
             const messages = res.data.messages || [];
 
             if (messages.length === 0) {
-                console.log(`No unread messages from ${TARGET_EMAIL} for user ${studentId}.`);
+                console.log(`No unread messages from allowed senders for user ${studentId}.`);
                 continue;
             }
 
@@ -223,7 +224,7 @@ ${cleanText}`;
                             firestoreDueDate = admin.firestore.Timestamp.fromDate(new Date(aiData.dueDate));
                         }
 
-                        await db.collection('ccxpUsers').doc(studentId).collection('upcoming').doc(msg.id).set({
+                        await db.collection('ccxpUsers').doc(uid).collection('upcoming').doc(msg.id).set({
                             title: aiData.title || "New Task",
                             code: aiData.code || "",
                             time: aiData.time || "",
@@ -264,10 +265,11 @@ exports.nthuEmailParser = onSchedule({
 exports.linkGmailAccount = onCall({
     secrets: [gmailCredentials]
 }, async (request) => {
-    const { serverAuthCode, accessToken, email, studentId, platform } = request.data;
+    const { serverAuthCode, accessToken, email, studentId, uid, platform } = request.data;
 
-    if (!email || !studentId) {
-        throw new HttpsError('invalid-argument', 'Missing email or studentId.');
+    // uid is required — it is the Firebase Auth UID, which is the Firestore doc key
+    if (!email || !uid) {
+        throw new HttpsError('invalid-argument', 'Missing email or uid.');
     }
 
     if (platform === 'web') {
@@ -276,8 +278,9 @@ exports.linkGmailAccount = onCall({
         }
 
         try {
-            await db.collection('ccxpUsers').doc(studentId).set({
+            await db.collection('ccxpUsers').doc(uid).set({
                 email: email,
+                studentId: studentId || null,
                 accessToken: accessToken,
                 refreshToken: null,
                 gmailLinkedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -300,8 +303,9 @@ exports.linkGmailAccount = onCall({
         const { tokens } = await oAuth2Client.getToken(serverAuthCode);
 
         if (tokens.refresh_token) {
-            await db.collection('ccxpUsers').doc(studentId).set({
+            await db.collection('ccxpUsers').doc(uid).set({
                 email: email,
+                studentId: studentId || null,
                 refreshToken: tokens.refresh_token,
                 accessToken: null,
                 gmailLinkedAt: admin.firestore.FieldValue.serverTimestamp(),
