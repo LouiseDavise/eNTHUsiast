@@ -108,12 +108,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _handleEmailLoginMobile() async {
     try {
+      await _googleSignIn.signOut();
+
       final GoogleSignInAccount? account = await _googleSignIn.signIn();
-      if (account == null) return;
+      if (account == null) {
+        return;
+      }
 
       final GoogleSignInAuthentication auth = await account.authentication;
-      final String? serverAuthCode = auth.serverAuthCode;
 
+      final String? serverAuthCode = account.serverAuthCode;
       if (serverAuthCode == null) {
         print("Failed to get server auth code.");
         if (mounted) {
