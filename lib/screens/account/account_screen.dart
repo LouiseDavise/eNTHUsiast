@@ -6,18 +6,22 @@ import '../../theme/app_theme.dart';
 import '../../widgets/profile_header.dart';
 import 'widgets/curriculum_upload_sheet.dart';
 import '../preference/preference_screen.dart';
+import 'profile_screen.dart';
+import 'transcript_screen.dart';
+import 'language_screen.dart';
+import 'settings/settings_screen.dart';
 import 'package:enthusiast/main.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Hover-aware settings row tile (matches home_screen's hover-pop aesthetic)
+// Hover-aware settings row tile — matches home_screen hover-pop aesthetic
 // ─────────────────────────────────────────────────────────────────────────────
 class _SettingsTile extends StatefulWidget {
   final IconData icon;
   final Color iconColor;
   final Color iconBg;
   final String title;
-  final String? subtitle;
+  final String subtitle;
   final Widget? trailing;
   final VoidCallback onTap;
   final bool isDanger;
@@ -27,7 +31,7 @@ class _SettingsTile extends StatefulWidget {
     required this.iconColor,
     required this.iconBg,
     required this.title,
-    this.subtitle,
+    required this.subtitle,
     this.trailing,
     required this.onTap,
     this.isDanger = false,
@@ -118,21 +122,20 @@ class _SettingsTileState extends State<_SettingsTile> {
                               : const Color(0xFF1A1A2E),
                         ),
                       ),
-                      if (widget.subtitle != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          widget.subtitle!,
-                          style: GoogleFonts.dmSans(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey.shade500,
-                          ),
+                      const SizedBox(height: 2),
+                      Text(
+                        widget.subtitle,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade400,
+                          letterSpacing: 0.3,
                         ),
-                      ],
+                      ),
                     ],
                   ),
                 ),
-                // Trailing widget or default chevron
+                // Trailing or animated chevron
                 widget.trailing ??
                     AnimatedSlide(
                       offset: _isHovered
@@ -194,6 +197,32 @@ class AccountScreen extends StatefulWidget {
 }
 
 class _AccountScreenState extends State<AccountScreen> {
+
+  // ── Navigation helpers (preserved from original SettingsMenuWidget) ─────────
+
+  void _openProfileScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ProfileScreen()),
+    );
+  }
+
+  void _openTranscriptScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const TranscriptScreen()),
+    );
+  }
+
+  void _openPreferenceScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const PreferenceScreen(returnToPrevious: true),
+      ),
+    );
+  }
+
   void _openCurriculumSheet() {
     final user = FirebaseAuth.instance.currentUser;
 
@@ -214,12 +243,17 @@ class _AccountScreenState extends State<AccountScreen> {
     );
   }
 
-  void _openPreferenceScreen() {
+  void _openLanguageScreen() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const PreferenceScreen(returnToPrevious: true),
-      ),
+      MaterialPageRoute(builder: (_) => const LanguageScreen()),
+    );
+  }
+
+  void _openSettingsScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
     );
   }
 
@@ -290,6 +324,14 @@ class _AccountScreenState extends State<AccountScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton(
+                    // Original commented-out FirebaseAuth.signOut preserved below:
+                    // await FirebaseAuth.instance.signOut();
+                    // if (context.mounted) {
+                    //   Navigator.pop(ctx);
+                    //   Navigator.pushNamedAndRemoveUntil(
+                    //     context, '/login', (route) => false,
+                    //   );
+                    // }
                     onPressed: () async {
                       deleteCcxpAccount();
                       if (context.mounted) {
@@ -326,6 +368,8 @@ class _AccountScreenState extends State<AccountScreen> {
       ),
     );
   }
+
+  // ── Build ───────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -372,20 +416,34 @@ class _AccountScreenState extends State<AccountScreen> {
     );
   }
 
-  // ── Inline settings menu (replaces SettingsMenuWidget) ──────────────────────
+  // ── Settings menu — all original sections + new Preferences tile ────────────
   Widget _buildSettingsMenu() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+
+        // ── ACCOUNT ─────────────────────────────────────────────────────────
+        const _SectionLabel('Account'),
+        _SettingsTile(
+          icon: Icons.manage_accounts_rounded,
+          iconColor: const Color(0xFF7B2F8E),
+          iconBg: const Color(0xFFF3E8FF),
+          title: 'Account',
+          subtitle: 'CCXP & Gmail login',
+          onTap: _openProfileScreen,
+        ),
+
+        const SizedBox(height: 28),
+
         // ── ACADEMIC ────────────────────────────────────────────────────────
         const _SectionLabel('Academic'),
         _SettingsTile(
-          icon: Icons.school_rounded,
-          iconColor: const Color(0xFF7E22CE),
+          icon: Icons.receipt_long_rounded,
+          iconColor: const Color(0xFF7B2F8E),
           iconBg: const Color(0xFFF3E8FF),
           title: 'Transcript',
           subtitle: 'View your academic records',
-          onTap: () {/* existing transcript logic */},
+          onTap: _openTranscriptScreen,
         ),
         const SizedBox(height: 10),
         _SettingsTile(
@@ -408,8 +466,30 @@ class _AccountScreenState extends State<AccountScreen> {
 
         const SizedBox(height: 28),
 
-        // ── ACCOUNT ─────────────────────────────────────────────────────────
-        const _SectionLabel('Account'),
+        // ── APP ─────────────────────────────────────────────────────────────
+        const _SectionLabel('App'),
+        _SettingsTile(
+          icon: Icons.language_rounded,
+          iconColor: const Color(0xFF0891B2),
+          iconBg: const Color(0xFFCFFAFE),
+          title: 'Language',
+          subtitle: 'English / 繁體中文',
+          onTap: _openLanguageScreen,
+        ),
+        const SizedBox(height: 10),
+        _SettingsTile(
+          icon: Icons.info_outline_rounded,
+          iconColor: const Color(0xFF64748B),
+          iconBg: const Color(0xFFF1F5F9),
+          title: 'Settings',
+          subtitle: 'About us & more',
+          onTap: _openSettingsScreen,
+        ),
+
+        const SizedBox(height: 28),
+
+        // ── DANGER ──────────────────────────────────────────────────────────
+        const _SectionLabel('Session'),
         _SettingsTile(
           icon: Icons.logout_rounded,
           iconColor: const Color(0xFFDC2626),
@@ -423,13 +503,20 @@ class _AccountScreenState extends State<AccountScreen> {
     );
   }
 
+  // ── Preserved from original ─────────────────────────────────────────────────
   Future<void> deleteCcxpAccount() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
     final uid = user.uid;
+
+    // Delete Firestore data
     await FirebaseFirestore.instance.collection('ccxpUsers').doc(uid).delete();
+
+    // Delete Firebase Auth account
     await user.delete();
+
+    // Sign out
     await FirebaseAuth.instance.signOut();
   }
 }
