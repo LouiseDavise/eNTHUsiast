@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../../providers/language_provider.dart';
 import '../service/curriculum_upload_service.dart';
 
 class CurriculumUploadSheet extends StatefulWidget {
@@ -61,7 +62,21 @@ class _CurriculumUploadSheetState extends State<CurriculumUploadSheet> {
     }
   }
 
-  String _statusText(String? status) {
+  String _statusText(String? status, bool isChinese) {
+    if (isChinese) {
+      switch (status) {
+        case 'uploading':
+          return '正在將您的課程表 PDF 傳送給寶寶...';
+        case 'processing':
+          return '寶寶正在讀取您的課程表...';
+        case 'ready':
+          return '課程表已就緒，寶寶現在可以使用了。';
+        case 'error':
+          return '寶寶無法解析此 PDF。';
+        default:
+          return '請上傳您的課程表 PDF，讓寶寶能更精確地規劃。';
+      }
+    }
     switch (status) {
       case 'uploading':
         return 'Sending your curriculum PDF to Bao-Bao...';
@@ -103,10 +118,11 @@ class _CurriculumUploadSheetState extends State<CurriculumUploadSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final isChinese = LanguageScope.watch(context).isChinese;
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      return _buildNotLoggedInSheet();
+      return _buildNotLoggedInSheet(isChinese);
     }
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -159,10 +175,10 @@ class _CurriculumUploadSheetState extends State<CurriculumUploadSheet> {
                       ),
                     ),
                     const SizedBox(width: 16),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Curriculum PDF',
-                        style: TextStyle(
+                        isChinese ? '課程表 PDF' : 'Curriculum PDF',
+                        style: const TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w900,
                           color: Color(0xFF0F172A),
@@ -191,7 +207,7 @@ class _CurriculumUploadSheetState extends State<CurriculumUploadSheet> {
                   child: Column(
                     children: [
                       Text(
-                        _statusText(status),
+                        _statusText(status, isChinese),
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           fontSize: 14,
@@ -259,10 +275,10 @@ class _CurriculumUploadSheetState extends State<CurriculumUploadSheet> {
                         : const Icon(Icons.upload_file_rounded),
                     label: Text(
                       isUploading
-                          ? 'Parsing...'
+                          ? (isChinese ? '解析中...' : 'Parsing...')
                           : status == 'ready'
-                              ? 'Replace Curriculum PDF'
-                              : 'Upload Curriculum PDF',
+                              ? (isChinese ? '替換課程表 PDF' : 'Replace Curriculum PDF')
+                              : (isChinese ? '上傳課程表 PDF' : 'Upload Curriculum PDF'),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF7E3291),
@@ -282,10 +298,12 @@ class _CurriculumUploadSheetState extends State<CurriculumUploadSheet> {
 
                 const SizedBox(height: 12),
 
-                const Text(
-                  'The PDF itself will not be saved. Only the parsed curriculum JSON will be stored.',
+                Text(
+                  isChinese
+                      ? 'PDF 本身不會被儲存，僅會保留解析後的課程表 JSON。'
+                      : 'The PDF itself will not be saved. Only the parsed curriculum JSON will be stored.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 12,
                     height: 1.4,
                     fontWeight: FontWeight.w600,
@@ -300,7 +318,7 @@ class _CurriculumUploadSheetState extends State<CurriculumUploadSheet> {
     );
   }
 
-  Widget _buildNotLoggedInSheet() {
+  Widget _buildNotLoggedInSheet(bool isChinese) {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
       decoration: const BoxDecoration(
@@ -309,31 +327,33 @@ class _CurriculumUploadSheetState extends State<CurriculumUploadSheet> {
           top: Radius.circular(28),
         ),
       ),
-      child: const SafeArea(
+      child: SafeArea(
         top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(height: 24),
-            Icon(
+            const SizedBox(height: 24),
+            const Icon(
               Icons.lock_rounded,
               color: Color(0xFFFF2D55),
               size: 42,
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Text(
-              'Not logged in',
-              style: TextStyle(
+              isChinese ? '尚未登入' : 'Not logged in',
+              style: const TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w900,
                 color: Color(0xFF0F172A),
               ),
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             Text(
-              'Please login again before uploading your curriculum PDF.',
+              isChinese
+                  ? '請在上傳課程表 PDF 前重新登入。'
+                  : 'Please login again before uploading your curriculum PDF.',
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
                 height: 1.45,
                 fontWeight: FontWeight.w700,

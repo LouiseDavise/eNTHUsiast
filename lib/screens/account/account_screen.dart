@@ -13,10 +13,11 @@ import 'widgets/curriculum_upload_sheet.dart';
 import '../preference/preference_screen.dart';
 import 'transcript_screen.dart';
 import 'language_screen.dart';
-import 'settings/settings_screen.dart';
+import 'settings_screen.dart';
 import 'package:enthusiast/main.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../providers/ccxp_data_provider.dart';
+import '../../providers/language_provider.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hover-aware settings row tile — matches home_screen hover-pop aesthetic
@@ -219,15 +220,17 @@ class _AccountScreenState extends State<AccountScreen> {
       !kIsWeb && (Platform.isIOS || Platform.isAndroid);
 
   // Ambil studentId dari CcxpDataProvider; tampilkan SnackBar jika null
-  String? _getStudentId() {
+  String? _getStudentId(bool isChinese) {
     final ccxpData = Provider.of<CcxpDataProvider>(context, listen: false);
     final studentId =
         ccxpData.graduationData?["studentInfo"]?["studentId"]?.toString();
     if (studentId == null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'Error: Could not find Student ID. Please log in to CCXP first.',
+            isChinese 
+                ? '錯誤：找不到學號。請先登入 CCXP 系統。' 
+                : 'Error: Could not find Student ID. Please log in to CCXP first.',
           ),
           backgroundColor: Colors.red,
         ),
@@ -237,14 +240,16 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   // Panggil Cloud Function linkGmailAccount dengan payload yang diberikan
-  Future<void> _callLinkFunction(Map<String, dynamic> payload) async {
+  Future<void> _callLinkFunction(Map<String, dynamic> payload, bool isChinese) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-                'Error: Not logged in to Firebase. Please log in to CCXP first.'),
+                isChinese 
+                    ? '錯誤：未登入 Firebase。請先登入 CCXP 系統。' 
+                    : 'Error: Not logged in to Firebase. Please log in to CCXP first.'),
             backgroundColor: Colors.red,
           ),
         );
@@ -264,14 +269,14 @@ class _AccountScreenState extends State<AccountScreen> {
 
       if (result.data['success'] == true) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Account successfully linked and secured!'),
+          SnackBar(
+            content: Text(isChinese ? '帳號連動與保護成功！' : 'Account successfully linked and secured!'),
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Warning: Linking completed but check the console.'),
+          SnackBar(
+            content: Text(isChinese ? '警告：連動已完成，但請檢查主控台訊息。' : 'Warning: Linking completed but check the console.'),
           ),
         );
       }
@@ -279,14 +284,14 @@ class _AccountScreenState extends State<AccountScreen> {
       print("Cloud Function Error: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to connect to server.')),
+          SnackBar(content: Text(isChinese ? '連線至伺服器失敗。' : 'Failed to connect to server.')),
         );
       }
     }
   }
 
   // Alur login Gmail untuk platform mobile: gunakan serverAuthCode
-  Future<void> _handleEmailLoginMobile() async {
+  Future<void> _handleEmailLoginMobile(bool isChinese) async {
     try {
       await _googleSignIn.signOut();
 
@@ -301,9 +306,11 @@ class _AccountScreenState extends State<AccountScreen> {
         print("Failed to get server auth code.");
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text(
-                  'Failed to get server auth code. Check serverClientId configuration.'),
+                  isChinese 
+                      ? '無法取得伺服器驗證碼。請檢查伺服器用戶端識別碼設定。' 
+                      : 'Failed to get server auth code. Check serverClientId configuration.'),
               backgroundColor: Colors.red,
             ),
           );
@@ -313,13 +320,13 @@ class _AccountScreenState extends State<AccountScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Successfully authorized Gmail! Linking...'),
+          SnackBar(
+            content: Text(isChinese ? 'Gmail 授權成功！正在連動...' : 'Successfully authorized Gmail! Linking...'),
           ),
         );
       }
 
-      final studentId = _getStudentId();
+      final studentId = _getStudentId(isChinese);
       if (studentId == null) return;
 
       // Kirim serverAuthCode, email, studentId, dan platform ke Cloud Function
@@ -328,19 +335,19 @@ class _AccountScreenState extends State<AccountScreen> {
         'email': account.email,
         'studentId': studentId,
         'platform': 'mobile',
-      });
+      }, isChinese);
     } catch (error) {
       print("Google Sign In Error (mobile): $error");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Login failed: $error')),
+          SnackBar(content: Text(isChinese ? '登入失敗：$error' : 'Login failed: $error')),
         );
       }
     }
   }
 
   // Alur login Gmail untuk web: gunakan accessToken
-  Future<void> _handleEmailLoginWeb() async {
+  Future<void> _handleEmailLoginWeb(bool isChinese) async {
     try {
       GoogleSignInAccount? account = await _googleSignIn.signIn();
       if (account == null) return;
@@ -351,8 +358,8 @@ class _AccountScreenState extends State<AccountScreen> {
       if (!granted) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Gmail scope not granted.'),
+            SnackBar(
+              content: Text(isChinese ? '未授予 Gmail 存取權限。' : 'Gmail scope not granted.'),
               backgroundColor: Colors.red,
             ),
           );
@@ -368,8 +375,8 @@ class _AccountScreenState extends State<AccountScreen> {
       if (accessToken == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to get access token.'),
+            SnackBar(
+              content: Text(isChinese ? '無法取得存取權杖。' : 'Failed to get access token.'),
               backgroundColor: Colors.red,
             ),
           );
@@ -379,13 +386,13 @@ class _AccountScreenState extends State<AccountScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Successfully authorized Gmail! Linking...'),
+          SnackBar(
+            content: Text(isChinese ? 'Gmail 授權成功！正在連動...' : 'Successfully authorized Gmail! Linking...'),
           ),
         );
       }
 
-      final studentId = _getStudentId();
+      final studentId = _getStudentId(isChinese);
       if (studentId == null) return;
 
       // Kirim accessToken, email, studentId, dan platform ke Cloud Function
@@ -394,23 +401,23 @@ class _AccountScreenState extends State<AccountScreen> {
         'email': account.email,
         'studentId': studentId,
         'platform': 'web',
-      });
+      }, isChinese);
     } catch (e) {
       print("Web Google Sign In Error: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Authorization failed: $e')),
+          SnackBar(content: Text(isChinese ? '授權失敗：$e' : 'Authorization failed: $e')),
         );
       }
     }
   }
 
   // Dispatcher: pilih mobile atau web berdasarkan platform
-  Future<void> _handleEmailLogin() async {
+  Future<void> _handleEmailLogin(bool isChinese) async {
     if (_isMobilePlatform) {
-      await _handleEmailLoginMobile();
+      await _handleEmailLoginMobile(isChinese);
     } else {
-      await _handleEmailLoginWeb();
+      await _handleEmailLoginWeb(isChinese);
     }
   }
 
@@ -432,13 +439,13 @@ class _AccountScreenState extends State<AccountScreen> {
     );
   }
 
-  void _openCurriculumSheet() {
+  void _openCurriculumSheet(bool isChinese) {
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please login again before uploading curriculum.'),
+        SnackBar(
+          content: Text(isChinese ? '在上傳課程表前，請重新登入。' : 'Please login again before uploading curriculum.'),
         ),
       );
       return;
@@ -466,7 +473,7 @@ class _AccountScreenState extends State<AccountScreen> {
     );
   }
 
-  void _onLogout() {
+  void _onLogout(bool isChinese) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -490,7 +497,7 @@ class _AccountScreenState extends State<AccountScreen> {
             ),
             const SizedBox(height: 18),
             Text(
-              'Log Out',
+              isChinese ? '登出' : 'Log Out',
               style: GoogleFonts.dmSans(
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
@@ -499,7 +506,9 @@ class _AccountScreenState extends State<AccountScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Are you sure you want to log out of your NTHU account?',
+              isChinese
+                  ? '確定要登出您的清華大學帳號嗎？'
+                  : 'Are you sure you want to log out of your NTHU account?',
               style: GoogleFonts.dmSans(
                 fontSize: 13,
                 color: const Color(0xFF6B7280),
@@ -521,7 +530,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                     child: Text(
-                      'Cancel',
+                      isChinese ? '取消' : 'Cancel',
                       style: GoogleFonts.dmSans(
                         fontWeight: FontWeight.w700,
                         fontSize: 14,
@@ -533,14 +542,6 @@ class _AccountScreenState extends State<AccountScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton(
-                    // Original commented-out FirebaseAuth.signOut preserved below:
-                    // await FirebaseAuth.instance.signOut();
-                    // if (context.mounted) {
-                    //   Navigator.pop(ctx);
-                    //   Navigator.pushNamedAndRemoveUntil(
-                    //     context, '/login', (route) => false,
-                    //   );
-                    // }
                     onPressed: () async {
                       deleteCcxpAccount();
                       if (context.mounted) {
@@ -561,7 +562,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                     child: Text(
-                      'Log Out',
+                      isChinese ? '登出' : 'Log Out',
                       style: GoogleFonts.dmSans(
                         fontWeight: FontWeight.w700,
                         fontSize: 14,
@@ -582,17 +583,20 @@ class _AccountScreenState extends State<AccountScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isChinese = LanguageScope.watch(context).isChinese;
     final isTablet = MediaQuery.of(context).size.width >= 600;
 
     return Scaffold(
-      backgroundColor:Colors.white,
+      backgroundColor: Colors.white,
       body: SafeArea(
-        child: isTablet ? _buildTabletLayout() : _buildPhoneLayout(),
+        child: isTablet
+            ? _buildTabletLayout(isChinese)
+            : _buildPhoneLayout(isChinese),
       ),
     );
   }
 
-  Widget _buildPhoneLayout() {
+  Widget _buildPhoneLayout(bool isChinese) {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 32, 20, 40),
       child: Column(
@@ -600,13 +604,13 @@ class _AccountScreenState extends State<AccountScreen> {
         children: [
           const ProfileHeaderWidget(),
           const SizedBox(height: 36),
-          _buildSettingsMenu(),
+          _buildSettingsMenu(isChinese),
         ],
       ),
     );
   }
 
-  Widget _buildTabletLayout() {
+  Widget _buildTabletLayout(bool isChinese) {
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480),
@@ -617,7 +621,7 @@ class _AccountScreenState extends State<AccountScreen> {
             children: [
               const ProfileHeaderWidget(),
               const SizedBox(height: 36),
-              _buildSettingsMenu(),
+              _buildSettingsMenu(isChinese),
             ],
           ),
         ),
@@ -625,32 +629,32 @@ class _AccountScreenState extends State<AccountScreen> {
     );
   }
 
-  // ── Settings menu — all original sections + new Preferences tile ────────────
-  Widget _buildSettingsMenu() {
+  // ── Settings menu ────────────────────────────────────────────────────────────
+  Widget _buildSettingsMenu(bool isChinese) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // ── ACCOUNT ─────────────────────────────────────────────────────────
-        const _SectionLabel('Account'),
+        _SectionLabel(isChinese ? '帳號' : 'Account'),
         _SettingsTile(
           icon: Icons.email_rounded,
           iconColor: const Color(0xFFDC2626),
           iconBg: const Color(0xFFFEE2E2),
-          title: 'Email Login',
-          subtitle: 'Link your Gmail account',
-          onTap: _handleEmailLogin,
+          title: isChinese ? '電子郵件登入' : 'Email Login',
+          subtitle: isChinese ? '連結您的 Gmail 帳號' : 'Link your Gmail account',
+          onTap: () => _handleEmailLogin(isChinese),
         ),
 
         const SizedBox(height: 28),
 
         // ── ACADEMIC ────────────────────────────────────────────────────────
-        const _SectionLabel('Academic'),
+        _SectionLabel(isChinese ? '學業' : 'Academic'),
         _SettingsTile(
           icon: Icons.receipt_long_rounded,
           iconColor: const Color(0xFF7B2F8E),
           iconBg: const Color(0xFFF3E8FF),
-          title: 'Transcript',
-          subtitle: 'View your academic records',
+          title: isChinese ? '成績單' : 'Transcript',
+          subtitle: isChinese ? '查看您的學業成績' : 'View your academic records',
           onTap: _openTranscriptScreen,
         ),
         const SizedBox(height: 10),
@@ -658,8 +662,8 @@ class _AccountScreenState extends State<AccountScreen> {
           icon: Icons.tune_rounded,
           iconColor: const Color(0xFF0EA5E9),
           iconBg: const Color(0xFFE0F2FE),
-          title: 'Preferences',
-          subtitle: 'Course schedule & career settings',
+          title: isChinese ? '偏好設定' : 'Preferences',
+          subtitle: isChinese ? '課程與職涯設定' : 'Course schedule & career settings',
           onTap: _openPreferenceScreen,
         ),
         const SizedBox(height: 10),
@@ -667,20 +671,20 @@ class _AccountScreenState extends State<AccountScreen> {
           icon: Icons.upload_file_rounded,
           iconColor: const Color(0xFF059669),
           iconBg: const Color(0xFFD1FAE5),
-          title: 'Curriculum Upload',
-          subtitle: 'Upload your degree plan',
-          onTap: _openCurriculumSheet,
+          title: isChinese ? '上傳課程表' : 'Curriculum Upload',
+          subtitle: isChinese ? '上傳您的學位計畫' : 'Upload your degree plan',
+          onTap: () => _openCurriculumSheet(isChinese),
         ),
 
         const SizedBox(height: 28),
 
         // ── APP ─────────────────────────────────────────────────────────────
-        const _SectionLabel('App'),
+        _SectionLabel(isChinese ? '應用程式' : 'App'),
         _SettingsTile(
           icon: Icons.language_rounded,
           iconColor: const Color(0xFF0891B2),
           iconBg: const Color(0xFFCFFAFE),
-          title: 'Language',
+          title: isChinese ? '語言' : 'Language',
           subtitle: 'English / 繁體中文',
           onTap: _openLanguageScreen,
         ),
@@ -689,23 +693,23 @@ class _AccountScreenState extends State<AccountScreen> {
           icon: Icons.info_outline_rounded,
           iconColor: const Color(0xFF64748B),
           iconBg: const Color(0xFFF1F5F9),
-          title: 'Settings',
-          subtitle: 'About us & more',
+          title: isChinese ? '設定' : 'Settings',
+          subtitle: isChinese ? '關於我們及更多' : 'About us & more',
           onTap: _openSettingsScreen,
         ),
 
         const SizedBox(height: 28),
 
         // ── DANGER ──────────────────────────────────────────────────────────
-        const _SectionLabel('Session'),
+        _SectionLabel(isChinese ? '工作階段' : 'Session'),
         _SettingsTile(
           icon: Icons.logout_rounded,
           iconColor: const Color(0xFFDC2626),
           iconBg: const Color(0xFFFEE2E2),
-          title: 'Log Out',
-          subtitle: 'Sign out of your NTHU account',
+          title: isChinese ? '登出' : 'Log Out',
+          subtitle: isChinese ? '登出您的清華大學帳號' : 'Sign out of your NTHU account',
           isDanger: true,
-          onTap: _onLogout,
+          onTap: () => _onLogout(isChinese),
         ),
         const SizedBox(height: 70),
       ],

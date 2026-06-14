@@ -7,6 +7,8 @@ class LanguageScreen extends StatelessWidget {
 
   static const Color _purple = Color(0xFF7B2F8E);
   static const Color _purpleLight = Color(0xFFF3E9F7);
+  static const Color _purpleMid = Color(0xFFA86CBE);
+  static const Color _purpleBorder = Color(0xFFE5D4EE);
   static const Color _background = Color(0xFFF9F9F8);
   static const Color _textDark = Color(0xFF111827);
   static const Color _textMuted = Color(0xFF9CA3AF);
@@ -27,29 +29,35 @@ class LanguageScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildHeader(context, isChinese),
-                const SizedBox(height: 48),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 26),
-                    child: Column(
-                      children: [
-                        _buildLanguageOption(
-                          context: context,
-                          label: isChinese ? '英文' : 'English',
-                          language: AppLanguage.en,
-                          isSelected: language.language == AppLanguage.en,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildLanguageOption(
-                          context: context,
-                          label: isChinese ? '繁體中文' : 'Traditional Chinese',
-                          language: AppLanguage.zh,
-                          isSelected: language.language == AppLanguage.zh,
-                        ),
-                      ],
-                    ),
+                const SizedBox(height: 24),
+                _buildSectionLabel(isChinese),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    children: [
+                      _buildLanguageOption(
+                        context: context,
+                        flag: '🇺🇸',
+                        label: isChinese ? '英文' : 'English',
+                        nativeLabel: 'English',
+                        language: AppLanguage.en,
+                        currentLanguage: language.language,
+                      ),
+                      const SizedBox(height: 12),
+                      _buildLanguageOption(
+                        context: context,
+                        flag: '🇹🇼',
+                        label: isChinese ? '繁體中文' : 'Traditional Chinese',
+                        nativeLabel: '繁體中文',
+                        language: AppLanguage.zh,
+                        currentLanguage: language.language,
+                      ),
+                    ],
                   ),
                 ),
+                const SizedBox(height: 24),
+                _buildInfoFooter(isChinese),
               ],
             ),
           ),
@@ -60,24 +68,21 @@ class LanguageScreen extends StatelessWidget {
 
   Widget _buildHeader(BuildContext context, bool isChinese) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(26, 22, 26, 0),
+      padding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          InkWell(
-            borderRadius: BorderRadius.circular(24),
+          // Back button
+          GestureDetector(
             onTap: () => Navigator.pop(context),
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(
-                    Icons.chevron_left_rounded,
-                    size: 24,
-                    color: _textMuted,
-                  ),
-                  const SizedBox(width: 4),
+                  const Icon(Icons.chevron_left_rounded,
+                      size: 22, color: _textMuted),
+                  const SizedBox(width: 2),
                   Text(
                     isChinese ? '返回' : 'Back',
                     style: const TextStyle(
@@ -90,51 +95,81 @@ class LanguageScreen extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 18),
+          // Eyebrow
           Text(
-            isChinese ? '語言設定' : 'LANGUAGE',
+            isChinese ? '設定' : 'SETTINGS',
             style: TextStyle(
-              color: _textDark,
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-              letterSpacing: isChinese ? 1.0 : 0.4,
-              fontStyle: isChinese ? FontStyle.normal : FontStyle.italic,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: _purple,
+              letterSpacing: 2.4,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
+          // Title
           Text(
-            isChinese ? '更改語言' : 'Change Language',
+            isChinese ? '語言設定' : 'Language',
             style: const TextStyle(
-              color: Color(0xFF8A8FA3),
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.2,
+              color: _textDark,
+              fontSize: 26,
+              fontWeight: FontWeight.w900,
+              height: 1.1,
             ),
           ),
+          const SizedBox(height: 4),
+          // Subtitle
+          Text(
+            isChinese ? '更改顯示語言' : 'Change your display language',
+            style: const TextStyle(
+              color: _textMuted,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Divider
+          const Divider(color: _cardBorder, thickness: 1, height: 1),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSectionLabel(bool isChinese) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Text(
+        isChinese ? '選擇語言' : 'SELECT A LANGUAGE',
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: _textMuted,
+          letterSpacing: 1.2,
+        ),
       ),
     );
   }
 
   Widget _buildLanguageOption({
     required BuildContext context,
+    required String flag,
     required String label,
+    required String nativeLabel,
     required AppLanguage language,
-    required bool isSelected,
+    required AppLanguage currentLanguage,
   }) {
+    final isSelected = currentLanguage == language;
+
     return GestureDetector(
-      onTap: () {
-        LanguageScope.read(context).setLanguage(language);
-      },
+      onTap: () => LanguageScope.read(context).setLanguage(language),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOut,
         width: double.infinity,
-        height: 72,
-        padding: const EdgeInsets.symmetric(horizontal: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: isSelected ? _purpleLight : Colors.white,
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected ? _purple : _cardBorder,
             width: isSelected ? 1.6 : 1,
@@ -143,30 +178,146 @@ class LanguageScreen extends StatelessWidget {
             BoxShadow(
               color: Colors.black.withOpacity(isSelected ? 0.04 : 0.025),
               blurRadius: isSelected ? 16 : 12,
-              offset: const Offset(0, 8),
+              offset: const Offset(0, 6),
             ),
           ],
         ),
         child: Row(
           children: [
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: isSelected ? _purple : _textDark,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: language == AppLanguage.zh ? 0.6 : 0,
-                ),
-              ),
-            ),
+            // Flag tile
             AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              width: isSelected ? 9 : 0,
-              height: isSelected ? 9 : 0,
-              decoration: const BoxDecoration(
-                color: _purple,
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: isSelected ? Colors.white : _purpleLight,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _purpleBorder),
+              ),
+              child: Center(
+                child: Text(flag, style: const TextStyle(fontSize: 22)),
+              ),
+            ),
+            const SizedBox(width: 14),
+            // Language name + native label
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: isSelected ? _purple : _textDark,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    nativeLabel,
+                    style: TextStyle(
+                      color: isSelected ? _purpleMid : _textMuted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Active badge
+            if (isSelected) ...[
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _purple,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'ACTIVE',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
+            // Radio checkmark
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
+                color: isSelected ? _purple : Colors.transparent,
+                border: isSelected
+                    ? null
+                    : Border.all(color: _cardBorder, width: 1.5),
+              ),
+              child: isSelected
+                  ? const Icon(Icons.check_rounded,
+                      size: 14, color: Colors.white)
+                  : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoFooter(bool isChinese) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _cardBorder),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Icon tile
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: _purpleLight,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.refresh_rounded,
+                  size: 16, color: _purple),
+            ),
+            const SizedBox(width: 12),
+            // Note text
+            Expanded(
+              child: RichText(
+                text: TextSpan(
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: _textMuted,
+                    height: 1.5,
+                  ),
+                  children: [
+                    TextSpan(
+                      text: isChinese ? '立即生效。' : 'Changes apply instantly. ',
+                      style: const TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    TextSpan(
+                      text: isChinese
+                          ? '所有畫面將立即切換至所選語言，無需重新啟動應用程式。'
+                          : 'All screens update to the selected language without restarting the app.',
+                    ),
+                  ],
+                ),
               ),
             ),
           ],

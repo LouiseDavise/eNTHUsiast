@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import '../../providers/language_provider.dart'; // 引入語言 Provider 確保 isChinese 可看
 
 class ProfileHeaderWidget extends StatefulWidget {
   const ProfileHeaderWidget({super.key});
@@ -68,11 +69,11 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
     return text.isEmpty ? fallback : text;
   }
 
-  Future<void> _pickAndSaveProfilePhoto() async {
+  Future<void> _pickAndSaveProfilePhoto(bool isChinese) async {
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      _showSnackBar('Please log in to CCXP first.');
+      _showSnackBar(isChinese ? '請先登入 CCXP 系統。' : 'Please log in to CCXP first.');
       return;
     }
 
@@ -93,7 +94,7 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
       final bytes = await image.readAsBytes();
 
       if (bytes.length > 900000) {
-        _showSnackBar('Image is too large. Please choose a smaller photo.');
+        _showSnackBar(isChinese ? '圖片檔案過大，請選擇較小的照片。' : 'Image is too large. Please choose a smaller photo.');
         return;
       }
 
@@ -120,10 +121,10 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
       await _syncSocialAvatarSnapshots(uid: user.uid, photoUrl: photoUrl);
 
       if (!mounted) return;
-      _showSnackBar('Profile picture updated.');
+      _showSnackBar(isChinese ? '個人頭像已更新。' : 'Profile picture updated.');
     } catch (error) {
       if (!mounted) return;
-      _showSnackBar('Failed to update profile picture: $error');
+      _showSnackBar(isChinese ? '更新個人頭像失敗：$error' : 'Failed to update profile picture: $error');
     } finally {
       if (mounted) {
         setState(() {
@@ -190,15 +191,16 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final isChinese = LanguageScope.watch(context).isChinese;
     final graduationData = context.watch<CcxpDataProvider>().graduationData;
     final academicStats = _buildAcademicStats(graduationData);
     final studentInfo = graduationData?['studentInfo'] as Map<String, dynamic>?;
 
-    final studentName = _textValue(studentInfo?['studentName'], 'Anonymous');
-    final studentId = _textValue(studentInfo?['studentId'], 'Anonymous');
+    final studentName = _textValue(studentInfo?['studentName'], isChinese ? '匿名用戶' : 'Anonymous');
+    final studentId = _textValue(studentInfo?['studentId'], isChinese ? '未登入' : 'Anonymous');
     final department = _textValue(
       studentInfo?['studentDepartment'],
-      'Anonymous',
+      isChinese ? '未知科系' : 'Anonymous',
     );
 
     return Column(
@@ -217,7 +219,7 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
                 ),
               ),
             ),
-            Positioned(bottom: 0, child: _buildProfileAvatar()),
+            Positioned(bottom: 0, child: _buildProfileAvatar(isChinese)),
           ],
         ),
         const SizedBox(height: 14),
@@ -274,7 +276,7 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
         ),
         const SizedBox(height: 8),
         Text(
-          studentId == 'Anonymous'
+          studentId == (isChinese ? '未登入' : 'Anonymous') || studentId == 'Anonymous'
               ? 'nthu_student@nthu.edu.tw'
               : '$studentId@nthu.edu.tw',
           style: GoogleFonts.dmSans(
@@ -304,7 +306,7 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _buildStatColumn(
-                  'CUM. GPA',
+                  isChinese ? '累積平均績點' : 'CUM. GPA',
                   academicStats['gpa']!,
                   const Color(0xFF7E22CE),
                 ),
@@ -314,7 +316,7 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
                   width: 32,
                 ),
                 _buildStatColumn(
-                  'CURRENT CR.',
+                  isChinese ? '當期修習學分' : 'CURRENT CR.',
                   academicStats['current']!,
                   const Color(0xFF3B82F6),
                 ),
@@ -324,7 +326,7 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
                   width: 32,
                 ),
                 _buildStatColumn(
-                  'TOTAL CR.',
+                  isChinese ? '總累積學分' : 'TOTAL CR.',
                   academicStats['total']!,
                   const Color(0xFF10B981),
                 ),
@@ -336,14 +338,14 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
     );
   }
 
-  Widget _buildProfileAvatar() {
+  Widget _buildProfileAvatar(bool isChinese) {
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
       return _AvatarFrame(
         photoUrl: _fallbackAvatarUrl,
         isUploading: _isUploadingPhoto,
-        onPickPhoto: _pickAndSaveProfilePhoto,
+        onPickPhoto: () => _pickAndSaveProfilePhoto(isChinese),
       );
     }
 
@@ -359,7 +361,7 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
         return _AvatarFrame(
           photoUrl: photoUrl,
           isUploading: _isUploadingPhoto,
-          onPickPhoto: _pickAndSaveProfilePhoto,
+          onPickPhoto: () => _pickAndSaveProfilePhoto(isChinese),
         );
       },
     );

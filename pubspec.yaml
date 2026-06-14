@@ -44,6 +44,7 @@ flutter:
     - assets/graduation_data.json
     - assets/email.json
     - assets/upcoming_task.json
+    - assets/app_icon.png
   uses-material-design: true
 
 flutter_launcher_icons:
