@@ -1,12 +1,10 @@
 import 'dart:math' as math;
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../utilities/models.dart';
 import 'tutorial.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:provider/provider.dart';
-import '../../../providers/ccxp_data_provider.dart';
 
 class UpcomingTasksWidget extends StatefulWidget {
   final Function(AppEvent) onTaskTap;
@@ -39,9 +37,11 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
   List<AppEvent> _tasks = [];
   Set<String> _completedTaskIds = {};
   bool _isLoading = true;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _tasksSubscription;
 
   final Set<String> _selectedFilters = {};
   String _selectedSort = 'DEADLINE';
+  bool _isSortHovered = false;
 
   @override
   void initState() {
@@ -53,6 +53,7 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
   @override
   void dispose() {
     UpcomingTasksWidget.tasksNotifier.removeListener(_onGlobalTasksChanged);
+    _tasksSubscription?.cancel();
     super.dispose();
   }
 
@@ -101,7 +102,7 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
       return;
     }
 
-    FirebaseFirestore.instance
+    _tasksSubscription = FirebaseFirestore.instance
         .collection('ccxpUsers')
         .doc(uid)
         .collection('upcoming')
@@ -118,8 +119,7 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
                     text: st['text']?.toString() ?? '',
                     completed: st['completed'] ?? false,
                   );
-                }
-                else if (st is String) {
+                } else if (st is String) {
                   return Subtask(
                     id: UniqueKey().toString(),
                     text: st,
@@ -157,9 +157,20 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
           }).toList();
 
           if (mounted) {
+            // 从 Firebase 恢复已持久化的完成状态。
+            // Pulihkan status selesai yang sudah tersimpan dari Firebase.
+            final restoredCompleted = <String>{};
+            for (final doc in snapshot.docs) {
+              final data = doc.data();
+              if (data['markCompleted'] == true) {
+                restoredCompleted.add(doc.id);
+              }
+            }
+            _purgeOverdueTasks(fetchedTasks);
             UpcomingTasksWidget.tasksNotifier.value = fetchedTasks;
             setState(() {
               _tasks = fetchedTasks;
+              _completedTaskIds = restoredCompleted;
               _isLoading = false;
             });
           }
@@ -192,19 +203,32 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
     return parts.join(" ");
   }
 
-  /// Toggles a task between completed and active.
-  /// Completed tasks sink to the bottom as faded/strikethrough cards.
-  /// If the task is overdue AND being marked complete, delete it from Firebase.
   void _toggleTaskCompletion(String taskId) async {
-    final task = _tasks.firstWhere((t) => t.id == taskId, orElse: () => throw StateError('not found'));
+    final task = _tasks.firstWhere(
+      (t) => t.id == taskId,
+      orElse: () => throw StateError('not found'),
+    );
     final bool nowCompleting = !_completedTaskIds.contains(taskId);
     final bool isOverdue = DateTime.now().isAfter(
-      DateTime(task.dueDate.year, task.dueDate.month, task.dueDate.day, 23, 59, 59),
+      DateTime(
+        task.dueDate.year,
+        task.dueDate.month,
+        task.dueDate.day,
+        23,
+        59,
+        59,
+      ),
     );
 
+    // 仅在任务已过期且被标记为完成时，才从 Firebase 中永久删除。
+    // Hanya hapus permanen jika tugas sudah overdue DAN sedang ditandai selesai.
     if (nowCompleting && isOverdue) {
-      // Overdue + completing → permanently delete from Firebase and local list
       await _deleteTaskFromFirebase(taskId);
+      UpcomingTasksWidget.tasksNotifier.value = UpcomingTasksWidget
+          .tasksNotifier
+          .value
+          .where((task) => task.id != taskId)
+          .toList();
       setState(() {
         _tasks.removeWhere((t) => t.id == taskId);
         _completedTaskIds.remove(taskId);
@@ -220,7 +244,6 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
       }
     });
 
-    // Keep Firebase in sync with completion status (non-destructive)
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) return;
@@ -230,12 +253,11 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
           .collection('upcoming')
           .doc(taskId)
           .update({
-            'status': nowCompleting ? 'Completed' : 'Pending',
-            if (nowCompleting) 'progress': 100,
+            'markCompleted': nowCompleting,
             if (nowCompleting) 'completedAt': FieldValue.serverTimestamp(),
           });
     } catch (e) {
-      print("Failed to update task completion: $e");
+      print("错误：更新任务完成标记失败 → $e");
     }
   }
 
@@ -259,7 +281,12 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
     final now = DateTime.now();
     for (final task in tasks) {
       final deadline = DateTime(
-        task.dueDate.year, task.dueDate.month, task.dueDate.day, 23, 59, 59,
+        task.dueDate.year,
+        task.dueDate.month,
+        task.dueDate.day,
+        23,
+        59,
+        59,
       );
       if (now.isAfter(deadline)) {
         await _deleteTaskFromFirebase(task.id);
@@ -283,7 +310,8 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
       bool matchesCoursework = ['homework', 'project'].contains(type);
       bool matchesTodo = !matchesCritical && !matchesCoursework;
       if (_selectedFilters.contains('CRITICAL') && matchesCritical) return true;
-      if (_selectedFilters.contains('COURSEWORK') && matchesCoursework) return true;
+      if (_selectedFilters.contains('COURSEWORK') && matchesCoursework)
+        return true;
       if (_selectedFilters.contains('TODO') && matchesTodo) return true;
       return false;
     }
@@ -295,10 +323,7 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
         .where((t) => _completedTaskIds.contains(t.id))
         .toList();
 
-    final filteredDisplayTasks = [
-      ...filteredActiveTasks,
-      ...completedTasks,
-    ];
+    final filteredDisplayTasks = [...filteredActiveTasks, ...completedTasks];
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 24),
@@ -344,52 +369,66 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
               ),
               const Spacer(),
 
-              Container(
-                height: 36,
-                width: 36,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade100, width: 1.5),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: PopupMenuButton<String>(
-                  padding: EdgeInsets.zero,
-                  tooltip: "",
-                  icon: const Icon(
-                    Icons.swap_vert_rounded,
-                    size: 18,
-                    color: Colors.grey,
+              MouseRegion(
+                onEnter: (_) => setState(() => _isSortHovered = true),
+                onExit: (_) => setState(() => _isSortHovered = false),
+                child: AnimatedScale(
+                  scale: _isSortHovered ? 1.1 : 1.0,
+                  duration: const Duration(milliseconds: 150),
+                  curve: Curves.easeOutBack,
+                  child: Container(
+                    height: 36,
+                    width: 36,
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: _isSortHovered
+                            ? Colors.grey.shade300
+                            : Colors.grey.shade100,
+                        width: 1.5,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: PopupMenuButton<String>(
+                      padding: EdgeInsets.zero,
+                      tooltip: "",
+                      icon: Icon(
+                        Icons.swap_vert_rounded,
+                        size: 18,
+                        color: _isSortHovered ? Colors.black87 : Colors.grey,
+                      ),
+                      onSelected: (String value) {
+                        setState(() {
+                          _selectedSort = value;
+                        });
+                      },
+                      color: Colors.white,
+                      surfaceTintColor: Colors.transparent,
+                      elevation: 8,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      offset: const Offset(0, 42),
+                      itemBuilder: (BuildContext context) =>
+                          <PopupMenuEntry<String>>[
+                            PopupMenuItem<String>(
+                              value: 'PRIORITY',
+                              padding: EdgeInsets.zero,
+                              child: _HoverMenuItem(
+                                text: "PRIORITY",
+                                isSelected: _selectedSort == 'PRIORITY',
+                              ),
+                            ),
+                            PopupMenuItem<String>(
+                              value: 'DEADLINE',
+                              padding: EdgeInsets.zero,
+                              child: _HoverMenuItem(
+                                text: "DEADLINE",
+                                isSelected: _selectedSort == 'DEADLINE',
+                              ),
+                            ),
+                          ],
+                    ),
                   ),
-                  onSelected: (String value) {
-                    setState(() {
-                      _selectedSort = value;
-                    });
-                  },
-                  color: Colors.white,
-                  surfaceTintColor: Colors.transparent,
-                  elevation: 8,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  offset: const Offset(0, 42),
-                  itemBuilder: (BuildContext context) =>
-                      <PopupMenuEntry<String>>[
-                        PopupMenuItem<String>(
-                          value: 'PRIORITY',
-                          padding: EdgeInsets.zero,
-                          child: _HoverMenuItem(
-                            text: "PRIORITY",
-                            isSelected: _selectedSort == 'PRIORITY',
-                          ),
-                        ),
-                        PopupMenuItem<String>(
-                          value: 'DEADLINE',
-                          padding: EdgeInsets.zero,
-                          child: _HoverMenuItem(
-                            text: "DEADLINE",
-                            isSelected: _selectedSort == 'DEADLINE',
-                          ),
-                        ),
-                      ],
                 ),
               ),
             ],
@@ -473,9 +512,13 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
               itemBuilder: (context, index) {
                 final task = filteredDisplayTasks[index];
                 final isCompleted = _completedTaskIds.contains(task.id);
+                final isFirstAvailableTask =
+                    !isCompleted &&
+                    filteredActiveTasks.isNotEmpty &&
+                    filteredActiveTasks.first.id == task.id;
 
                 return _UpcomingTaskItem(
-                  key: index == 0
+                  key: isFirstAvailableTask
                       ? TutorialTargetRegistry.get('upcoming-item-0')
                       : null,
                   task: task,
@@ -511,7 +554,6 @@ class _InteractiveFilterTag extends StatefulWidget {
 
 class _InteractiveFilterTagState extends State<_InteractiveFilterTag> {
   bool _isHovered = false;
-  bool _isPressed = false;
 
   @override
   Widget build(BuildContext context) {
@@ -519,14 +561,9 @@ class _InteractiveFilterTagState extends State<_InteractiveFilterTag> {
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
-        onTapDown: (_) => setState(() => _isPressed = true),
-        onTapUp: (_) {
-          setState(() => _isPressed = false);
-          widget.onTap();
-        },
-        onTapCancel: () => setState(() => _isPressed = false),
+        onTap: widget.onTap,
         child: AnimatedScale(
-          scale: _isPressed ? 0.92 : (_isHovered ? 1.05 : 1.0),
+          scale: _isHovered ? 1.05 : 1.0,
           duration: const Duration(milliseconds: 150),
           curve: Curves.easeOutBack,
           child: AnimatedContainer(
@@ -537,6 +574,12 @@ class _InteractiveFilterTagState extends State<_InteractiveFilterTag> {
                   ? widget.baseColor
                   : widget.baseColor.withOpacity(_isHovered ? 0.15 : 0.06),
               borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: _isHovered
+                    ? widget.baseColor.withOpacity(0.55)
+                    : Colors.transparent,
+                width: 1.5,
+              ),
               boxShadow: _isHovered && widget.isActive
                   ? [
                       BoxShadow(
@@ -629,7 +672,6 @@ class _UpcomingTaskItem extends StatefulWidget {
 class _UpcomingTaskItemState extends State<_UpcomingTaskItem> {
   double _swipeProgress = 0.0;
   bool _isHovered = false;
-  bool _isPressed = false;
 
   Widget _buildCelebrationWidget() {
     double burstProgress = ((_swipeProgress - 0.15) / 0.4).clamp(0.0, 1.0);
@@ -658,7 +700,9 @@ class _UpcomingTaskItemState extends State<_UpcomingTaskItem> {
   Widget build(BuildContext context) {
     Widget swipeBackground = Container(
       decoration: BoxDecoration(
-        color: widget.isCompleted ? Colors.grey.shade300 : Colors.green,
+        // 完成 → 绿色；撤销 → 橙色（带纸屑动画）
+        // Selesai → hijau; undo → oranye (dengan animasi confetti)
+        color: widget.isCompleted ? Colors.orange.shade400 : Colors.green,
         borderRadius: BorderRadius.circular(24),
       ),
       child: Row(
@@ -666,15 +710,11 @@ class _UpcomingTaskItemState extends State<_UpcomingTaskItem> {
         children: [
           Padding(
             padding: const EdgeInsets.only(left: 20),
-            child: widget.isCompleted
-                ? const SizedBox.shrink()
-                : _buildCelebrationWidget(),
+            child: _buildCelebrationWidget(),
           ),
           Padding(
             padding: const EdgeInsets.only(right: 20),
-            child: widget.isCompleted
-                ? const SizedBox.shrink()
-                : _buildCelebrationWidget(),
+            child: _buildCelebrationWidget(),
           ),
         ],
       ),
@@ -700,18 +740,11 @@ class _UpcomingTaskItemState extends State<_UpcomingTaskItem> {
           onEnter: (_) => setState(() => _isHovered = true),
           onExit: (_) => setState(() => _isHovered = false),
           child: GestureDetector(
-            onTapDown: (_) {
-              if (!widget.isCompleted) setState(() => _isPressed = true);
-            },
-            onTapUp: (_) {
-              setState(() => _isPressed = false);
-              if (!widget.isCompleted) widget.onTaskTap(widget.task);
-            },
-            onTapCancel: () => setState(() => _isPressed = false),
+            onTap: widget.isCompleted
+                ? null
+                : () => widget.onTaskTap(widget.task),
             child: AnimatedScale(
-              scale: _isPressed
-                  ? 0.97
-                  : (_isHovered && !widget.isCompleted ? 1.02 : 1.0),
+              scale: _isHovered && !widget.isCompleted ? 1.02 : 1.0,
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeOutBack,
               child: AnimatedContainer(
@@ -809,10 +842,16 @@ class _UpcomingTaskItemState extends State<_UpcomingTaskItem> {
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
                               color: widget.isCompleted
-                                  ? Colors.grey
+                                  ? Colors.black54
                                   : Colors.black87,
                               decoration: widget.isCompleted
                                   ? TextDecoration.lineThrough
+                                  : null,
+                              decorationColor: widget.isCompleted
+                                  ? Colors.black87
+                                  : null,
+                              decorationThickness: widget.isCompleted
+                                  ? 2.5
                                   : null,
                             ),
                           ),

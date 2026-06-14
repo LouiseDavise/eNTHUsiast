@@ -1,18 +1,13 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:provider/provider.dart';
-import '../../../providers/ccxp_data_provider.dart'; // To get the studentId
-import '../utilities/data.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../utilities/models.dart';
 import 'tutorial.dart';
 import 'upcoming.dart';
 
 class AddTaskPopup extends StatefulWidget {
-  final Function(String title, DateTime date, List<String> subtasks) onSave;
-
-  const AddTaskPopup({Key? key, required this.onSave}) : super(key: key);
+  const AddTaskPopup({Key? key}) : super(key: key);
 
   @override
   State<AddTaskPopup> createState() => _AddTaskPopupState();
@@ -107,8 +102,6 @@ class _AddTaskPopupState extends State<AddTaskPopup> {
         ...UpcomingTasksWidget.tasksNotifier.value,
         newTodoTask,
       ];
-
-      widget.onSave(_titleCtrl.text.trim(), _selectedDate!, _subtasks);
 
       if (mounted) Navigator.pop(context);
     } catch (e) {

@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../utilities/models.dart';
 import 'tutorial.dart';
-import 'upcoming.dart'; 
+import 'upcoming.dart';
 import 'day_details_popup.dart'; // Added the missing import for the popup!
 
 class CalendarWidget extends StatefulWidget {
   final DateTime currentDate;
   final DateTime selectedDate;
   final Function(DateTime) onDateSelected;
-  final Function(DateTime) onNavigate; 
+  final Function(DateTime) onNavigate;
 
   const CalendarWidget({
     Key? key,
@@ -44,6 +44,7 @@ class _CalendarWidgetState extends State<CalendarWidget>
 
   // Whether a programmatic swipe animation is running
   bool _animating = false;
+  int _monthTransitionDirection = 1;
 
   @override
   void initState() {
@@ -59,11 +60,11 @@ class _CalendarWidgetState extends State<CalendarWidget>
     TutorialTargetRegistry.forceCalendarWeekView = () {
       if (mounted && _showFullCalendar) {
         setState(() {
-          _showFullCalendar = false; 
+          _showFullCalendar = false;
         });
       }
     };
-    
+
     TutorialTargetRegistry.forceCalendarToJune = () {
       if (mounted) {
         final currentYear = DateTime.now().year;
@@ -93,7 +94,12 @@ class _CalendarWidgetState extends State<CalendarWidget>
 
   /// Triggers the cascading crossfade animation then commits navigation.
   Future<void> _handleNavigationAnimated(int step) async {
-    if (_animating || _showFullCalendar) {
+    if (_animating) {
+      return;
+    }
+
+    if (_showFullCalendar) {
+      setState(() => _monthTransitionDirection = step);
       _handleNavigation(step);
       return;
     }
@@ -118,13 +124,21 @@ class _CalendarWidgetState extends State<CalendarWidget>
 
   DateTime _nextDate(int step) {
     DateTime cleanDate = DateUtils.dateOnly(widget.currentDate);
-    return DateTime(cleanDate.year, cleanDate.month, cleanDate.day + (7 * step));
+    return DateTime(
+      cleanDate.year,
+      cleanDate.month,
+      cleanDate.day + (7 * step),
+    );
   }
 
   List<DateTime> _computeWeekDays(DateTime anchorDate) {
     final cleanDate = DateUtils.dateOnly(anchorDate);
     final int offset = anchorDate.weekday % 7;
-    final startOfWeek = DateTime(cleanDate.year, cleanDate.month, cleanDate.day - offset);
+    final startOfWeek = DateTime(
+      cleanDate.year,
+      cleanDate.month,
+      cleanDate.day - offset,
+    );
     return List.generate(
       7,
       (i) => DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day + i),
@@ -138,18 +152,26 @@ class _CalendarWidgetState extends State<CalendarWidget>
       newDate = DateTime(cleanDate.year, cleanDate.month + step, 1);
     } else {
       newDate = DateTime(
-        cleanDate.year, 
-        cleanDate.month, 
-        cleanDate.day + (7 * step)
+        cleanDate.year,
+        cleanDate.month,
+        cleanDate.day + (7 * step),
       );
     }
     widget.onNavigate(newDate);
   }
 
   List<DateTime?> _getMonthDays() {
-    final firstDayOfMonth = DateTime(widget.currentDate.year, widget.currentDate.month, 1);
-    final lastDayOfMonth = DateTime(widget.currentDate.year, widget.currentDate.month + 1, 0);
-    
+    final firstDayOfMonth = DateTime(
+      widget.currentDate.year,
+      widget.currentDate.month,
+      1,
+    );
+    final lastDayOfMonth = DateTime(
+      widget.currentDate.year,
+      widget.currentDate.month + 1,
+      0,
+    );
+
     List<DateTime?> days = [];
     for (int i = 0; i < firstDayOfMonth.weekday % 7; i++) {
       days.add(null);
@@ -168,7 +190,9 @@ class _CalendarWidgetState extends State<CalendarWidget>
 
   @override
   Widget build(BuildContext context) {
-    final String currentMonthYear = DateFormat('MMMM yyyy').format(widget.currentDate);
+    final String currentMonthYear = DateFormat(
+      'MMMM yyyy',
+    ).format(widget.currentDate);
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 24),
@@ -182,7 +206,7 @@ class _CalendarWidgetState extends State<CalendarWidget>
             color: Colors.black.withOpacity(0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
-          )
+          ),
         ],
       ),
       child: Column(
@@ -199,12 +223,20 @@ class _CalendarWidgetState extends State<CalendarWidget>
                       color: Colors.teal.shade50,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Icon(Icons.calendar_month_rounded, color: Colors.teal.shade600, size: 20),
+                    child: Icon(
+                      Icons.calendar_month_rounded,
+                      color: Colors.teal.shade600,
+                      size: 20,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   const Text(
                     "Calendar",
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.black),
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.black,
+                    ),
                   ),
                 ],
               ),
@@ -213,7 +245,7 @@ class _CalendarWidgetState extends State<CalendarWidget>
                 onPressed: () {
                   setState(() => _showFullCalendar = !_showFullCalendar);
                 },
-              )
+              ),
             ],
           ),
           const SizedBox(height: 24),
@@ -230,7 +262,11 @@ class _CalendarWidgetState extends State<CalendarWidget>
                 child: Text(
                   currentMonthYear,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.black),
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black,
+                  ),
                 ),
               ),
               _InteractiveArrowButton(
@@ -244,9 +280,42 @@ class _CalendarWidgetState extends State<CalendarWidget>
           AnimatedCrossFade(
             duration: const Duration(milliseconds: 400),
             sizeCurve: Curves.easeOutBack,
-            crossFadeState: _showFullCalendar ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            crossFadeState: _showFullCalendar
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
             firstChild: _buildWeekView(),
-            secondChild: _buildMonthView(),
+            secondChild: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 480),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) {
+                final isIncoming =
+                    child.key ==
+                    ValueKey(
+                      '${widget.currentDate.year}-${widget.currentDate.month}',
+                    );
+                final direction = _monthTransitionDirection.toDouble();
+                final beginOffset = isIncoming
+                    ? Offset(direction * 0.16, direction * 0.06)
+                    : Offset(-direction * 0.16, -direction * 0.06);
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: beginOffset,
+                      end: Offset.zero,
+                    ).animate(animation),
+                    child: child,
+                  ),
+                );
+              },
+              child: KeyedSubtree(
+                key: ValueKey(
+                  '${widget.currentDate.year}-${widget.currentDate.month}',
+                ),
+                child: _buildMonthView(),
+              ),
+            ),
           ),
         ],
       ),
@@ -290,7 +359,9 @@ class _CalendarWidgetState extends State<CalendarWidget>
           final t = _swipeController.value; // 0.0 → 1.0
 
           if (_animating && _outgoingWeekDays != null) {
-            final incomingWeekDays = _computeWeekDays(_nextDate(_swipeDirection));
+            final incomingWeekDays = _computeWeekDays(
+              _nextDate(_swipeDirection),
+            );
             return _buildCascadingRows(
               outgoing: _outgoingWeekDays!,
               incoming: incomingWeekDays,
@@ -304,7 +375,10 @@ class _CalendarWidgetState extends State<CalendarWidget>
           return Transform(
             alignment: Alignment.center,
             transform: Matrix4.identity()
-              ..translate(_dragFraction * MediaQuery.of(context).size.width * 0.4, 0.0)
+              ..translate(
+                _dragFraction * MediaQuery.of(context).size.width * 0.4,
+                0.0,
+              )
               ..scale(1.0 - absDrag * 0.02),
             child: _buildWeekRow(_computeWeekDays(widget.currentDate)),
           );
@@ -318,8 +392,8 @@ class _CalendarWidgetState extends State<CalendarWidget>
   Widget _buildCascadingRows({
     required List<DateTime> outgoing,
     required List<DateTime> incoming,
-    required double t,           // controller value 0→1
-    required int direction,      // +1 forward, -1 backward
+    required double t, // controller value 0→1
+    required int direction, // +1 forward, -1 backward
   }) {
     const int cellCount = 7;
     // Each cell's animation window within the full 0→1 timeline.
@@ -414,7 +488,8 @@ class _CalendarWidgetState extends State<CalendarWidget>
               widget.onDateSelected(date);
               showDialog(
                 context: context,
-                builder: (context) => DayDetailsPopup(date: date, events: dailyEvents),
+                builder: (context) =>
+                    DayDetailsPopup(date: date, events: dailyEvents),
               );
             },
           );
@@ -439,14 +514,23 @@ class _CalendarWidgetState extends State<CalendarWidget>
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: weekLabels.map((l) => SizedBox(
-              width: 36,
-              child: Text(
-                l,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.grey.shade400, letterSpacing: 1),
-              ),
-            )).toList(),
+            children: weekLabels
+                .map(
+                  (l) => SizedBox(
+                    width: 36,
+                    child: Text(
+                      l,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.grey.shade400,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
           ),
           const SizedBox(height: 12),
           GridView.builder(
@@ -466,11 +550,13 @@ class _CalendarWidgetState extends State<CalendarWidget>
               final isSelected = DateUtils.isSameDay(date, widget.selectedDate);
               final isToday = DateUtils.isSameDay(date, today);
               final dailyEvents = _getEventsForDate(date);
-              
+
               final isJune21st = date.day == 21 && date.month == 6;
 
               return _InteractiveDayCell(
-                key: (_showFullCalendar && isJune21st) ? TutorialTargetRegistry.get('calendar-day-21') : null,
+                key: (_showFullCalendar && isJune21st)
+                    ? TutorialTargetRegistry.get('calendar-day-21')
+                    : null,
                 date: date,
                 isSelected: isSelected,
                 isToday: isToday,
@@ -480,7 +566,8 @@ class _CalendarWidgetState extends State<CalendarWidget>
                   widget.onDateSelected(date);
                   showDialog(
                     context: context,
-                    builder: (context) => DayDetailsPopup(date: date, events: dailyEvents),
+                    builder: (context) =>
+                        DayDetailsPopup(date: date, events: dailyEvents),
                   );
                 },
               );
@@ -516,7 +603,6 @@ class _InteractiveDayCell extends StatefulWidget {
 
 class _InteractiveDayCellState extends State<_InteractiveDayCell> {
   bool _isHovered = false;
-  bool _isPressed = false;
 
   Widget _buildEventDots() {
     if (widget.events.isEmpty) return const SizedBox(height: 14);
@@ -558,7 +644,9 @@ class _InteractiveDayCellState extends State<_InteractiveDayCell> {
               style: TextStyle(
                 fontSize: 7,
                 fontWeight: FontWeight.w900,
-                color: widget.isSelected ? Colors.white : const Color(0xFF7E22CE).withOpacity(0.6),
+                color: widget.isSelected
+                    ? Colors.white
+                    : const Color(0xFF7E22CE).withOpacity(0.6),
                 height: 1.2,
               ),
             ),
@@ -575,78 +663,122 @@ class _InteractiveDayCellState extends State<_InteractiveDayCell> {
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
-        onTapDown: (_) => setState(() => _isPressed = true),
-        onTapUp: (_) {
-          setState(() => _isPressed = false);
-          widget.onTap();
-        },
-        onTapCancel: () => setState(() => _isPressed = false),
+        onTap: widget.onTap,
         child: AnimatedScale(
-          scale: _isPressed ? 0.90 : (_isHovered && !widget.isSelected ? 1.05 : 1.0),
+          scale: _isHovered && !widget.isSelected ? 1.05 : 1.0,
           duration: const Duration(milliseconds: 150),
           curve: Curves.easeOutBack,
-          child: widget.isMonthView 
-            ? AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                decoration: BoxDecoration(
-                  color: widget.isSelected ? nthuPurple : (_isHovered ? nthuPurple.withOpacity(0.05) : Colors.transparent),
-                  borderRadius: BorderRadius.circular(16),
-                  border: widget.isToday && !widget.isSelected ? Border.all(color: nthuPurple, width: 2) : null,
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      "${widget.date.day}",
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
-                        color: widget.isSelected ? Colors.white : (widget.isToday ? nthuPurple : Colors.black87),
+          child: widget.isMonthView
+              ? AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  decoration: BoxDecoration(
+                    color: widget.isSelected
+                        ? nthuPurple
+                        : (_isHovered
+                              ? nthuPurple.withOpacity(0.05)
+                              : Colors.transparent),
+                    borderRadius: BorderRadius.circular(16),
+                    border: widget.isSelected
+                        ? Border.all(color: nthuPurple, width: 2)
+                        : Border.all(
+                            color: _isHovered || widget.isToday
+                                ? nthuPurple.withOpacity(_isHovered ? 0.45 : 1)
+                                : Colors.transparent,
+                            width: 2,
+                          ),
+                    boxShadow: _isHovered && !widget.isSelected
+                        ? [
+                            BoxShadow(
+                              color: nthuPurple.withOpacity(0.10),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : [],
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        "${widget.date.day}",
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          color: widget.isSelected
+                              ? Colors.white
+                              : (widget.isToday ? nthuPurple : Colors.black87),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    _buildEventDots(),
-                  ],
-                ),
-              )
-            : AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: 42,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(
-                  color: widget.isSelected ? nthuPurple : Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: widget.isToday && !widget.isSelected
-                      ? Border.all(color: nthuPurple, width: 2)
-                      : Border.all(color: widget.isSelected ? nthuPurple : (_isHovered ? Colors.grey.shade200 : Colors.grey.shade50), width: 2),
-                  boxShadow: widget.isSelected
-                      ? [BoxShadow(color: nthuPurple.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 6))]
-                      : (_isHovered ? [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 4))] : []),
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      DateFormat('E').format(widget.date).toUpperCase(),
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w900,
-                        color: widget.isSelected ? Colors.white : (widget.isToday ? nthuPurple : Colors.grey.shade400),
+                      const SizedBox(height: 2),
+                      _buildEventDots(),
+                    ],
+                  ),
+                )
+              : AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 42,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
+                    color: widget.isSelected ? nthuPurple : Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: widget.isToday && !widget.isSelected
+                        ? Border.all(color: nthuPurple, width: 2)
+                        : Border.all(
+                            color: widget.isSelected
+                                ? nthuPurple
+                                : (_isHovered
+                                      ? Colors.grey.shade200
+                                      : Colors.grey.shade50),
+                            width: 2,
+                          ),
+                    boxShadow: widget.isSelected
+                        ? [
+                            BoxShadow(
+                              color: nthuPurple.withOpacity(0.3),
+                              blurRadius: 12,
+                              offset: const Offset(0, 6),
+                            ),
+                          ]
+                        : (_isHovered
+                              ? [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.04),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ]
+                              : []),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        DateFormat('E').format(widget.date).toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900,
+                          color: widget.isSelected
+                              ? Colors.white
+                              : (widget.isToday
+                                    ? nthuPurple
+                                    : Colors.grey.shade400),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      "${widget.date.day}",
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                        color: widget.isSelected ? Colors.white : Colors.black87,
+                      const SizedBox(height: 4),
+                      Text(
+                        "${widget.date.day}",
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: widget.isSelected
+                              ? Colors.white
+                              : Colors.black87,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    _buildEventDots(),
-                  ],
+                      const SizedBox(height: 4),
+                      _buildEventDots(),
+                    ],
+                  ),
                 ),
-              ),
         ),
       ),
     );
@@ -657,10 +789,14 @@ class _InteractiveToggleButton extends StatefulWidget {
   final bool isFullView;
   final VoidCallback onPressed;
 
-  const _InteractiveToggleButton({required this.isFullView, required this.onPressed});
+  const _InteractiveToggleButton({
+    required this.isFullView,
+    required this.onPressed,
+  });
 
   @override
-  State<_InteractiveToggleButton> createState() => _InteractiveToggleButtonState();
+  State<_InteractiveToggleButton> createState() =>
+      _InteractiveToggleButtonState();
 }
 
 class _InteractiveToggleButtonState extends State<_InteractiveToggleButton> {
@@ -669,25 +805,53 @@ class _InteractiveToggleButtonState extends State<_InteractiveToggleButton> {
   @override
   Widget build(BuildContext context) {
     const nthuPurple = Color(0xFF7E22CE);
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: OutlinedButton(
-        key: TutorialTargetRegistry.get('calendar-full-view-btn'),
-        onPressed: widget.onPressed,
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          side: BorderSide(color: _isHovered ? nthuPurple.withOpacity(0.4) : nthuPurple.withOpacity(0.1)),
-          backgroundColor: _isHovered ? nthuPurple.withOpacity(0.05) : Colors.grey.shade50,
-          animationDuration: const Duration(milliseconds: 200),
-        ),
-        child: widget.isFullView 
-          ? const Icon(Icons.close_rounded, size: 16, color: nthuPurple)
-          : const Text(
-              "FULL VIEW",
-              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: nthuPurple, letterSpacing: 1.5),
+    return SizedBox(
+      key: TutorialTargetRegistry.get('calendar-full-view-btn'),
+      width: 40,
+      height: 36,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: AnimatedScale(
+          scale: _isHovered ? 1.08 : 1.0,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutBack,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            decoration: BoxDecoration(
+              color: _isHovered
+                  ? nthuPurple.withOpacity(0.06)
+                  : Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _isHovered
+                    ? nthuPurple.withOpacity(0.45)
+                    : nthuPurple.withOpacity(0.12),
+                width: 1.5,
+              ),
+              boxShadow: _isHovered
+                  ? [
+                      BoxShadow(
+                        color: nthuPurple.withOpacity(0.10),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : [],
             ),
+            child: IconButton(
+              padding: EdgeInsets.zero,
+              onPressed: widget.onPressed,
+              icon: Icon(
+                widget.isFullView
+                    ? Icons.fullscreen_exit_rounded
+                    : Icons.fullscreen_rounded,
+                size: 20,
+                color: nthuPurple,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -700,7 +864,8 @@ class _InteractiveArrowButton extends StatefulWidget {
   const _InteractiveArrowButton({required this.icon, required this.onPressed});
 
   @override
-  State<_InteractiveArrowButton> createState() => _InteractiveArrowButtonState();
+  State<_InteractiveArrowButton> createState() =>
+      _InteractiveArrowButtonState();
 }
 
 class _InteractiveArrowButtonState extends State<_InteractiveArrowButton> {
@@ -711,12 +876,16 @@ class _InteractiveArrowButtonState extends State<_InteractiveArrowButton> {
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
-      child: IconButton(
-        onPressed: widget.onPressed,
-        icon: AnimatedScale(
-          scale: _isHovered ? 1.2 : 1.0,
-          duration: const Duration(milliseconds: 150),
-          child: Icon(widget.icon, color: _isHovered ? Colors.black87 : Colors.grey.shade400),
+      child: AnimatedScale(
+        scale: _isHovered ? 1.22 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOutBack,
+        child: IconButton(
+          onPressed: widget.onPressed,
+          icon: Icon(
+            widget.icon,
+            color: _isHovered ? Colors.black87 : Colors.grey.shade400,
+          ),
         ),
       ),
     );

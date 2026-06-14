@@ -10,7 +10,6 @@ import 'widgets/tutorial.dart';
 
 // Popups
 import 'widgets/add_task_popup.dart';
-import 'widgets/day_details_popup.dart';
 import 'widgets/subtask_manager_popup.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -24,24 +23,15 @@ class _HomeScreenState extends State<HomeScreen> {
   // Global State
   bool _isBulletinCollapsed = false;
   bool _showTutorial = false;
-  bool _showFab = false;
-  final ScrollController _scrollController = ScrollController();
+  bool _isFabHovered = false;
+  bool _isTutorialShortcutHovered = false;
   DateTime _currentDate = DateTime.now();
   DateTime _selectedDate = DateTime.now();
-
-  List<AppEvent> _customEvents = [];
-  Map<String, List<Subtask>> _subtasksMap = Map.from(initialSubtasksMap);
 
   @override
   void initState() {
     super.initState();
     _checkTutorialStatus();
-    _scrollController.addListener(() {
-      final shouldShow = _scrollController.offset > 80;
-      if (shouldShow != _showFab) {
-        setState(() => _showFab = shouldShow);
-      }
-    });
     TutorialTargetRegistry.forceBulletinOpen = () {
       if (mounted && _isBulletinCollapsed) {
         setState(() {
@@ -70,108 +60,38 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  String _formatDateKey(DateTime date) {
-    return "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
-  }
-
-  void _openDayDetails(DateTime date) {
-    final key = _formatDateKey(date);
-    final events = initialCalendarEvents[key] ?? [];
-    final customForDay = _customEvents
-        .where((e) => _formatDateKey(e.dueDate) == key)
-        .toList();
-
-    final allEventsForDay = [
-      ...events,
-      ...customForDay,
-    ].where((e) => e.type != 'Lecture').toList();
-
-    if (allEventsForDay.isNotEmpty) {
-      showDialog(
-        context: context,
-        builder: (context) =>
-            DayDetailsPopup(date: date, events: allEventsForDay),
-      );
-    }
-  }
-
   void _openAddTask() {
-    showDialog(
-      context: context,
-      builder: (context) => AddTaskPopup(
-        onSave: (title, date, subtaskList) {
-          final newEventId = DateTime.now().millisecondsSinceEpoch.toString();
-
-          final newEvent = AppEvent(
-            id: newEventId,
-            title: title,
-            code: "USER",
-            time: "All Day",
-            type: "TODO",
-            color: nthuPurple,
-            dueDate: date,
-          );
-
-          setState(() {
-            _customEvents.add(newEvent);
-
-            if (subtaskList.isNotEmpty) {
-              _subtasksMap[newEventId] = subtaskList.asMap().entries.map((e) {
-                return Subtask(id: "${newEventId}_${e.key}", text: e.value);
-              }).toList();
-            }
-
-            final key = _formatDateKey(date);
-            if (initialCalendarEvents[key] == null) {
-              initialCalendarEvents[key] = [];
-            }
-            initialCalendarEvents[key]!.add(newEvent);
-          });
-        },
-      ),
-    );
+    showDialog(context: context, builder: (context) => const AddTaskPopup());
   }
 
   void _openSubtaskManager(AppEvent event) {
+    final workingSubtasks = event.subtasks
+        .map((s) => Subtask(id: s.id, text: s.text, completed: s.completed))
+        .toList();
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setStateModal) {
           return SubtaskManagerPopup(
             event: event,
-            subtasks: _subtasksMap[event.id] ?? [],
+            subtasks: workingSubtasks,
             onToggle: (subId) {
-              setState(() {
-                final sub = (_subtasksMap[event.id] ?? []).firstWhere(
-                  (s) => s.id == subId,
-                );
-                sub.completed = !sub.completed;
-              });
+              final sub = workingSubtasks.firstWhere((s) => s.id == subId);
+              sub.completed = !sub.completed;
               setStateModal(() {});
             },
             onUpdate: () {
               setState(() {});
             },
             onAddSubtask: (newText) {
-              setState(() {
-                if (_subtasksMap[event.id] == null) {
-                  _subtasksMap[event.id] = [];
-                }
-
-                _subtasksMap[event.id]!.add(
-                  Subtask(
-                    id: 'st-${DateTime.now().millisecondsSinceEpoch}',
-                    text: newText,
-                    completed: false,
-                  ),
-                );
-              });
+              workingSubtasks.add(
+                Subtask(
+                  id: 'st-${DateTime.now().millisecondsSinceEpoch}',
+                  text: newText,
+                  completed: false,
+                ),
+              );
               setStateModal(() {});
             },
           );
@@ -184,11 +104,39 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: Container(
+        margin: const EdgeInsets.only(right: 16, bottom: 16),
+        child: SizedBox(
+          key: TutorialTargetRegistry.get('fab-button'),
+          width: 56,
+          height: 56,
+          child: MouseRegion(
+            onEnter: (_) => setState(() => _isFabHovered = true),
+            onExit: (_) => setState(() => _isFabHovered = false),
+            child: AnimatedScale(
+              scale: _isFabHovered ? 1.08 : 1.0,
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeOutBack,
+              child: FloatingActionButton(
+                onPressed: _openAddTask,
+                backgroundColor: nthuPurple,
+                elevation: _isFabHovered ? 12 : 8,
+                shape: const CircleBorder(),
+                child: const Icon(
+                  Icons.add_rounded,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
       body: SafeArea(
         child: Stack(
           children: [
             ListView(
-              controller: _scrollController,
               padding: const EdgeInsets.only(bottom: 100),
               children: [
                 // Header Area
@@ -248,30 +196,45 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const Spacer(),
                       // Tutorial Button inside the scroll view (Moves up/away with page scrolling)
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _showTutorial = true;
-                          });
-                        },
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.12),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
+                      MouseRegion(
+                        onEnter: (_) =>
+                            setState(() => _isTutorialShortcutHovered = true),
+                        onExit: (_) =>
+                            setState(() => _isTutorialShortcutHovered = false),
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _showTutorial = true;
+                            });
+                          },
+                          child: AnimatedScale(
+                            scale: _isTutorialShortcutHovered ? 1.1 : 1.0,
+                            duration: const Duration(milliseconds: 150),
+                            curve: Curves.easeOutBack,
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(
+                                      _isTutorialShortcutHovered ? 0.18 : 0.12,
+                                    ),
+                                    blurRadius: _isTutorialShortcutHovered
+                                        ? 12
+                                        : 8,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.question_mark_rounded,
-                            color: nthuPurple,
-                            size: 20,
+                              child: const Icon(
+                                Icons.question_mark_rounded,
+                                color: nthuPurple,
+                                size: 20,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -300,7 +263,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         _selectedDate = date;
                         _currentDate = date;
                       });
-                      _openDayDetails(date);
                     },
                     onNavigate: (newDate) {
                       setState(() {
@@ -316,37 +278,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: UpcomingTasksWidget(onTaskTap: _openSubtaskManager),
                 ),
               ],
-            ),
-
-            Positioned(
-              bottom: 32,
-              right: 32,
-              child: AnimatedSlide(
-                offset: _showFab ? Offset.zero : const Offset(0, 0.3),
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOutBack,
-                child: AnimatedOpacity(
-                  opacity: _showFab ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 250),
-                  child: IgnorePointer(
-                    ignoring: !_showFab,
-                    child: Container(
-                      key: TutorialTargetRegistry.get('fab-button'),
-                      child: FloatingActionButton(
-                        onPressed: _openAddTask,
-                        backgroundColor: nthuPurple,
-                        elevation: 8,
-                        shape: const CircleBorder(),
-                        child: const Icon(
-                          Icons.add_rounded,
-                          color: Colors.white,
-                          size: 32,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
             ),
 
             // Interactive Dashboard Tour Overlay Layer
