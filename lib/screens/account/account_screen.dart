@@ -1,17 +1,22 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io' show Platform;
 
 import '../../theme/app_theme.dart';
 import '../../widgets/profile_header.dart';
 import 'widgets/curriculum_upload_sheet.dart';
 import '../preference/preference_screen.dart';
-import 'profile_screen.dart';
 import 'transcript_screen.dart';
 import 'language_screen.dart';
 import 'settings/settings_screen.dart';
 import 'package:enthusiast/main.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../providers/ccxp_data_provider.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hover-aware settings row tile — matches home_screen hover-pop aesthetic
@@ -195,14 +200,221 @@ class AccountScreen extends StatefulWidget {
 }
 
 class _AccountScreenState extends State<AccountScreen> {
-  // ── Navigation helpers (preserved from original SettingsMenuWidget) ─────────
+  // ── Google Sign-In (dipindahkan dari ProfileScreen) ─────────────────────────
+  late final GoogleSignIn _googleSignIn = GoogleSignIn(
+    clientId: kIsWeb
+        ? '2500792168-i7vvalt33atk3v1c513felvoe2p6dstl.apps.googleusercontent.com'
+        : null,
+    serverClientId: kIsWeb
+        ? null
+        : '2500792168-i7vvalt33atk3v1c513felvoe2p6dstl.apps.googleusercontent.com',
+    scopes: [
+      'email',
+      'https://www.googleapis.com/auth/gmail.readonly',
+    ],
+  );
 
-  void _openProfileScreen() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const ProfileScreen()),
-    );
+  // Cek apakah platform adalah iOS atau Android (bukan web)
+  bool get _isMobilePlatform =>
+      !kIsWeb && (Platform.isIOS || Platform.isAndroid);
+
+  // Ambil studentId dari CcxpDataProvider; tampilkan SnackBar jika null
+  String? _getStudentId() {
+    final ccxpData = Provider.of<CcxpDataProvider>(context, listen: false);
+    final studentId =
+        ccxpData.graduationData?["studentInfo"]?["studentId"]?.toString();
+    if (studentId == null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Error: Could not find Student ID. Please log in to CCXP first.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+    return studentId;
   }
+
+  // Panggil Cloud Function linkGmailAccount dengan payload yang diberikan
+  Future<void> _callLinkFunction(Map<String, dynamic> payload) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Error: Not logged in to Firebase. Please log in to CCXP first.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Gabungkan payload dengan uid sebelum dikirim ke Cloud Function
+    final fullPayload = {...payload, 'uid': uid};
+
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('linkGmailAccount')
+          .call(fullPayload);
+
+      if (!mounted) return;
+
+      if (result.data['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Account successfully linked and secured!'),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Warning: Linking completed but check the console.'),
+          ),
+        );
+      }
+    } catch (e) {
+      print("Cloud Function Error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to connect to server.')),
+        );
+      }
+    }
+  }
+
+  // Alur login Gmail untuk platform mobile: gunakan serverAuthCode
+  Future<void> _handleEmailLoginMobile() async {
+    try {
+      await _googleSignIn.signOut();
+
+      final GoogleSignInAccount? account = await _googleSignIn.signIn();
+      if (account == null) return;
+
+      final GoogleSignInAuthentication auth = await account.authentication;
+
+      // serverAuthCode diperlukan agar server bisa memperbarui token
+      final String? serverAuthCode = account.serverAuthCode;
+      if (serverAuthCode == null) {
+        print("Failed to get server auth code.");
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Failed to get server auth code. Check serverClientId configuration.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Successfully authorized Gmail! Linking...'),
+          ),
+        );
+      }
+
+      final studentId = _getStudentId();
+      if (studentId == null) return;
+
+      // Kirim serverAuthCode, email, studentId, dan platform ke Cloud Function
+      await _callLinkFunction({
+        'serverAuthCode': serverAuthCode,
+        'email': account.email,
+        'studentId': studentId,
+        'platform': 'mobile',
+      });
+    } catch (error) {
+      print("Google Sign In Error (mobile): $error");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Login failed: $error')),
+        );
+      }
+    }
+  }
+
+  // Alur login Gmail untuk web: gunakan accessToken
+  Future<void> _handleEmailLoginWeb() async {
+    try {
+      GoogleSignInAccount? account = await _googleSignIn.signIn();
+      if (account == null) return;
+
+      // Minta izin scope Gmail secara eksplisit di web
+      final bool granted =
+          await _googleSignIn.requestScopes(_googleSignIn.scopes.toList());
+      if (!granted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Gmail scope not granted.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Gunakan signInSilently untuk memperbarui token tanpa popup ulang
+      account = await _googleSignIn.signInSilently() ?? account;
+      final GoogleSignInAuthentication auth = await account.authentication;
+      final String? accessToken = auth.accessToken;
+
+      if (accessToken == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to get access token.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Successfully authorized Gmail! Linking...'),
+          ),
+        );
+      }
+
+      final studentId = _getStudentId();
+      if (studentId == null) return;
+
+      // Kirim accessToken, email, studentId, dan platform ke Cloud Function
+      await _callLinkFunction({
+        'accessToken': accessToken,
+        'email': account.email,
+        'studentId': studentId,
+        'platform': 'web',
+      });
+    } catch (e) {
+      print("Web Google Sign In Error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Authorization failed: $e')),
+        );
+      }
+    }
+  }
+
+  // Dispatcher: pilih mobile atau web berdasarkan platform
+  Future<void> _handleEmailLogin() async {
+    if (_isMobilePlatform) {
+      await _handleEmailLoginMobile();
+    } else {
+      await _handleEmailLoginWeb();
+    }
+  }
+
+  // ── Navigation helpers ──────────────────────────────────────────────────────
 
   void _openTranscriptScreen() {
     Navigator.push(
@@ -373,7 +585,7 @@ class _AccountScreenState extends State<AccountScreen> {
     final isTablet = MediaQuery.of(context).size.width >= 600;
 
     return Scaffold(
-      backgroundColor: AppTheme.backgroundLight,
+      backgroundColor:Colors.white,
       body: SafeArea(
         child: isTablet ? _buildTabletLayout() : _buildPhoneLayout(),
       ),
@@ -421,12 +633,12 @@ class _AccountScreenState extends State<AccountScreen> {
         // ── ACCOUNT ─────────────────────────────────────────────────────────
         const _SectionLabel('Account'),
         _SettingsTile(
-          icon: Icons.manage_accounts_rounded,
-          iconColor: const Color(0xFF7B2F8E),
-          iconBg: const Color(0xFFF3E8FF),
-          title: 'Account',
-          subtitle: 'CCXP & Gmail login',
-          onTap: _openProfileScreen,
+          icon: Icons.email_rounded,
+          iconColor: const Color(0xFFDC2626),
+          iconBg: const Color(0xFFFEE2E2),
+          title: 'Email Login',
+          subtitle: 'Link your Gmail account',
+          onTap: _handleEmailLogin,
         ),
 
         const SizedBox(height: 28),
