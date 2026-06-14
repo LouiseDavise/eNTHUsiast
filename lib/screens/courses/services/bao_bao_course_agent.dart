@@ -26,7 +26,7 @@ class BaoBaoCourseAgent {
   }) async {
     final trace = <BaoBaoAgentStep>[];
 
-    final hasCurriculum = curriculum != null && curriculum.isNotEmpty;
+    final hasCurriculum = _hasUsableCurriculum(curriculum);
 
     trace.add(
       BaoBaoAgentStep(
@@ -34,7 +34,7 @@ class BaoBaoCourseAgent {
         status: hasCurriculum ? 'done' : 'skipped',
         message: hasCurriculum
             ? 'Curriculum found. Bao-Bao will map courses into curriculum buckets.'
-            : 'No curriculum uploaded yet. Bao-Bao will use CORE / ELECTIVE / GE only.',
+            : 'No curriculum uploaded yet. Bao-Bao will keep CORE courses related to the user department/career path, and use GE preferences for GE/elective options.',
       ),
     );
 
@@ -86,8 +86,16 @@ class BaoBaoCourseAgent {
       userPreferences: userPreferences,
     );
 
-    final languageAwareCourses = _filterByUserLanguagePreference(
+    final policyAwareCourses = _applyPreferenceAwareCoreAndGeRules(
       courses: preferenceAwareCourses,
+      hasCurriculum: hasCurriculum,
+      curriculum: curriculum,
+      graduationData: graduationData,
+      userPreferences: userPreferences,
+    );
+
+    final languageAwareCourses = _filterByUserLanguagePreference(
+      courses: policyAwareCourses,
       userPreferences: userPreferences,
     );
 
@@ -99,7 +107,7 @@ class BaoBaoCourseAgent {
         status: hasCurriculum ? 'done' : 'skipped',
         message: hasCurriculum
             ? 'Mapped courses to curriculum buckets: ${_formatBucketCounts(bucketCountsBeforeFilter)}.'
-            : 'Skipped bucket mapping because no curriculum was found.',
+            : 'Skipped exact bucket mapping because no curriculum was found. Using career/department-aware CORE and GE/elective preference rules.',
       ),
     );
 
@@ -120,10 +128,12 @@ class BaoBaoCourseAgent {
     );
 
     trace.add(
-      const BaoBaoAgentStep(
+      BaoBaoAgentStep(
         name: 'planCourse',
         status: 'running',
-        message: 'Generating candidate plan using bucketed courses...',
+        message: hasCurriculum
+            ? 'Generating candidate plan using curriculum buckets and user preferences...'
+            : 'Generating candidate plan using career/department-aware CORE and GE/elective rules...',
       ),
     );
 
@@ -191,41 +201,128 @@ class BaoBaoCourseAgent {
   }
 
   List<Map<String, dynamic>> _filterByUserLanguagePreference({
-  required List<Map<String, dynamic>> courses,
-  required Map<String, dynamic>? userPreferences,
-}) {
-  final prefs = _preferenceMap(userPreferences);
-  final languagePreference =
-      (prefs['languagePreference'] ?? '').toString().toLowerCase();
+    required List<Map<String, dynamic>> courses,
+    required Map<String, dynamic>? userPreferences,
+  }) {
+    final prefs = _preferenceMap(userPreferences);
+    final preferredLanguage = _normalizedInstructionLanguagePreference(
+      (prefs['languagePreference'] ?? '').toString(),
+    );
 
-  if (!languagePreference.contains('english')) {
-    return courses;
+    if (preferredLanguage == null) {
+      return courses;
+    }
+
+    final matchingCourses = courses.where((course) {
+      return _matchesInstructionLanguage(course, preferredLanguage);
+    }).toList();
+
+    // Safety fallback: if Firestore language data is incomplete,
+    // do not accidentally return zero courses.
+    if (matchingCourses.isEmpty) {
+      return courses;
+    }
+
+    return matchingCourses;
   }
 
-  final englishCourses = courses.where(_isEnglishTaughtCourse).toList();
+  String? _normalizedInstructionLanguagePreference(String value) {
+    final lower = value.toLowerCase();
 
-  // Safety fallback: if Firestore language data is incomplete,
-  // do not accidentally return zero courses.
-  if (englishCourses.isEmpty) {
-    return courses;
+    if (lower.contains('english') ||
+        lower.contains('eng') ||
+        lower.contains('英文') ||
+        lower.contains('英語')) {
+      return 'english';
+    }
+
+    if (lower.contains('chinese') ||
+        lower.contains('mandarin') ||
+        lower.contains('中文') ||
+        lower.contains('華語') ||
+        lower.contains('國語')) {
+      return 'chinese';
+    }
+
+    return null;
   }
 
-  return englishCourses;
-}
+  bool _matchesInstructionLanguage(
+    Map<String, dynamic> course,
+    String language,
+  ) {
+    final languageText = _courseInstructionLanguageText(course);
 
-  bool _isEnglishTaughtCourse(Map<String, dynamic> course) {
-    final text = [
+    if (languageText.isEmpty) {
+      return false;
+    }
+
+    if (language == 'english') {
+      return _hasEnglishInstructionText(languageText);
+    }
+
+    if (language == 'chinese') {
+      return _hasChineseInstructionText(languageText);
+    }
+
+    return true;
+  }
+
+  String _courseInstructionLanguageText(Map<String, dynamic> course) {
+    // Important: do NOT use the course title here.
+    // A course can be English-taught or Chinese-taught even when the title
+    // does not contain the word English/Chinese.
+    return [
       course['language'],
       course['instructionLanguage'],
       course['languageOfInstruction'],
+      course['languageOfInstructionDescription'],
       course['teachingLanguage'],
+      course['courseLanguage'],
+      course['mediumOfInstruction'],
+      course['conductLanguage'],
+      course['taughtIn'],
       course['remarks'],
-    ].whereType<Object>().join(' ').toLowerCase();
+      course['note'],
+    ]
+        .whereType<Object>()
+        .map((item) => item.toString())
+        .join(' ')
+        .toLowerCase()
+        .trim();
+  }
 
-    return text.contains('english') ||
-        text.contains('eng') ||
-        text.contains('英文') ||
-        text.contains('英語');
+  bool _hasEnglishInstructionText(String text) {
+    final normalized = text.toLowerCase();
+
+    return normalized.contains('english') ||
+        normalized.contains('english-taught') ||
+        normalized.contains('taught in english') ||
+        normalized.contains('conducted in english') ||
+        RegExp(r'(^|[^a-z])(eng|en|e)([^a-z]|$)').hasMatch(normalized) ||
+        normalized.contains('英文') ||
+        normalized.contains('英語') ||
+        normalized.contains('英授') ||
+        RegExp(r'(^|[^\u4e00-\u9fff])英([^\u4e00-\u9fff]|$)')
+            .hasMatch(normalized);
+  }
+
+  bool _hasChineseInstructionText(String text) {
+    final normalized = text.toLowerCase();
+
+    return normalized.contains('chinese') ||
+        normalized.contains('mandarin') ||
+        normalized.contains('taught in chinese') ||
+        normalized.contains('conducted in chinese') ||
+        RegExp(r'(^|[^a-z])(zh|zht|zhs|cn|ch|c)([^a-z]|$)')
+            .hasMatch(normalized) ||
+        normalized.contains('中文') ||
+        normalized.contains('華語') ||
+        normalized.contains('國語') ||
+        normalized.contains('漢語') ||
+        normalized.contains('中授') ||
+        RegExp(r'(^|[^\u4e00-\u9fff])中([^\u4e00-\u9fff]|$)')
+            .hasMatch(normalized);
   }
 
   List<Map<String, dynamic>> _attachUserPreferenceInsights({
@@ -243,6 +340,501 @@ class BaoBaoCourseAgent {
 
       return copied;
     }).toList();
+  }
+
+
+  List<Map<String, dynamic>> _applyPreferenceAwareCoreAndGeRules({
+    required List<Map<String, dynamic>> courses,
+    required bool hasCurriculum,
+    required Map<String, dynamic>? curriculum,
+    required Map<String, dynamic>? graduationData,
+    required Map<String, dynamic>? userPreferences,
+  }) {
+    final prefs = _preferenceMap(userPreferences);
+    final departmentHints = _departmentHintsFromData(
+      userPreferences: prefs,
+      graduationData: graduationData,
+      curriculum: curriculum,
+    );
+
+    final geInterests = _stringListFromAny(prefs['geInterests']);
+    final hasCareerPreferences = _stringListFromAny(prefs['careerPaths']).isNotEmpty;
+
+    return courses.where((course) {
+      final coreLike = _isCoreOrRequirementLike(course, hasCurriculum: hasCurriculum);
+      final type = (course['type'] ?? '').toString().toUpperCase();
+      final bucket = (course['curriculumBucket'] ?? '').toString().toUpperCase();
+      final geLike = bucket == 'GE' || type == 'GE';
+      final electiveLike = type == 'ELECTIVE' || bucket == 'FREE_ELECTIVE';
+
+      final careerOrDepartmentMatch = _courseMatchesCareerOrDepartment(
+        course,
+        prefs: prefs,
+        departmentHints: departmentHints,
+      );
+
+      final geInterestMatch = _courseMatchesGeInterest(
+        course,
+        geInterests: geInterests,
+      );
+
+      if (coreLike) {
+        if (hasCurriculum && _hasExactCurriculumMatch(course)) {
+          return true;
+        }
+
+        return careerOrDepartmentMatch;
+      }
+
+      // When there is no uploaded curriculum, avoid filling the plan with
+      // random GE/elective courses. GE should match GE interests, and
+      // electives should match either career/department or GE interests.
+      if (!hasCurriculum) {
+        if (geLike && geInterests.isNotEmpty) {
+          return geInterestMatch;
+        }
+
+        if (electiveLike) {
+          // ELECTIVE recommendations may use GE interests, but they should not
+          // become random department electives. If the user gave career paths,
+          // career/department electives are allowed. If the user only gave GE
+          // interests, electives must match those GE interests.
+          if (geInterests.isNotEmpty && geInterestMatch) {
+            return true;
+          }
+
+          if (hasCareerPreferences && careerOrDepartmentMatch) {
+            return true;
+          }
+
+          return geInterests.isEmpty && !hasCareerPreferences;
+        }
+      }
+
+      return true;
+    }).map((course) {
+      final copied = Map<String, dynamic>.from(course);
+      final reasons = List<String>.from(
+        (copied['preferenceReasons'] is Iterable)
+            ? copied['preferenceReasons'] as Iterable
+            : const [],
+      );
+      var score = _toInt(copied['preferenceFitScore']);
+
+      final type = (copied['type'] ?? '').toString().toUpperCase();
+      final bucket = (copied['curriculumBucket'] ?? '').toString().toUpperCase();
+
+      if ((bucket == 'GE' || type == 'GE' || type == 'ELECTIVE') &&
+          geInterests.isNotEmpty &&
+          _courseMatchesGeInterest(copied, geInterests: geInterests)) {
+        score += bucket == 'GE' || type == 'GE' ? 240 : 160;
+        reasons.add(
+          bucket == 'GE' || type == 'GE'
+              ? 'GE preference match'
+              : 'elective fits GE interest',
+        );
+      }
+
+      final coreLike = _isCoreOrRequirementLike(copied, hasCurriculum: hasCurriculum);
+      if (coreLike &&
+          _courseMatchesCareerOrDepartment(
+            copied,
+            prefs: prefs,
+            departmentHints: departmentHints,
+          )) {
+        score += hasCurriculum ? 220 : 320;
+        reasons.add(
+          hasCurriculum
+              ? 'core/requirement course also fits career or department'
+              : 'CORE course kept because it fits career or department',
+        );
+      }
+
+      copied['preferenceFitScore'] = score;
+      copied['preferenceReasons'] = reasons.toSet().toList();
+      copied['baoBaoCorePolicy'] = hasCurriculum
+          ? 'curriculum + career/department preference'
+          : 'no curriculum: CORE requires career/department fit';
+
+      return copied;
+    }).toList();
+  }
+
+  bool _hasUsableCurriculum(Map<String, dynamic>? curriculum) {
+    if (curriculum == null || curriculum.isEmpty) {
+      return false;
+    }
+
+    final groups = curriculum['requirementGroups'];
+    return groups is List && groups.isNotEmpty;
+  }
+
+  bool _isCoreOrRequirementLike(
+    Map<String, dynamic> course, {
+    required bool hasCurriculum,
+  }) {
+    final type = (course['type'] ?? '').toString().toUpperCase();
+    final bucket = (course['curriculumBucket'] ?? '').toString().toUpperCase();
+
+    if (type == 'CORE') {
+      return true;
+    }
+
+    if (!hasCurriculum) {
+      return false;
+    }
+
+    return {
+      'DEPT_REQUIRED',
+      'BASIC_CORE',
+      'CORE_COURSE',
+      'PROFESSIONAL',
+      'LAB',
+    }.contains(bucket);
+  }
+
+  bool _hasExactCurriculumMatch(Map<String, dynamic> course) {
+    final matchedBy =
+        (course['curriculumMatchedBy'] ?? '').toString().toLowerCase();
+
+    return matchedBy.startsWith('acceptedcode:') || matchedBy == 'requiredname';
+  }
+
+  bool _courseMatchesCareerOrDepartment(
+    Map<String, dynamic> course, {
+    required Map<String, dynamic> prefs,
+    required List<String> departmentHints,
+  }) {
+    final courseText = _normalizeText([
+      course['id'],
+      course['code'],
+      course['title'],
+      course['titleZh'],
+      course['titleEn'],
+      course['department'],
+      course['type'],
+      course['curriculumBucket'],
+      course['curriculumCategory'],
+      course['curriculumRequiredCourseName'],
+      course['professor'],
+    ].whereType<Object>().join(' '));
+
+    for (final hint in departmentHints) {
+      final normalizedHint = _normalizeText(hint);
+      if (normalizedHint.isNotEmpty && courseText.contains(normalizedHint)) {
+        return true;
+      }
+    }
+
+    final careerPaths = _stringListFromAny(prefs['careerPaths']);
+    for (final career in careerPaths) {
+      for (final keyword in _careerKeywords(_normalizeText(career))) {
+        final normalizedKeyword = _normalizeText(keyword);
+        if (normalizedKeyword.isNotEmpty && courseText.contains(normalizedKeyword)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+
+  bool _courseMatchesGeInterest(
+    Map<String, dynamic> course, {
+    required List<String> geInterests,
+  }) {
+    if (geInterests.isEmpty) {
+      return false;
+    }
+
+    final courseText = _normalizeText([
+      course['id'],
+      course['code'],
+      course['title'],
+      course['titleZh'],
+      course['titleEn'],
+      course['department'],
+      course['type'],
+      course['curriculumBucket'],
+      course['curriculumCategory'],
+      course['curriculumRequiredCourseName'],
+      course['professor'],
+      course['remarks'],
+      course['note'],
+    ].whereType<Object>().join(' '));
+
+    for (final interest in geInterests) {
+      final normalizedInterest = _normalizeText(interest);
+
+      if (normalizedInterest.isEmpty) {
+        continue;
+      }
+
+      // Direct match first, e.g. "Arts & Aesthetics" appears in metadata.
+      if (courseText.contains(normalizedInterest)) {
+        return true;
+      }
+
+      for (final keyword in _geInterestKeywords(normalizedInterest)) {
+        final normalizedKeyword = _normalizeText(keyword);
+
+        if (normalizedKeyword.isNotEmpty &&
+            _containsMeaningfulPhrase(courseText, normalizedKeyword)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  bool _containsMeaningfulPhrase(String text, String phrase) {
+    if (phrase.length < 3) {
+      return false;
+    }
+
+    if (text.contains(phrase)) {
+      return true;
+    }
+
+    final phraseTokens = phrase
+        .split(RegExp(r'\s+'))
+        .where((token) => token.length >= 3)
+        .toList();
+
+    if (phraseTokens.isEmpty) {
+      return false;
+    }
+
+    final textTokens = text.split(RegExp(r'\s+')).toSet();
+
+    return phraseTokens.every(textTokens.contains);
+  }
+
+  List<String> _geInterestKeywords(String interestText) {
+    final keywords = <String>{interestText};
+
+    if (interestText.contains('natural') ||
+        interestText.contains('science') ||
+        interestText.contains('自然')) {
+      keywords.addAll([
+        'natural science',
+        'science',
+        'physics',
+        'chemistry',
+        'biology',
+        'life science',
+        'earth science',
+        'environment',
+        'environmental',
+        'ecology',
+        'energy',
+        'astronomy',
+        'geology',
+        'climate',
+        'technology',
+        'engineering and technology',
+        '物理',
+        '化學',
+        '生物',
+        '生命科學',
+        '地球',
+        '環境',
+        '生態',
+        '能源',
+        '天文',
+        '科技',
+      ]);
+    }
+
+    if (interestText.contains('humanities') ||
+        interestText.contains('lit') ||
+        interestText.contains('literature') ||
+        interestText.contains('人文') ||
+        interestText.contains('文學')) {
+      keywords.addAll([
+        'humanities',
+        'literature',
+        'philosophy',
+        'history',
+        'culture',
+        'language and culture',
+        'classics',
+        'religion',
+        'ethics',
+        'knowledge and reality',
+        'writing',
+        'reading',
+        '人文',
+        '文學',
+        '哲學',
+        '歷史',
+        '文化',
+        '宗教',
+        '倫理',
+      ]);
+    }
+
+    if (interestText.contains('art') ||
+        interestText.contains('aesthetic') ||
+        interestText.contains('arts') ||
+        interestText.contains('藝術') ||
+        interestText.contains('美學')) {
+      keywords.addAll([
+        'arts',
+        'art',
+        'aesthetics',
+        'music',
+        'film',
+        'cinema',
+        'theater',
+        'theatre',
+        'drama',
+        'design',
+        'visual',
+        'creative',
+        'photography',
+        // Do not include plain "architecture" here.
+        // "Computer Architecture" is an EECS/CS course, not Arts & Aesthetics.
+        '藝術',
+        '美學',
+        '音樂',
+        '電影',
+        '戲劇',
+        '設計',
+        '視覺',
+        '創意',
+        '攝影',
+      ]);
+    }
+
+    if (interestText.contains('social') ||
+        interestText.contains('society') ||
+        interestText.contains('business') ||
+        interestText.contains('economics') ||
+        interestText.contains('社會') ||
+        interestText.contains('經濟')) {
+      keywords.addAll([
+        'social science',
+        'society',
+        'sociology',
+        'psychology',
+        'politics',
+        'law',
+        'economics',
+        'business',
+        'management',
+        'communication',
+        '社會',
+        '心理',
+        '政治',
+        '法律',
+        '經濟',
+        '管理',
+        '傳播',
+      ]);
+    }
+
+    return keywords.toList();
+  }
+
+  List<String> _departmentHintsFromPreferenceMap(Map<String, dynamic> prefs) {
+    final hints = <String>{};
+
+    void add(dynamic value) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isEmpty) return;
+      hints.add(text);
+
+      final upper = text.toUpperCase();
+      if (upper.contains('EECS') || upper.contains('ELECTRICAL') || upper.contains('COMPUTER')) {
+        hints.addAll(['EECS', 'CS', 'ECS', 'electrical engineering', 'computer science']);
+      }
+    }
+
+    for (final entry in prefs.entries) {
+      final key = entry.key.toString().toLowerCase();
+      if (_looksLikeDepartmentKey(key)) {
+        add(entry.value);
+      }
+    }
+
+    return hints.toList();
+  }
+
+  List<String> _departmentHintsFromData({
+    required Map<String, dynamic> userPreferences,
+    required Map<String, dynamic>? graduationData,
+    required Map<String, dynamic>? curriculum,
+  }) {
+    final hints = <String>{..._departmentHintsFromPreferenceMap(userPreferences)};
+
+    void scan(dynamic value) {
+      if (value == null) return;
+
+      if (value is Map) {
+        for (final entry in value.entries) {
+          final key = entry.key.toString().toLowerCase();
+          final rawValue = entry.value;
+
+          if (_looksLikeDepartmentKey(key)) {
+            final text = rawValue?.toString().trim() ?? '';
+            if (text.isNotEmpty && text.length <= 80) {
+              hints.add(text);
+            }
+          }
+
+          scan(rawValue);
+        }
+      } else if (value is List) {
+        for (final item in value) {
+          scan(item);
+        }
+      }
+    }
+
+    scan(graduationData);
+    scan(curriculum);
+
+    final expanded = <String>{};
+    for (final hint in hints) {
+      expanded.add(hint);
+      final upper = hint.toUpperCase();
+      final lower = hint.toLowerCase();
+
+      if (upper.contains('EECS') ||
+          lower.contains('electrical') ||
+          lower.contains('computer science') ||
+          lower.contains('computer')) {
+        expanded.addAll([
+          'EECS',
+          'ECS',
+          'CS',
+          'electrical engineering',
+          'computer science',
+          '資訊',
+          '電機',
+        ]);
+      }
+    }
+
+    return expanded
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  bool _looksLikeDepartmentKey(String key) {
+    return key.contains('department') ||
+        key.contains('dept') ||
+        key.contains('major') ||
+        key.contains('program') ||
+        key.contains('college') ||
+        key.contains('學系') ||
+        key.contains('科系') ||
+        key.contains('系所');
   }
 
   Map<String, dynamic> _preferenceMap(Map<String, dynamic>? raw) {
@@ -310,35 +902,44 @@ class BaoBaoCourseAgent {
       score += 120;
     }
 
-    if (geInterests.isNotEmpty && bucket == 'GE') {
-      for (final interest in geInterests) {
-        final interestText = _normalizeText(interest);
+    final type = (course['type'] ?? '').toString().toUpperCase();
+    final canUseGeInterest = bucket == 'GE' || type == 'GE' || type == 'ELECTIVE';
 
-        if (interestText.isNotEmpty && text.contains(interestText)) {
-          score += 220;
-          reasons.add('matches GE interest: $interest');
-          break;
-        }
+    if (geInterests.isNotEmpty &&
+        canUseGeInterest &&
+        _courseMatchesGeInterest(course, geInterests: geInterests)) {
+      score += bucket == 'GE' || type == 'GE' ? 260 : 170;
+      reasons.add(
+        bucket == 'GE' || type == 'GE'
+            ? 'matches GE interest'
+            : 'elective also matches GE interest',
+      );
+    }
+
+    final departmentHints = _departmentHintsFromPreferenceMap(prefs);
+    for (final departmentHint in departmentHints) {
+      final hintText = _normalizeText(departmentHint);
+
+      if (hintText.isNotEmpty && text.contains(hintText)) {
+        score += 150;
+        reasons.add('matches user department: $departmentHint');
+        break;
       }
     }
 
-    if (languagePreference.contains('english')) {
-      if (text.contains('english') ||
-          text.contains('英語') ||
-          text.contains('英文') ||
-          text.contains('english taught')) {
-        score += 180;
-        reasons.add('matches English-taught preference');
-      }
+    final preferredLanguage =
+        _normalizedInstructionLanguagePreference(languagePreference);
+
+    if (preferredLanguage == 'english' &&
+        _matchesInstructionLanguage(course, 'english')) {
+      score += 180;
+      reasons.add('matches English-taught preference');
     }
 
-    if (languagePreference.contains('chinese')) {
-      if (text.contains('chinese') ||
-          text.contains('中文') ||
-          text.contains('華語')) {
-        score += 120;
-        reasons.add('matches Chinese-taught preference');
-      }
+    if (preferredLanguage == 'chinese' &&
+        _matchesInstructionLanguage(course, 'chinese')) {
+      score += 120;
+      reasons.add('matches Chinese-taught preference');
     }
 
     return _PreferenceFitResult(
@@ -445,9 +1046,11 @@ class BaoBaoCourseAgent {
       final id = (course['id'] ?? '').toString().trim();
       final title = (course['title'] ?? '').toString().toLowerCase();
       final credits = _toInt(course['credits']);
+      final limit = _toInt(course['limit']);
 
       if (code.isEmpty && id.isEmpty) return false;
       if (credits <= 0) return false;
+      if (limit <= 0) return false;
 
       final badWords = [
         'thesis',
@@ -1336,10 +1939,11 @@ class BaoBaoCourseAgent {
     required List<Map<String, dynamic>> plannedCourses,
     required Map<String, dynamic>? curriculum,
   }) {
-    return plannedCourses.where((course) {
-      final bucket = course['curriculumBucket']?.toString() ?? 'UNKNOWN';
-      return bucket != 'UNKNOWN';
-    }).length;
+    if (!_hasUsableCurriculum(curriculum)) {
+      return 0;
+    }
+
+    return plannedCourses.where(_hasExactCurriculumMatch).length;
   }
 
   Map<String, int> _bucketCounts(List<Map<String, dynamic>> courses) {
@@ -1373,7 +1977,7 @@ class BaoBaoCourseAgent {
       return 'Bao-Bao could not find a strong matching plan. Try asking with clearer details like course type, credits, department, time, or curriculum requirement.';
     }
 
-    final hasCurriculum = curriculum != null;
+    final hasCurriculum = _hasUsableCurriculum(curriculum);
     final hasCompletedData = completedCourses.isNotEmpty;
 
     final courseLines = plannedCourses.map((course) {
@@ -1397,7 +2001,7 @@ I checked:
 - Curriculum: ${hasCurriculum ? "available and mapped into buckets" : "not uploaded yet"}
 - Available courses: checked
 - Completed courses from graduation data: ${hasCompletedData ? "checked" : "not detected"}
-- Curriculum bucket validation: checked
+- Curriculum bucket validation: ${hasCurriculum ? "checked" : "skipped until curriculum is uploaded"}
 
 Recommended plan:
 $courseLines

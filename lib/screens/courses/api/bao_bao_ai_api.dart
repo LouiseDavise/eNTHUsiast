@@ -155,6 +155,7 @@ Do not make fake course codes.
       rawPlan,
       userMessage,
       curriculum: curriculum,
+      userPreferences: userPreferences,
     );
 
     print('Bao-Bao final search plan: ${plan.toDebugMap()}');
@@ -331,37 +332,64 @@ Do not make fake course codes.
       return ranked;
     }
 
-    final topRange = ranked.take(math.min(25, ranked.length)).toList();
-    final rest = ranked.skip(topRange.length).toList();
-
-    final random = math.Random(DateTime.now().millisecondsSinceEpoch);
-
-    topRange.shuffle(random);
-
-    return [
-      ...topRange,
-      ...rest,
-    ];
+    // Accuracy is more important than random variety for Bao-Bao.
+    // Keep the deterministic ranking instead of shuffling the top results.
+    return ranked;
   }
   
   _AiSearchPlan _adjustPlanWithUserHints(
     _AiSearchPlan plan,
     String userMessage, {
     Map<String, dynamic>? curriculum,
+    Map<String, dynamic>? userPreferences,
   }) {
     final lower = userMessage.toLowerCase();
+    final hasCurriculum = _hasUsableCurriculum(curriculum);
+
+    // Auto starter and curriculum-planning prompts are handled before normal credit mix,
+    // because they often contain words like curriculum, core, GE, and credits.
+    if (_isAutoStarterRequest(userMessage)) {
+      if (hasCurriculum) {
+        final curriculumPlan = _buildDynamicCurriculumPlanningPlan(
+          userMessage,
+          curriculum!,
+        );
+
+        if (curriculumPlan.groups.isNotEmpty) {
+          return _enhancePlanWithUserPreferences(
+            curriculumPlan,
+            userPreferences,
+          );
+        }
+      }
+
+      return _buildNoCurriculumPreferenceStarterPlan(
+        userMessage,
+        userPreferences,
+      );
+    }
 
     // Curriculum planning must be checked before credit mix,
     // because curriculum prompts may also contain "20 credits", "core", "GE", etc.
-    if (_isCurriculumPlanningRequest(userMessage) && curriculum != null) {
-      final curriculumPlan = _buildDynamicCurriculumPlanningPlan(
-        userMessage,
-        curriculum,
-      );
+    if (_isCurriculumPlanningRequest(userMessage)) {
+      if (hasCurriculum) {
+        final curriculumPlan = _buildDynamicCurriculumPlanningPlan(
+          userMessage,
+          curriculum!,
+        );
 
-      if (curriculumPlan.groups.isNotEmpty) {
-        return curriculumPlan;
+        if (curriculumPlan.groups.isNotEmpty) {
+          return _enhancePlanWithUserPreferences(
+            curriculumPlan,
+            userPreferences,
+          );
+        }
       }
+
+      return _buildNoCurriculumPreferenceStarterPlan(
+        userMessage,
+        userPreferences,
+      );
     }
 
     if (_isLightEasyRequest(userMessage)) {
@@ -406,6 +434,313 @@ Do not make fake course codes.
       allowSpecialCourses: plan.allowSpecialCourses,
       groups: adjustedGroups,
     );
+  }
+
+
+  bool _isAutoStarterRequest(String message) {
+    final lower = message.toLowerCase();
+
+    return lower.contains('automatically create a useful first starter recommendation') ||
+        lower.contains('automatically create a smart starter course plan') ||
+        lower.contains('starter recommendation') ||
+        lower.contains('starter course cards');
+  }
+
+  bool _hasUsableCurriculum(Map<String, dynamic>? curriculum) {
+    if (curriculum == null || curriculum.isEmpty) {
+      return false;
+    }
+
+    final groups = curriculum['requirementGroups'];
+    return groups is List && groups.isNotEmpty;
+  }
+
+  _AiSearchPlan _buildNoCurriculumPreferenceStarterPlan(
+    String message,
+    Map<String, dynamic>? userPreferences,
+  ) {
+    final prefs = _preferenceMap(userPreferences);
+    final targetCredits = _extractTargetCreditCount(message.toLowerCase()) ??
+        _targetCreditsFromPreferences(userPreferences);
+
+    final careerText = _careerPreferenceQuery(prefs);
+    final departmentText = _departmentPreferenceQuery(prefs);
+    final geText = _gePreferenceQuery(prefs);
+
+    final coreQuery = [
+      departmentText,
+      careerText,
+      'CORE department career programming software computer engineering data algorithm system',
+    ].where((item) => item.trim().isNotEmpty).join(' ');
+
+    final electiveQuery = [
+      departmentText,
+      careerText,
+      geText,
+      'ELECTIVE career GE interest useful practical',
+    ].where((item) => item.trim().isNotEmpty).join(' ');
+
+    final geQuery = [
+      geText,
+      'general education GE 通識',
+    ].where((item) => item.trim().isNotEmpty).join(' ');
+
+    return _AiSearchPlan(
+      targetCredits: targetCredits,
+      allowSpecialCourses: false,
+      groups: [
+        _SearchGroup(
+          query: coreQuery,
+          subjectQuery: null,
+          subjectPhrases: const [],
+          mustMatchSubject: false,
+          count: targetCredits == null ? 2 : 2,
+          credits: null,
+          requiredType: 'CORE',
+          timePreference: 'any',
+          language: _languagePreferenceFromPrefs(prefs),
+          minLimit: null,
+          maxLimit: null,
+          mustHave: const ['__BAOBAO_PREF_FIT__'],
+          avoid: const [
+            'thesis',
+            'seminar',
+            'research',
+            'lab rotation',
+            'dissertation',
+            '專題',
+            '論文',
+            '研究',
+            '書報',
+          ],
+        ),
+        _SearchGroup(
+          query: geQuery,
+          subjectQuery: null,
+          subjectPhrases: const [],
+          mustMatchSubject: false,
+          count: targetCredits == null ? 3 : 2,
+          credits: null,
+          requiredType: 'GE',
+          timePreference: 'any',
+          language: _languagePreferenceFromPrefs(prefs),
+          minLimit: null,
+          maxLimit: null,
+          mustHave: const ['__BAOBAO_PREF_FIT__'],
+          avoid: const [
+            'thesis',
+            'seminar',
+            'research',
+            'lab rotation',
+            'dissertation',
+            '專題',
+            '論文',
+            '研究',
+            '書報',
+          ],
+        ),
+        _SearchGroup(
+          query: electiveQuery,
+          subjectQuery: null,
+          subjectPhrases: const [],
+          mustMatchSubject: false,
+          count: targetCredits == null ? 4 : 4,
+          credits: null,
+          requiredType: 'ELECTIVE',
+          timePreference: 'any',
+          language: _languagePreferenceFromPrefs(prefs),
+          minLimit: null,
+          maxLimit: null,
+          mustHave: const ['__BAOBAO_PREF_FIT__'],
+          avoid: const [
+            'thesis',
+            'seminar',
+            'research',
+            'lab rotation',
+            'dissertation',
+            '專題',
+            '論文',
+            '研究',
+            '書報',
+          ],
+        ),
+      ],
+    );
+  }
+
+  _AiSearchPlan _enhancePlanWithUserPreferences(
+    _AiSearchPlan plan,
+    Map<String, dynamic>? userPreferences,
+  ) {
+    final prefs = _preferenceMap(userPreferences);
+    final careerText = _careerPreferenceQuery(prefs);
+    final departmentText = _departmentPreferenceQuery(prefs);
+    final geText = _gePreferenceQuery(prefs);
+
+    final enhancedGroups = plan.groups.map((group) {
+      final bucketText = group.mustHave.join(' ').toUpperCase();
+      final isCoreLike = bucketText.contains('DEPT_REQUIRED') ||
+          bucketText.contains('BASIC_CORE') ||
+          bucketText.contains('CORE_COURSE') ||
+          bucketText.contains('PROFESSIONAL') ||
+          bucketText.contains('LAB') ||
+          group.requiredType == 'CORE';
+
+      final isGeLike = bucketText.contains('GE') || group.requiredType == 'GE';
+
+      final extra = <String>[];
+      if (isCoreLike) {
+        extra.addAll([departmentText, careerText]);
+      } else if (isGeLike) {
+        extra.add(geText);
+      } else {
+        extra.addAll([departmentText, careerText, geText]);
+      }
+
+      final extraHasPreference = extra.any((item) => item.trim().isNotEmpty);
+      final controlMustHave = extraHasPreference
+          ? _mergeStringLists(group.mustHave, const ['__BAOBAO_PREF_FIT__'])
+          : group.mustHave;
+
+      return group.copyWith(
+        query: [
+          group.query,
+          ...extra.where((item) => item.trim().isNotEmpty),
+        ].join(' '),
+        language: group.language == 'any' ? _languagePreferenceFromPrefs(prefs) : group.language,
+        mustHave: controlMustHave,
+      );
+    }).toList();
+
+    return _AiSearchPlan(
+      targetCredits: plan.targetCredits,
+      allowSpecialCourses: plan.allowSpecialCourses,
+      groups: enhancedGroups,
+    );
+  }
+
+  Map<String, dynamic> _preferenceMap(Map<String, dynamic>? raw) {
+    if (raw == null) return {};
+
+    final nested = raw['preferences'];
+    if (nested is Map) {
+      return Map<String, dynamic>.from(nested);
+    }
+
+    return Map<String, dynamic>.from(raw);
+  }
+
+  String _careerPreferenceQuery(Map<String, dynamic> prefs) {
+    final careers = _stringListFromAny(prefs['careerPaths']);
+    final keywords = <String>{};
+
+    for (final career in careers) {
+      keywords.add(career);
+      final lower = career.toLowerCase();
+
+      if (lower.contains('software')) {
+        keywords.addAll([
+          'software',
+          'programming',
+          'data structures',
+          'algorithms',
+          'database',
+          'operating systems',
+          'computer networks',
+          'web',
+          'backend',
+        ]);
+      }
+
+      if (lower.contains('ai') || lower.contains('machine learning') || lower.contains('data')) {
+        keywords.addAll([
+          'machine learning',
+          'artificial intelligence',
+          'data',
+          'statistics',
+          'linear algebra',
+          'algorithm',
+        ]);
+      }
+
+      if (lower.contains('cloud') || lower.contains('devops') || lower.contains('sre')) {
+        keywords.addAll([
+          'cloud',
+          'network',
+          'operating systems',
+          'linux',
+          'distributed',
+          'database',
+          'security',
+          'backend',
+        ]);
+      }
+
+      if (lower.contains('hardware') || lower.contains('embedded') || lower.contains('chip')) {
+        keywords.addAll([
+          'logic design',
+          'electronics',
+          'electric circuits',
+          'computer architecture',
+          'embedded',
+          'signals and systems',
+        ]);
+      }
+    }
+
+    return keywords.join(' ');
+  }
+
+  String _departmentPreferenceQuery(Map<String, dynamic> prefs) {
+    final hints = <String>{};
+
+    for (final entry in prefs.entries) {
+      final key = entry.key.toString().toLowerCase();
+      if (key.contains('department') ||
+          key.contains('dept') ||
+          key.contains('major') ||
+          key.contains('program')) {
+        final value = entry.value?.toString().trim() ?? '';
+        if (value.isNotEmpty) hints.add(value);
+      }
+    }
+
+    final expanded = <String>{...hints};
+    for (final hint in hints) {
+      final lower = hint.toLowerCase();
+      final upper = hint.toUpperCase();
+      if (upper.contains('EECS') || lower.contains('electrical') || lower.contains('computer')) {
+        expanded.addAll(['EECS', 'ECS', 'CS', 'computer science', 'electrical engineering', '資訊', '電機']);
+      }
+    }
+
+    return expanded.join(' ');
+  }
+
+  String _gePreferenceQuery(Map<String, dynamic> prefs) {
+    return _stringListFromAny(prefs['geInterests']).join(' ');
+  }
+
+  String _languagePreferenceFromPrefs(Map<String, dynamic> prefs) {
+    final language = (prefs['languagePreference'] ?? '').toString().toLowerCase();
+
+    if (language.contains('english')) return 'english';
+    if (language.contains('chinese')) return 'chinese';
+
+    return 'any';
+  }
+
+  List<String> _stringListFromAny(dynamic value) {
+    if (value == null) return [];
+    if (value is List) {
+      return value
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+    }
+
+    final text = value.toString().trim();
+    return text.isEmpty ? [] : [text];
   }
 
   _AiSearchPlan _buildLightEasyPlan(String message) {
@@ -1103,6 +1438,8 @@ Language of instruction rules:
 - "English course" is a subject request.
 - "course conducted in English" is an instruction-language filter.
 - If user asks for a specific subject AND language of instruction, the result must match both.
+- Instruction language must be checked from course language/instruction metadata, not from the title.
+- A course does not need the word English/Chinese in its title to count as English-taught or Chinese-taught.
 
 Capacity / limit rules:
 - "large limit", "big limit", or "high limit" means minLimit 80.
@@ -1372,6 +1709,7 @@ Return:
 
     final mustTokens = group.mustHave
       .where((item) => !_isCurriculumBucketName(item))
+      .where((item) => !_isPlannerControlToken(item))
       .expand(_tokens)
       .toList();
     final avoidTokens = group.avoid.expand(_tokens).toList();
@@ -1473,6 +1811,11 @@ Return:
         subjectPhrases: subjectPhrases,
       );
 
+      if (_requiresPreferenceFit(group) &&
+          _toInt(course['preferenceFitScore']) <= 0) {
+        continue;
+      }
+
       final hasStrongConstraint =
           group.requiredType != 'any' ||
           group.timePreference != 'any' ||
@@ -1505,8 +1848,22 @@ Return:
         return b.score.compareTo(a.score);
       }
 
+      final aPreference = _toInt(a.course['preferenceFitScore']);
+      final bPreference = _toInt(b.course['preferenceFitScore']);
+
+      if (aPreference != bPreference) {
+        return bPreference.compareTo(aPreference);
+      }
+
       final aLimit = _toInt(a.course['limit']);
       final bLimit = _toInt(b.course['limit']);
+
+      final aHasSeats = aLimit > 0;
+      final bHasSeats = bLimit > 0;
+
+      if (aHasSeats != bHasSeats) {
+        return aHasSeats ? -1 : 1;
+      }
 
       if (group.minLimit != null && aLimit != bLimit) {
         return bLimit.compareTo(aLimit);
@@ -1514,6 +1871,10 @@ Return:
 
       if (group.maxLimit != null && aLimit != bLimit) {
         return aLimit.compareTo(bLimit);
+      }
+
+      if (aLimit != bLimit) {
+        return bLimit.compareTo(aLimit);
       }
 
       final aCode = a.course['code']?.toString() ?? '';
@@ -1542,8 +1903,23 @@ Return:
     }.contains(upper);
   }
 
+  bool _isPlannerControlToken(String value) {
+    return value.trim().toUpperCase().startsWith('__BAOBAO_');
+  }
+
+  bool _requiresPreferenceFit(_SearchGroup group) {
+    return group.mustHave.any(
+      (item) => item.trim().toUpperCase() == '__BAOBAO_PREF_FIT__',
+    );
+  }
+
+
   String? _requiredCurriculumBucket(_SearchGroup group) {
     for (final item in group.mustHave) {
+      if (_isPlannerControlToken(item)) {
+        continue;
+      }
+
       final upper = item.trim().toUpperCase();
 
       if (_isCurriculumBucketName(upper)) {
@@ -1942,11 +2318,20 @@ Return:
   - If the user asks for GE, prefer GE.
   - If the user asks for lab, prefer LAB.
 
+  User preference rule:
+  - Candidates include preferenceFitScore and preferenceReasons calculated by Bao-Bao.
+  - Prefer higher preferenceFitScore when courses otherwise satisfy the request.
+  - CORE / DEPT_REQUIRED / BASIC_CORE / CORE_COURSE / PROFESSIONAL / LAB candidates should fit the student's career path or department when possible.
+  - GE interests may be satisfied by GE courses first, but relevant ELECTIVE courses are also acceptable.
+  - Do not match Arts & Aesthetics using isolated technical words. For example, Computer Architecture is NOT Arts & Aesthetics just because it contains the word architecture. Only treat architecture as Arts & Aesthetics when the course is about building design, urban design, art history, visual design, or aesthetics.
+  - If the student has no uploaded curriculum, do not claim exact curriculum-bucket planning. Use career path, department, graduation data, GE interests, and the real course list.
+
   Important:
   - If mustMatchSubject is true, only choose courses matching the requested subject/topic.
   - If the user asks for a specific subject AND language of instruction, choose courses matching both.
   - Do not replace a specific subject request with a random language course.
   - If the user asks for English/Chinese instruction, prioritize matching language.
+  - Use the course language/instruction metadata for English/Chinese taught filtering, not the title text.
   - If the user asks for morning/night/afternoon/evening classes, prioritize matching time.
   - If the user asks for large limit/capacity, prioritize higher limit.
   - Avoid thesis, seminar, colloquium, research, MOOC, lab rotation, and 0-credit courses unless directly requested.
@@ -2492,6 +2877,9 @@ Return:
     final credits = _toInt(course['credits']);
     if (credits <= 0) return false;
 
+    final limit = _toInt(course['limit']);
+    if (limit <= 0) return false;
+
     final text = _searchText(course);
 
     final badWords = [
@@ -2690,37 +3078,78 @@ Return:
       return true;
     }
 
-    final languageText = [
-      course['language'],
-      course['instructionLanguage'],
-      course['languageOfInstruction'],
-      course['languageOfInstructionDescription'],
-    ].whereType<Object>().join(' ').toLowerCase();
+    final languageText = _courseInstructionLanguageText(course);
 
-    if (languageText.trim().isEmpty) {
+    if (languageText.isEmpty) {
       return false;
     }
 
     if (language == 'english') {
-      return languageText.contains('english') ||
-          languageText.contains('eng') ||
-          languageText.contains('en') ||
-          languageText.contains('英') ||
-          languageText.contains('英文') ||
-          languageText.contains('英語');
+      return _hasEnglishInstructionText(languageText);
     }
 
     if (language == 'chinese') {
-      return languageText.contains('chinese') ||
-          languageText.contains('mandarin') ||
-          languageText.contains('zh') ||
-          languageText.contains('cn') ||
-          languageText.contains('中') ||
-          languageText.contains('中文') ||
-          languageText.contains('華語');
+      return _hasChineseInstructionText(languageText);
     }
 
     return true;
+  }
+
+  String _courseInstructionLanguageText(Map<String, dynamic> course) {
+    // Important: language filtering should use instruction-language metadata,
+    // not the course title. Example: a course can be taught in English even
+    // when the title itself does not contain the word English.
+    return [
+      course['language'],
+      course['instructionLanguage'],
+      course['languageOfInstruction'],
+      course['languageOfInstructionDescription'],
+      course['teachingLanguage'],
+      course['courseLanguage'],
+      course['mediumOfInstruction'],
+      course['conductLanguage'],
+      course['taughtIn'],
+      course['remarks'],
+      course['note'],
+    ]
+        .whereType<Object>()
+        .map((item) => item.toString())
+        .join(' ')
+        .toLowerCase()
+        .trim();
+  }
+
+  bool _hasEnglishInstructionText(String text) {
+    final normalized = text.toLowerCase();
+
+    return normalized.contains('english') ||
+        normalized.contains('english-taught') ||
+        normalized.contains('taught in english') ||
+        normalized.contains('conducted in english') ||
+        RegExp(r'(^|[^a-z])(eng|en|e)([^a-z]|$)').hasMatch(normalized) ||
+        normalized.contains('英文') ||
+        normalized.contains('英語') ||
+        normalized.contains('英授') ||
+        RegExp(r'(^|[^\u4e00-\u9fff])英([^\u4e00-\u9fff]|$)')
+            .hasMatch(normalized);
+  }
+
+  bool _hasChineseInstructionText(String text) {
+    final normalized = text.toLowerCase();
+
+    return normalized.contains('chinese') ||
+        normalized.contains('mandarin') ||
+        normalized.contains('taught in chinese') ||
+        normalized.contains('conducted in chinese') ||
+        RegExp(r'(^|[^a-z])(zh|zht|zhs|cn|ch|c)([^a-z]|$)')
+            .hasMatch(normalized) ||
+        normalized.contains('中文') ||
+        normalized.contains('華語') ||
+        normalized.contains('國語') ||
+        normalized.contains('漢語') ||
+        normalized.contains('中授') ||
+        RegExp(r'(^|[^\u4e00-\u9fff])中([^\u4e00-\u9fff]|$)')
+            .hasMatch(normalized);
   }
 
   // ============================================================
@@ -3318,7 +3747,9 @@ class _SearchGroup {
       'language': language,
       'minLimit': minLimit,
       'maxLimit': maxLimit,
-      'mustHave': mustHave,
+      'mustHave': mustHave
+          .where((item) => !item.trim().toUpperCase().startsWith('__BAOBAO_'))
+          .toList(),
       'avoid': avoid,
     };
   }

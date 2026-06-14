@@ -195,7 +195,7 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
     print('Bao-Bao first course sample: ${courseCatalog.isNotEmpty ? courseCatalog.first : "EMPTY"}');
 
     final curriculum = await CurriculumUploadService().fetchCurriculumForBaoBao();
-    final hasCurriculum = curriculum != null && curriculum.isNotEmpty;
+    final hasCurriculum = _hasUsableCurriculum(curriculum);
     print('Bao-Bao curriculum loaded: ${curriculum != null}');
     print('Bao-Bao curriculum keys: ${curriculum?.keys.toList()}');
     print('Bao-Bao program name: ${curriculum?['programName']}');
@@ -264,7 +264,7 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
 
     if (!mounted) return;
 
-    final hasCurriculum = curriculum != null && curriculum.isNotEmpty;
+    final hasCurriculum = _hasUsableCurriculum(curriculum);
 
     setState(() {
       _pendingInitialPrompt = prompt;
@@ -455,10 +455,10 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
 
     if (_asksForCurriculumBucketPlanning(prompt)) {
       return const [
-        'Reading your curriculum buckets...',
-        'Checking missing department, basic core, core, professional, and lab requirements...',
-        'Removing completed or in-progress courses...',
-        'Almost done building your curriculum-based plan...',
+        'Checking whether your curriculum is available...',
+        'Reading your graduation data and completed courses...',
+        'If curriculum is missing, Bao-Bao will not guess exact requirement buckets...',
+        'Almost done building a safe starter plan...',
       ];
     }
 
@@ -499,27 +499,96 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
     ];
   }
 
-  Future<Map<String, dynamic>?> _fetchUserPreferences() async {
+
+  bool _hasUsableCurriculum(Map<String, dynamic>? curriculum) {
+    if (curriculum == null || curriculum.isEmpty) {
+      return false;
+    }
+
+    final groups = curriculum['requirementGroups'];
+    return groups is List && groups.isNotEmpty;
+  }
+
+  Future<DocumentSnapshot<Map<String, dynamic>>?> _currentCcxpUserDoc() async {
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) return null;
 
-    final doc = await FirebaseFirestore.instance
-        .collection('ccxpUsers')
-        .doc(user.uid)
+    final usersRef = FirebaseFirestore.instance.collection('ccxpUsers');
+
+    final byAuthUid = await usersRef
+        .where('authUid', isEqualTo: user.uid)
+        .limit(1)
         .get();
 
-    final data = doc.data();
+    if (byAuthUid.docs.isNotEmpty) {
+      return byAuthUid.docs.first;
+    }
 
-    if (data == null) return null;
+    final directDoc = await usersRef.doc(user.uid).get();
+    if (directDoc.exists) {
+      return directDoc;
+    }
 
-    final preferences = data['preferences'];
+    if (user.email != null && user.email!.trim().isNotEmpty) {
+      final byEmail = await usersRef
+          .where('email', isEqualTo: user.email)
+          .limit(1)
+          .get();
 
-    if (preferences is Map) {
-      return Map<String, dynamic>.from(preferences);
+      if (byEmail.docs.isNotEmpty) {
+        return byEmail.docs.first;
+      }
     }
 
     return null;
+  }
+
+  Future<Map<String, dynamic>?> _fetchUserPreferences() async {
+    final doc = await _currentCcxpUserDoc();
+    final data = doc?.data();
+
+    if (data == null) return null;
+
+    final rawPreferences = data['preferences'];
+    final result = rawPreferences is Map
+        ? Map<String, dynamic>.from(rawPreferences)
+        : <String, dynamic>{};
+
+    // Add department/program hints from the root profile if they exist.
+    for (final key in [
+      'department',
+      'dept',
+      'major',
+      'program',
+      'college',
+      'accountDepartment',
+      'accountProgram',
+    ]) {
+      if (data[key] != null && result[key] == null) {
+        result[key] = data[key];
+      }
+    }
+
+    final graduationData = data['graduationData'];
+    if (graduationData is Map) {
+      final studentInfo = graduationData['studentInfo'];
+      if (studentInfo is Map) {
+        for (final key in [
+          'department',
+          'dept',
+          'major',
+          'program',
+          'college',
+        ]) {
+          if (studentInfo[key] != null && result[key] == null) {
+            result[key] = studentInfo[key];
+          }
+        }
+      }
+    }
+
+    return result.isEmpty ? null : result;
   }
 
   String _successMessageFor(String prompt, int count, {bool hasCurriculum = true,}) {
@@ -545,7 +614,7 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
 
     final lower = prompt.toLowerCase();
 
-    if (lower.contains('automatically create a smart starter course plan')) {
+    if (_isAutoStarterPrompt(prompt)) {
       if (hasCurriculum) {
         return 'I found $count starter courses using your curriculum, graduation data, preferences, and real course list 🐼✨';
       }
@@ -554,7 +623,11 @@ class _CoursePlannerAiChatDialogState extends State<CoursePlannerAiChatDialog>
     }
 
     if (_asksForCurriculumBucketPlanning(prompt)) {
-      return 'I found $count courses using your curriculum buckets and graduation data 🐼✨';
+      if (hasCurriculum) {
+        return 'I found $count courses using your curriculum buckets and graduation data 🐼✨';
+      }
+
+      return 'I found $count courses using your graduation data and real course list 🐼✨\n\nI do not see your uploaded curriculum yet. Upload it later so Bao-Bao can check exact missing department required, core, professional, and lab requirements.';
     }
 
     if (_asksForProfessorSearch(prompt)) {
@@ -1722,7 +1795,7 @@ class _SuggestionChips extends StatelessWidget {
       _BaoBaoSuggestion(
         label: '20 credits plan 🎯',
         prompt:
-            'Bao-Bao, plan a 20-credit semester based on my uploaded curriculum and graduation data. Prioritize missing department required, basic core, core courses, professional courses, and lab courses before GE or language courses. Do not recommend completed or in-progress courses, and avoid duplicate sections of the same course.',
+            'Bao-Bao, plan a 20-credit semester. First check whether my curriculum is uploaded. If curriculum exists, prioritize missing department required, basic core, core courses, professional courses, and lab courses before GE or language courses. If no curriculum is uploaded, do not mention curriculum buckets; use my graduation data, preferences, student year, and real course list instead, and remind me to upload my curriculum for a more accurate plan. Do not recommend completed or in-progress courses, and avoid duplicate sections of the same course.',
       ),
     ];
 
