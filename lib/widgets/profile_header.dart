@@ -73,7 +73,8 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      _showSnackBar(isChinese ? '請先登入 CCXP 系統。' : 'Please log in to CCXP first.');
+      _showSnackBar(
+          isChinese ? '請先登入 CCXP 系統。' : 'Please log in to CCXP first.');
       return;
     }
 
@@ -94,7 +95,9 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
       final bytes = await image.readAsBytes();
 
       if (bytes.length > 900000) {
-        _showSnackBar(isChinese ? '圖片檔案過大，請選擇較小的照片。' : 'Image is too large. Please choose a smaller photo.');
+        _showSnackBar(isChinese
+            ? '圖片檔案過大，請選擇較小的照片。'
+            : 'Image is too large. Please choose a smaller photo.');
         return;
       }
 
@@ -124,7 +127,9 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
       _showSnackBar(isChinese ? '個人頭像已更新。' : 'Profile picture updated.');
     } catch (error) {
       if (!mounted) return;
-      _showSnackBar(isChinese ? '更新個人頭像失敗：$error' : 'Failed to update profile picture: $error');
+      _showSnackBar(isChinese
+          ? '更新個人頭像失敗：$error'
+          : 'Failed to update profile picture: $error');
     } finally {
       if (mounted) {
         setState(() {
@@ -196,8 +201,10 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
     final academicStats = _buildAcademicStats(graduationData);
     final studentInfo = graduationData?['studentInfo'] as Map<String, dynamic>?;
 
-    final studentName = _textValue(studentInfo?['studentName'], isChinese ? '匿名用戶' : 'Anonymous');
-    final studentId = _textValue(studentInfo?['studentId'], isChinese ? '未登入' : 'Anonymous');
+    final studentName = _textValue(
+        studentInfo?['studentName'], isChinese ? '匿名用戶' : 'Anonymous');
+    final studentId =
+        _textValue(studentInfo?['studentId'], isChinese ? '未登入' : 'Anonymous');
     final department = _textValue(
       studentInfo?['studentDepartment'],
       isChinese ? '未知科系' : 'Anonymous',
@@ -275,16 +282,17 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
           ],
         ),
         const SizedBox(height: 8),
-        Text(
-          studentId == (isChinese ? '未登入' : 'Anonymous') || studentId == 'Anonymous'
-              ? 'nthu_student@nthu.edu.tw'
-              : '$studentId@nthu.edu.tw',
-          style: GoogleFonts.dmSans(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: const Color(0xFF4B5563),
-          ),
-        ),
+        // Text(
+        //   studentId == (isChinese ? '未登入' : 'Anonymous') ||
+        //           studentId == 'Anonymous'
+        //       ? 'nthu_student@nthu.edu.tw'
+        //       : graduationData?['email'],
+        //   style: GoogleFonts.dmSans(
+        //     fontSize: 14,
+        //     fontWeight: FontWeight.w500,
+        //     color: const Color(0xFF4B5563),
+        //   ),
+        // ),
         const SizedBox(height: 32),
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 20),

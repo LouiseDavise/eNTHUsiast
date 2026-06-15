@@ -9,91 +9,6 @@ import 'package:provider/provider.dart';
 class CourseMaterialsScreen extends StatelessWidget {
   const CourseMaterialsScreen({super.key});
 
-  static const List<CourseMaterial> mockCourseMaterials = [
-    CourseMaterial(
-      id: 'logic_design',
-      title: 'Logic Design',
-      code: 'EECS 124510',
-      platform: 'ELEARN',
-      teacher: 'Louise Davise',
-      updatedText: '2 DAYS AGO',
-      units: [
-        CourseUnit(
-          title: 'UNIT 1: NUMBER SYSTEMS',
-          materials: [
-            MaterialItem(
-              week: 'WEEK 1',
-              title: 'Number Systems & Base Conversion',
-            ),
-            MaterialItem(
-              week: 'WEEK 2',
-              title: 'Boolean Algebra Fundamentals',
-            ),
-          ],
-        ),
-        CourseUnit(
-          title: 'UNIT 2: LOGIC GATES',
-          materials: [
-            MaterialItem(
-              week: 'WEEK 3',
-              title: 'Combinational Logic Circuits',
-            ),
-            MaterialItem(
-              week: 'WEEK 4',
-              title: 'Standard Logic Gate Designs',
-            ),
-          ],
-        ),
-      ],
-    ),
-    CourseMaterial(
-      id: 'probability',
-      title: 'Probability',
-      code: 'EECS 12411',
-      platform: 'ELEARN',
-      teacher: 'Wilbert Chen',
-      updatedText: 'TODAY',
-      units: [
-        CourseUnit(
-          title: 'UNIT 1: INTRODUCTION',
-          materials: [
-            MaterialItem(
-              week: 'WEEK 1',
-              title: 'Basic Probability Concepts',
-            ),
-            MaterialItem(
-              week: 'WEEK 2',
-              title: 'Conditional Probability',
-            ),
-          ],
-        ),
-      ],
-    ),
-    CourseMaterial(
-      id: 'software_studio',
-      title: 'Software Studio',
-      code: 'CS 12345',
-      platform: 'EECLASS',
-      teacher: 'Wu Shane Lung',
-      updatedText: '1 WEEK AGO',
-      units: [
-        CourseUnit(
-          title: 'UNIT 1: FLUTTER BASICS',
-          materials: [
-            MaterialItem(
-              week: 'WEEK 1',
-              title: 'Flutter Project Structure',
-            ),
-            MaterialItem(
-              week: 'WEEK 2',
-              title: 'Stateful and Stateless Widgets',
-            ),
-          ],
-        ),
-      ],
-    ),
-  ];
-
   @override
   Widget build(BuildContext context) {
     final currCourses = context.watch<CcxpDataProvider>().scheduleData;
@@ -371,7 +286,7 @@ class _Header extends StatelessWidget {
           padding: const EdgeInsets.symmetric(
               horizontal: 8, vertical: 5), // Increased vertical padding
           decoration: BoxDecoration(
-            color: isElearn ? const Color(0xFFDBEAFE) : const Color(0xFFFFEDD5),
+            color: isElearn ? const Color(0xFFF3E8FF) : const Color(0xFFEFF6FF),
             borderRadius: BorderRadius.circular(8), // Softened from 6 to 8
           ),
           child: Text(
@@ -381,7 +296,7 @@ class _Header extends StatelessWidget {
               fontWeight: FontWeight.w700, // Reduced from w900
               letterSpacing: 0.5, // Reduced from 0.8
               color:
-                  isElearn ? const Color(0xFF2563EB) : const Color(0xFFF97316),
+                  isElearn ? const Color(0xFF9333EA) : const Color(0xFF2563EB),
             ),
           ),
         ),
