@@ -169,8 +169,8 @@ class BaoBaoCourseAgent {
         name: 'planCourse',
         status: 'running',
         message: hasCurriculum
-            ? 'Generating candidate plan using curriculum buckets and user preferences...'
-            : 'Generating candidate plan using career/department-aware CORE and GE/elective rules...',
+            ? 'Generating candidate plan from the user prompt first, then curriculum and preferences...'
+            : 'Generating candidate plan from the user prompt first, then profile, career, and preferences...',
       ),
     );
 
@@ -319,7 +319,9 @@ class BaoBaoCourseAgent {
 
     final likedIds = _stringListFromAny(memory['likedCourseIds']).toSet();
     final likedCodes = _stringListFromAny(memory['likedCourseCodes']).toSet();
-    final preferredKeywords = _stringListFromAny(memory['preferredKeywords']);
+    final preferredKeywords = _stringListFromAny(memory['preferredKeywords'])
+        .where((item) => !_isGenericPlanningMemoryKeyword(item))
+        .toList();
 
     return courses.map((course) {
       final copied = Map<String, dynamic>.from(course);
@@ -353,6 +355,31 @@ class BaoBaoCourseAgent {
 
       return copied;
     }).toList();
+  }
+
+  bool _isGenericPlanningMemoryKeyword(String value) {
+    final text = value.toLowerCase().trim();
+    if (text.isEmpty) return true;
+
+    final generic = {
+      'core',
+      'ge',
+      'general education',
+      'elective',
+      'electives',
+      'language',
+      'course',
+      'courses',
+      'class',
+      'classes',
+      'major',
+      'required',
+      'requirement',
+      'requirements',
+      'any',
+    };
+
+    return generic.contains(text);
   }
 
   List<Map<String, dynamic>> _filterByBaoBaoMemory({
@@ -2195,6 +2222,64 @@ class BaoBaoCourseAgent {
     return '';
   }
 
+  Set<String> _courseScheduleSlotKeys(Map<String, dynamic> course) {
+    final keys = <String>{};
+
+    final slotText = [
+      course['slotCode'],
+      course['timeSlot'],
+      course['schedule'],
+      course['classTime'],
+      course['courseTime'],
+      course['period'],
+      course['periods'],
+    ].whereType<Object>().map((item) => item.toString()).join(' ');
+
+    keys.addAll(_parseNthuSlotText(slotText));
+
+    final day = _toInt(course['day']);
+    final startSlot = _toInt(course['startSlot']);
+    final duration = _toInt(course['duration']);
+
+    if (day >= 1 && day <= 7 && duration > 0) {
+      for (int offset = 0; offset < duration; offset++) {
+        keys.add('D$day:${startSlot + offset}');
+      }
+    }
+
+    return keys;
+  }
+
+  Set<String> _parseNthuSlotText(String raw) {
+    final text = raw.toUpperCase().replaceAll(RegExp(r'\s+'), '');
+    final keys = <String>{};
+    const dayLetters = {'M', 'T', 'W', 'R', 'F', 'S', 'U'};
+    const periodLetters = {'1', '2', '3', '4', 'N', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D'};
+
+    String? currentDay;
+
+    for (int i = 0; i < text.length; i++) {
+      final ch = text[i];
+      final previous = i == 0 ? '' : text[i - 1];
+      final next = i + 1 < text.length ? text[i + 1] : '';
+
+      if (dayLetters.contains(ch) && periodLetters.contains(next)) {
+        if (previous.isNotEmpty && RegExp(r'[A-Z]').hasMatch(previous)) {
+          continue;
+        }
+
+        currentDay = ch;
+        continue;
+      }
+
+      if (currentDay != null && periodLetters.contains(ch)) {
+        keys.add('$currentDay:$ch');
+      }
+    }
+
+    return keys;
+  }
+
   BaoBaoPlanValidation _validatePlan({
     required List<Map<String, dynamic>> plannedCourses,
     required Set<String> completedCourses,
@@ -2204,6 +2289,7 @@ class BaoBaoCourseAgent {
     final validCourseIds = <String>[];
 
     int totalCredits = 0;
+    final occupiedSlots = <String, String>{};
 
     for (final course in plannedCourses) {
       final id = course['id']?.toString() ?? '';
@@ -2216,6 +2302,24 @@ class BaoBaoCourseAgent {
       if (_courseMatchesBlockedList(course, completedCourses)) {
         warnings.add('$title may already be completed or in progress.');
         continue;
+      }
+
+      final slots = _courseScheduleSlotKeys(course);
+      String? conflictWith;
+
+      for (final slot in slots) {
+        if (occupiedSlots.containsKey(slot)) {
+          conflictWith = occupiedSlots[slot];
+          break;
+        }
+      }
+
+      if (conflictWith != null) {
+        warnings.add('$title has a time conflict with $conflictWith.');
+      } else {
+        for (final slot in slots) {
+          occupiedSlots[slot] = title;
+        }
       }
 
       if (id.isNotEmpty) {
@@ -2251,7 +2355,8 @@ class BaoBaoCourseAgent {
       warnings: warnings,
       curriculumMatches: curriculumMatches,
       bucketCounts: bucketCounts,
-      hasCriticalIssue: plannedCourses.isEmpty,
+      hasCriticalIssue: plannedCourses.isEmpty ||
+          warnings.any((warning) => warning.toLowerCase().contains('time conflict')),
       summary: '${summaryParts.join(', ')}.',
     );
   }
