@@ -108,6 +108,7 @@ function parseGraduationData(htmlContent) {
             "credits": parsedCredits,
             "grade": status === "passed" ? grade : "",
             "year": year,
+            "code": code,
             "status": status
         };
 
