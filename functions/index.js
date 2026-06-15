@@ -2,11 +2,14 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const { google } = require('googleapis');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const path = require('path');
 const { defineSecret } = require('firebase-functions/params');
 const pdfParse = require("pdf-parse");
 
 const openRouterApiKey = defineSecret('OPENROUTER_API_KEY_2');
+const geminiApiKey = defineSecret('GEMINI_API_KEY');
+
 const gmailCredentials = defineSecret('GMAIL_CREDENTIALS');
 
 const serviceAccount = require("./serviceAccountKey.json");
@@ -343,7 +346,7 @@ function extractCurriculumJsonObject(text) {
     const end = text.lastIndexOf("}");
 
     if (start === -1 || end === -1 || end <= start) {
-        throw new Error("No JSON object found in OpenRouter response.");
+        throw new Error("No JSON object found in Gemini response.");
     }
 
     return text.substring(start, end + 1);
@@ -361,7 +364,7 @@ exports.parseCurriculumPdfFromBytes = onCall(
         region: "us-central1",
         memory: "1GiB",
         timeoutSeconds: 300,
-        secrets: [openRouterApiKey],
+        secrets: [geminiApiKey],
     },
     async (request) => {
         if (!request.auth) {
@@ -441,6 +444,11 @@ exports.parseCurriculumPdfFromBytes = onCall(
                 );
             }
 
+            const genAI = new GoogleGenerativeAI(geminiApiKey.value());
+            const model = genAI.getGenerativeModel({
+                model: "gemini-2.5-flash",
+            });
+
             const prompt = `
 You convert university curriculum PDF text into clean JSON.
 
@@ -485,7 +493,8 @@ PDF text:
 ${pdfText.slice(0, 45000)}
 `;
 
-            const responseText = await callOpenRouter(prompt, { jsonMode: true });
+            const result = await model.generateContent(prompt);
+            const responseText = result.response.text();
 
             const cleanedText = cleanCurriculumGeminiText(responseText);
             const jsonText = extractCurriculumJsonObject(cleanedText);
@@ -536,4 +545,4 @@ ${pdfText.slice(0, 45000)}
             );
         }
     }
-);
+)
