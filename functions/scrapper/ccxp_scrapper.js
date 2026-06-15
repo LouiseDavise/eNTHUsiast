@@ -83,6 +83,8 @@ async function scrapCurrentCourse(sessKey) {
     
     try {
         await page.goto(url);
+        await page.waitForSelector('select');
+        await page.selectOption('select[name="semester"]', '114,20')
         await page.waitForSelector('form'); // Wait for form loading
         
         // Use clean XPath to locate and select option
