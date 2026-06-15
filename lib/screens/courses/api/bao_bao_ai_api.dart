@@ -329,7 +329,43 @@ Rules:
       return profile;
     } catch (error) {
       print('Bao-Bao preference profile parse failed: $error');
-      return {};
+      print('Bao-Bao raw preference profile AI response: $content');
+
+      // Some OpenRouter free models answer with prose or truncated text even
+      // when we ask for JSON. Repair once instead of silently losing the
+      // AI-generated preference understanding.
+      final repaired = await _callAiChat(
+        systemPrompt: '''
+Return valid JSON only. No markdown.
+Convert the user's text into this exact schema:
+{
+  "careerKeywords": [],
+  "departmentKeywords": [],
+  "coreCourseHints": [],
+  "electiveHints": [],
+  "geHints": [],
+  "avoidKeywords": [],
+  "planningNotes": []
+}
+Use empty arrays for missing fields.
+''',
+        userContent: content,
+        temperature: 0.0,
+        maxTokens: 500,
+      );
+
+      if (repaired == null || repaired.trim().isEmpty) {
+        return {};
+      }
+
+      try {
+        final parsed = jsonDecode(_extractJsonObject(repaired));
+        return parsed is Map ? Map<String, dynamic>.from(parsed) : {};
+      } catch (repairError) {
+        print('Bao-Bao preference profile repair failed: $repairError');
+        print('Bao-Bao repaired preference profile response: $repaired');
+        return {};
+      }
     }
   }
 
@@ -410,10 +446,20 @@ Rules:
     required List<String> plannedCourseIds,
     Map<String, dynamic>? userPreferences,
   }) async {
-    final localFallback = _localBaoBaoIntentFallback(
-      userMessage: userMessage,
-      lastRecommendationIds: lastRecommendationIds,
-      plannedCourseIds: plannedCourseIds,
+    // Prompt-first design:
+    // Do not locally parse the user's words into a subject/professor/category.
+    // Bao-Bao asks the model to understand the whole prompt and return a
+    // structured decision. Local fallback is intentionally broad and safe.
+    final promptFirstFallback = BaoBaoCourseIntent(
+      intent: 'new_plan',
+      basePlan: 'none',
+      actions: const [],
+      memoryUpdate: null,
+      needsClarification: false,
+      clarifyingQuestion: null,
+      usePreviousRecommendation: false,
+      searchMode: 'general_plan',
+      query: userMessage.trim(),
     );
 
     final content = await _callAiChat(
@@ -422,7 +468,9 @@ You are Bao-Bao's intent resolver for an NTHU course planner app.
 
 Return JSON only. No markdown. Do not recommend courses here.
 
-Your job is to understand what the student wants, even if the wording is messy.
+Treat the student's entire message as a natural prompt, not as a keyword search.
+Your job is to infer the student's real task and decide what the planner should do.
+Do not hardcode particular professors, careers, course names, or examples as special cases.
 
 Valid intents:
 - direct_search
@@ -433,45 +481,42 @@ Valid intents:
 - small_talk
 - clarification_needed
 
-Core task:
-Decide if the student is asking for a fresh direct search, a new plan, or an edit to the previous recommendation.
-Do not recommend courses here.
+Decision principles:
+- direct_search = the request can be answered by searching real course metadata without using the previous recommendation.
+- new_plan = the user describes a goal, direction, preference mix, semester style, or asks Bao-Bao to recommend a plan.
+- modify_previous_plan = only when the user clearly wants to edit an existing/current/previous plan.
+- clarification_needed = the user asks to add/change a broad category but Bao-Bao needs more detail before changing the plan safely.
+- memory_update = only when the user clearly wants Bao-Bao to remember something for future requests.
+- clear_memory = only when the user clearly asks to clear/reset/forget Bao-Bao memory.
 
-Rules:
-- direct_search = the request can be answered without using the previous recommendation.
-- Examples of direct_search: "give course taught by panwei", "find linear algebra ii", "give morning classes", "show 3 core courses", "classes by professor x".
-- new_plan = the user describes an academic goal, interest direction, career direction, or mixed study direction and expects Bao-Bao to build a useful plan.
-- Examples of new_plan/general_plan: "I want to study CS with a bit of business", "I want courses for software and design", "help me plan around AI and entrepreneurship", "I want to focus on power engineering", "build a plan for cybersecurity".
-- For new_plan/general_plan, set searchMode = "general_plan", query = the clean goal phrase, basePlan = "none", usePreviousRecommendation = false, and do not require an exact subject match.
-- modify_previous_plan = only when the user clearly references the previous result, such as "same as before", "previous one", "what you recommended", "that plan", "I like it but add/remove/change...", or "keep that plan but...".
-- Do not use lastRecommendation only because a last recommendation exists.
-- If the user says only "add X", "include X", or "give X" without clear previous-plan words, use direct_search with basePlan = "none" and usePreviousRecommendation = false.
-- If the user clearly says "same as before but add X", use modify_previous_plan, basePlan = "last_recommendation", usePreviousRecommendation = true.
-- If the user says "add X to my course/plan/schedule" or "add X to my current plan", use modify_previous_plan, basePlan = "current_plan", usePreviousRecommendation = false. The app will search only X and then merge it with the current plan.
-- If the user asks to add/include/plus/another/more of a broad course category without enough detail, use clarification_needed instead of guessing many courses.
-- Broad add/edit means the request names only a course type/category/requirement area, but not a specific subject, instructor, language, course name, or exact number. Examples: "add another core course", "add more electives", "include a language course", "add one GE".
-- For broad add/edit requests, ask one short follow-up question asking what exact course/subject/instructor/language they want, how many, and whether Bao-Bao should replace an existing course to stay within the credit range.
-- Do not satisfy broad add/edit requests by returning many random courses from that category.
-- If a follow-up add may change the total credits, ask whether Bao-Bao should replace an existing course or allow the plan to exceed the user's credit range.
-- searchMode should describe the search style: instructor, subject, time, course_type, credit_mix, general_plan, unknown.
-- query should be the clean search phrase only, for example "panwei", "linear algebra ii", "morning", or "core courses".
-- Only use memory_update when the user clearly wants Bao-Bao to remember something for the future, such as "remember", "next time", "from now on", "don't recommend X again".
-- Do not treat Bao-Bao's own internal planning instructions as memory.
-- If the request is too unclear, use clarification_needed and ask a short question.
+Context rules:
+- Do not use lastRecommendation just because it exists.
+- Use basePlan = "last_recommendation" only if the user clearly references the previous recommendation.
+- Use basePlan = "current_plan" only if the user asks to add/change something in their current plan/schedule/course list.
+- For broad add/change requests, ask one concise follow-up question instead of guessing several courses.
+- If adding may exceed the user's credit range, ask whether to replace an existing course or allow overflow.
 
-Actions schema:
-- add: {"type":"add", "subject":"calculus", "count":1}
-- remove: {"type":"remove", "subject":"business english", "count":null}
-- replace: {"type":"replace", "subject":"economics", "withSubject":"ai", "count":1}
-- avoid_time: {"type":"avoid_time", "subject":"morning", "count":null}
+searchMode values:
+- instructor: the user wants courses taught by a person.
+- subject: the user wants a specific course/topic/subject.
+- time: the user asks about class time.
+- course_type: the user asks for core/GE/elective/requirement style.
+- credit_mix: the user asks for a credit target or balance.
+- general_plan: the user gives a broad goal/style/direction.
+- unknown: unclear.
+
+query rules:
+- query is a clean natural search/planning phrase for the planner.
+- Keep query faithful to the user's meaning.
+- Do not insert phrases like "previous plan", "follow-up edit", or internal reasoning into query.
 
 Output schema:
 {
-  "intent": "direct_search",
+  "intent": "new_plan",
   "basePlan": "none",
   "usePreviousRecommendation": false,
-  "searchMode": "instructor",
-  "query": "panwei",
+  "searchMode": "general_plan",
+  "query": "clean phrase from the student's request",
   "actions": [],
   "memoryUpdate": {
     "avoidKeywords": [],
@@ -493,7 +538,7 @@ Output schema:
     );
 
     if (content == null || content.trim().isEmpty) {
-      return localFallback;
+      return promptFirstFallback;
     }
 
     try {
@@ -501,46 +546,25 @@ Output schema:
       final parsed = jsonDecode(jsonText);
 
       if (parsed is! Map) {
-        return localFallback;
+        return promptFirstFallback;
       }
 
       final resolved = BaoBaoCourseIntent.fromJson(
         Map<String, dynamic>.from(parsed),
       );
 
-      final normalized = _normalizeResolvedIntentWithContext(
-        resolved: resolved,
-        userMessage: userMessage,
-        plannedCourseIds: plannedCourseIds,
-      );
-
       if (_looksLikeBaoBaoInternalPlanningPrompt(userMessage) &&
-          (normalized.isMemoryUpdate || normalized.isClearMemory)) {
-        return localFallback;
+          (resolved.isMemoryUpdate || resolved.isClearMemory)) {
+        return promptFirstFallback;
       }
 
-      if (_looksLikeAddOnlyFollowUp(userMessage) &&
-          lastRecommendationIds.isNotEmpty &&
-          !normalized.isModifyPreviousPlan &&
-          !normalized.isClarificationNeeded &&
-          !_looksLikeOpenEndedStudyGoal(userMessage)) {
-        return localFallback;
-      }
-
-      final clarificationIntent = _clarificationForAmbiguousBroadIntent(
-        normalized,
-        userPreferences: userPreferences,
-        userMessage: userMessage,
-      );
-
-      if (clarificationIntent != null) {
-        return clarificationIntent;
-      }
-
-      return normalized;
+      // Trust the model's structured intent. Do not override it with local
+      // keyword/professor/course-name parsing. That was the source of many
+      // "same output / wrong exact search" bugs.
+      return resolved;
     } catch (error) {
       print('Bao-Bao intent parse failed: $error');
-      return localFallback;
+      return promptFirstFallback;
     }
   }
 
@@ -1635,9 +1659,24 @@ Output schema:
       return ranked;
     }
 
-    // Accuracy is more important than random variety for Bao-Bao.
-    // Keep the deterministic ranking instead of shuffling the top results.
-    return ranked;
+    // Keep Bao-Bao accurate, but avoid returning the exact same cards every
+    // time the same starter/chill prompt is tested. We only rotate inside the
+    // top ranked window, so the result stays relevant but feels less robotic.
+    final windowSize = math.min(
+      ranked.length,
+      math.max(group.count * 3, group.count + 4),
+    );
+
+    final topWindow = ranked.take(windowSize).toList();
+    final rest = ranked.skip(windowSize).toList();
+
+    final seed = DateTime.now().millisecondsSinceEpoch ~/ (1000 * 60 * 10);
+    topWindow.shuffle(math.Random(seed + group.query.hashCode));
+
+    return [
+      ...topWindow,
+      ...rest,
+    ];
   }
   
   _AiSearchPlan _adjustPlanWithUserHints(
@@ -1653,6 +1692,34 @@ Output schema:
     final cleanIntentPlan = _cleanPlanFromResolvedIntent(intent);
     if (cleanIntentPlan != null) {
       return cleanIntentPlan;
+    }
+
+    if (intent != null &&
+        intent.intent == 'new_plan' &&
+        intent.searchMode.toLowerCase().trim() == 'general_plan') {
+      return _buildPromptFirstGeneralPlan(
+        aiPlan: plan,
+        userMessage: userMessage,
+        intent: intent,
+        userPreferences: userPreferences,
+      );
+    }
+
+    // For real user prompts that already passed through the AI intent resolver,
+    // do not run local keyword/category/time/professor parsers on the raw text.
+    // Use the AI search plan as the plan, then only add user preference context.
+    if (intent != null && !_isAutoStarterRequest(userMessage)) {
+      return _enhancePlanWithUserPreferences(
+        plan,
+        userPreferences,
+      );
+    }
+
+    if (_isAvoidEarlyMorningPlanRequest(userMessage)) {
+      return _buildNoEarlyMorningGeneralPlan(
+        userMessage,
+        userPreferences,
+      );
     }
 
     // Auto starter and curriculum-planning prompts are handled before normal credit mix,
@@ -1753,6 +1820,71 @@ Output schema:
   }
 
 
+
+  bool _isAvoidEarlyMorningPlanRequest(String message) {
+    final lower = message.toLowerCase();
+
+    return (lower.contains('recommend') ||
+            lower.contains('suggest') ||
+            lower.contains('plan') ||
+            lower.contains('course') ||
+            lower.contains('courses') ||
+            lower.contains('class') ||
+            lower.contains('classes')) &&
+        (lower.contains('avoid early morning') ||
+            lower.contains('no early morning') ||
+            lower.contains('avoid morning') ||
+            lower.contains('no morning') ||
+            lower.contains('not morning'));
+  }
+
+  _AiSearchPlan _buildNoEarlyMorningGeneralPlan(
+    String message,
+    Map<String, dynamic>? userPreferences,
+  ) {
+    final prefs = _preferenceMap(userPreferences);
+    final lower = message.toLowerCase();
+    final targetCredits = _extractTargetCreditCount(lower);
+    final query = [
+      _departmentPreferenceQuery(prefs),
+      _careerPreferenceQuery(prefs),
+      _gePreferenceQuery(prefs),
+      _memoryPreferenceQuery(prefs),
+      'useful course plan avoid early morning no morning',
+    ].where((item) => item.trim().isNotEmpty).join(' ');
+
+    return _AiSearchPlan(
+      targetCredits: targetCredits,
+      allowSpecialCourses: false,
+      groups: [
+        _SearchGroup(
+          query: query,
+          subjectQuery: null,
+          subjectPhrases: const [],
+          mustMatchSubject: false,
+          count: 12,
+          credits: null,
+          requiredType: 'any',
+          timePreference: 'no_morning',
+          language: _languagePreferenceFromPrefs(prefs),
+          minLimit: null,
+          maxLimit: null,
+          mustHave: const [],
+          avoid: const [
+            'thesis',
+            'seminar',
+            'research',
+            'lab rotation',
+            'dissertation',
+            '專題',
+            '論文',
+            '研究',
+            '書報',
+          ],
+        ),
+      ],
+    );
+  }
 
   _AiSearchPlan? _cleanPlanFromResolvedIntent(BaoBaoCourseIntent? intent) {
     if (intent == null) {
@@ -1947,6 +2079,89 @@ Output schema:
   }
 
 
+  _AiSearchPlan _buildPromptFirstGeneralPlan({
+    required _AiSearchPlan aiPlan,
+    required String userMessage,
+    required BaoBaoCourseIntent intent,
+    required Map<String, dynamic>? userPreferences,
+  }) {
+    final prefs = _preferenceMap(userPreferences);
+    final intentQuery = intent.query.trim();
+    final promptText = [
+      intentQuery,
+      userMessage,
+    ].where((item) => item.trim().isNotEmpty).join(' ');
+
+    final basePlan = aiPlan.groups.isNotEmpty
+        ? aiPlan
+        : _buildOpenEndedGoalPlan(promptText, userPreferences);
+
+    final avoid = _mergeStringLists(
+      const [
+        'thesis',
+        'seminar',
+        'research',
+        'lab rotation',
+        'dissertation',
+        '專題',
+        '論文',
+        '研究',
+        '書報',
+      ],
+      _memoryAvoidKeywords(prefs),
+    );
+
+    final keepRequestedType = _promptExplicitlyRequestsCourseType(promptText);
+
+    final groups = basePlan.groups.map((group) {
+      final filteredMustHave = group.mustHave
+          .where((item) => item.trim().toUpperCase() != '__BAOBAO_PREF_FIT__')
+          .toList();
+
+      return group.copyWith(
+        query: [
+          group.query,
+          promptText,
+        ].where((item) => item.trim().isNotEmpty).join(' '),
+        clearSubject: true,
+        subjectPhrases: const [],
+        mustMatchSubject: false,
+        // For natural goal prompts, do not force the old curriculum/department
+        // type too early. Let the prompt and AI reranker decide relevance from
+        // the real candidate list. Keep type only when the user explicitly asks
+        // for CORE/GE/ELECTIVE.
+        requiredType: keepRequestedType ? group.requiredType : 'any',
+        language: 'any',
+        mustHave: _mergeStringLists(
+          filteredMustHave,
+          const ['__BAOBAO_PROMPT_FIRST__'],
+        ),
+        avoid: _mergeStringLists(group.avoid, avoid),
+      );
+    }).toList();
+
+    return _AiSearchPlan(
+      targetCredits: aiPlan.targetCredits,
+      allowSpecialCourses: aiPlan.allowSpecialCourses,
+      groups: groups.isNotEmpty
+          ? groups
+          : _buildOpenEndedGoalPlan(promptText, userPreferences).groups,
+    );
+  }
+
+  bool _promptExplicitlyRequestsCourseType(String message) {
+    final lower = message.toLowerCase();
+
+    return RegExp(
+      r'\b(core|ge|general education|elective|requirement|required|lab|language)\b',
+      caseSensitive: false,
+    ).hasMatch(lower) ||
+        lower.contains('通識') ||
+        lower.contains('選修') ||
+        lower.contains('必修') ||
+        lower.contains('實驗');
+  }
+
   _AiSearchPlan _buildOpenEndedGoalPlan(
     String message,
     Map<String, dynamic>? userPreferences,
@@ -1957,9 +2172,6 @@ Output schema:
     final preferenceCreditRange = _targetCreditRangeFromPreferences(userPreferences);
     final planningTargetCredits = targetCredits ?? preferenceCreditRange.max;
 
-    final careerText = _careerPreferenceQuery(prefs);
-    final departmentText = _departmentPreferenceQuery(prefs);
-    final geText = _gePreferenceQuery(prefs);
     final memoryText = _memoryPreferenceQuery(prefs);
     final profileAvoid = _searchProfileText(
       prefs,
@@ -1983,25 +2195,12 @@ Output schema:
       ),
     );
 
-    final requestedCoreCount = _toInt(prefs['coreCourses']);
-    final coreCount = requestedCoreCount > 0
-        ? requestedCoreCount.clamp(1, 5)
-        : (planningTargetCredits == null ? 2 : 3);
-
-    final electiveCount = planningTargetCredits == null ? 4 : 4;
-    final geCount = geText.trim().isEmpty ? 1 : 2;
+    final primaryCount = planningTargetCredits == null ? 4 : 5;
+    final supportingCount = planningTargetCredits == null ? 3 : 4;
+    final perspectiveCount = 2;
 
     final goalText = [
       cleanGoal,
-      departmentText,
-      careerText,
-      memoryText,
-    ].where((item) => item.trim().isNotEmpty).join(' ');
-
-    final supportText = [
-      cleanGoal,
-      careerText,
-      geText,
       memoryText,
     ].where((item) => item.trim().isNotEmpty).join(' ');
 
@@ -2012,63 +2211,62 @@ Output schema:
         _SearchGroup(
           query: [
             goalText,
-            'core foundation major required academic direction',
+            'foundation introductory applied academic direction',
           ].where((item) => item.trim().isNotEmpty).join(' '),
           subjectQuery: null,
           subjectPhrases: const [],
           mustMatchSubject: false,
-          count: coreCount,
+          count: primaryCount,
           credits: null,
-          requiredType: 'CORE',
+          requiredType: 'any',
           timePreference: 'any',
           language: 'any',
           minLimit: 0,
           maxLimit: null,
-          mustHave: const [],
+          mustHave: const ['__BAOBAO_PROMPT_FIRST__'],
           avoid: avoid,
         ),
         _SearchGroup(
           query: [
-            supportText,
-            'elective applied interdisciplinary useful practical',
+            goalText,
+            'supporting interdisciplinary practical elective',
           ].where((item) => item.trim().isNotEmpty).join(' '),
           subjectQuery: null,
           subjectPhrases: const [],
           mustMatchSubject: false,
-          count: electiveCount,
+          count: supportingCount,
           credits: null,
-          requiredType: 'ELECTIVE',
+          requiredType: 'any',
           timePreference: 'any',
           language: 'any',
           minLimit: 0,
           maxLimit: null,
-          mustHave: const [],
+          mustHave: const ['__BAOBAO_PROMPT_FIRST__'],
           avoid: avoid,
         ),
         _SearchGroup(
           query: [
-            geText,
-            cleanGoal,
-            'general education GE 通識 supporting perspective',
+            goalText,
+            'context communication management society perspective',
           ].where((item) => item.trim().isNotEmpty).join(' '),
           subjectQuery: null,
           subjectPhrases: const [],
           mustMatchSubject: false,
-          count: geCount,
+          count: perspectiveCount,
           credits: null,
-          requiredType: 'GE',
+          requiredType: 'any',
           timePreference: 'any',
           language: 'any',
           minLimit: 0,
           maxLimit: null,
-          mustHave: const [],
+          mustHave: const ['__BAOBAO_PROMPT_FIRST__'],
           avoid: avoid,
         ),
       ],
     );
   }
 
-    _AiSearchPlan _buildNoCurriculumPreferenceStarterPlan(
+  _AiSearchPlan _buildNoCurriculumPreferenceStarterPlan(
     String message,
     Map<String, dynamic>? userPreferences,
   ) {
@@ -3063,7 +3261,10 @@ int? _smallNumberToInt(String value) {
     String userMessage, {
     BaoBaoCourseIntent? intent,
   }) async {
-    final fallback = _AiSearchPlan.local(userMessage);
+    // Prompt-first fallback: if the model cannot return a search plan, do not
+    // convert the raw prompt into a strict keyword/subject search. Use the
+    // prompt as a broad planning query instead.
+    final fallback = _AiSearchPlan.promptFirst(userMessage);
 
     final content = await _callAiChat(
       systemPrompt: '''
@@ -3183,6 +3384,7 @@ Other rules:
 - credits means each course must have that credit number.
 - Avoid thesis, seminar, colloquium, research, MOOC, lab rotation unless user directly asks.
 - If user asks for thesis/research/seminar, set allowSpecialCourses true.
+- If the request says recommend/suggest courses but avoid early morning, no early morning, or no morning, this is a broad planning/filter request: set mustMatchSubject false, subjectQuery null, and timePreference no_morning.
 - If user asks for "calculus II", "calculus 2", or "calc ii", subjectPhrases must include "calculus ii", "calculus 2", and "微積分二". Do not use only "calculus".
 - "English for Specific Academic Purposes: Calculus" is an English course, not a Calculus II course.
 - This also applies for any course that has more than 1 level of course like physics 1, physics 2, I2P 1, I2P 2, and others.
@@ -3892,6 +4094,7 @@ Return:
     required List<String> subjectPhrases,
   }) {
     int score = 0;
+    final promptFirstGoal = _isPromptFirstGoalGroup(group);
 
     final title = _looseText((course['title'] ?? '').toString());
     final code = _looseText((course['code'] ?? '').toString());
@@ -3921,12 +4124,12 @@ Return:
 
       if (looseToken.isEmpty) continue;
 
-      if (professor.contains(looseToken)) score += 170;
-      if (title.contains(looseToken)) score += 90;
-      if (code.contains(looseToken)) score += 80;
-      if (department.contains(looseToken)) score += 60;
-      if (type.contains(looseToken)) score += 50;
-      if (looseText.contains(looseToken)) score += 30;
+      if (professor.contains(looseToken)) score += promptFirstGoal ? 80 : 170;
+      if (title.contains(looseToken)) score += promptFirstGoal ? 260 : 90;
+      if (code.contains(looseToken)) score += promptFirstGoal ? 120 : 80;
+      if (department.contains(looseToken)) score += promptFirstGoal ? 90 : 60;
+      if (type.contains(looseToken)) score += promptFirstGoal ? 40 : 50;
+      if (looseText.contains(looseToken)) score += promptFirstGoal ? 80 : 30;
 
       if (looseToken.length >= 4) {
         for (final textToken in textTokens) {
@@ -3936,7 +4139,7 @@ Return:
           if (looseTextToken[0] != looseToken[0]) continue;
 
           if (_similarity(looseToken, looseTextToken) >= 0.84) {
-            score += 12;
+            score += promptFirstGoal ? 35 : 12;
           }
         }
       }
@@ -3961,7 +4164,8 @@ Return:
     score += (rating * 5).round();
 
     score += _toInt(course['yearFitScore']);
-    score += _toInt(course['preferenceFitScore']);
+    final preferenceScore = _toInt(course['preferenceFitScore']);
+    score += promptFirstGoal ? math.min(preferenceScore, 120) : preferenceScore;
 
     return score;
   }
@@ -4268,6 +4472,12 @@ Return:
   }
 
 
+  bool _isPromptFirstGoalGroup(_SearchGroup group) {
+    return group.mustHave.any(
+      (item) => item.trim().toUpperCase() == '__BAOBAO_PROMPT_FIRST__',
+    );
+  }
+
   int _curriculumBucketScoreForGroup(String bucket, _SearchGroup group) {
     final normalizedBucket = bucket.toUpperCase();
     final requestedBuckets = group.mustHave
@@ -4278,6 +4488,25 @@ Return:
     final query = '${group.query} ${group.subjectQuery ?? ''}'.toLowerCase();
 
     int score = 0;
+
+    if (_isPromptFirstGoalGroup(group)) {
+      switch (normalizedBucket) {
+        case 'DEPT_REQUIRED':
+        case 'BASIC_CORE':
+        case 'CORE_COURSE':
+        case 'PROFESSIONAL':
+        case 'LAB':
+          return 120;
+        case 'GE':
+        case 'LANGUAGE':
+          return 80;
+        case 'FREE_ELECTIVE':
+        case 'SCHOOL_COMPULSORY':
+          return 40;
+        default:
+          return 0;
+      }
+    }
 
     // If this group specifically asks for this bucket, make it very strong.
     if (requestedBuckets.contains(normalizedBucket)) {
@@ -5209,8 +5438,33 @@ class _AiSearchPlan {
     required this.groups,
   });
 
+  factory _AiSearchPlan.promptFirst(String message) {
+    return _AiSearchPlan(
+      targetCredits: null,
+      allowSpecialCourses: false,
+      groups: [
+        _SearchGroup(
+          query: message,
+          subjectQuery: null,
+          subjectPhrases: const [],
+          mustMatchSubject: false,
+          count: 8,
+          credits: null,
+          requiredType: 'any',
+          timePreference: 'any',
+          language: 'any',
+          minLimit: null,
+          maxLimit: null,
+          mustHave: const [],
+          avoid: const [],
+        ),
+      ],
+    );
+  }
+
   factory _AiSearchPlan.local(String message) {
-    final subjectQuery = _extractLocalSubjectQuery(message);
+    final isBroadFilterOrPlan = _isBroadFilterOrPlanningMessage(message);
+    final subjectQuery = isBroadFilterOrPlan ? null : _extractLocalSubjectQuery(message);
     final hasSubject = subjectQuery != null && subjectQuery.trim().isNotEmpty;
 
     return _AiSearchPlan(
@@ -5270,6 +5524,44 @@ class _AiSearchPlan {
     if (match == null) return 5;
 
     return _wordToNumber(match.group(1) ?? '') ?? 5;
+  }
+
+  static bool _isBroadFilterOrPlanningMessage(String message) {
+    final lower = message.toLowerCase();
+
+    final hasPlanningWord = lower.contains('recommend') ||
+        lower.contains('suggest') ||
+        lower.contains('plan') ||
+        lower.contains('course') ||
+        lower.contains('courses') ||
+        lower.contains('class') ||
+        lower.contains('classes');
+
+    final hasOnlyFilter = lower.contains('morning') ||
+        lower.contains('afternoon') ||
+        lower.contains('evening') ||
+        lower.contains('night') ||
+        lower.contains('credit') ||
+        lower.contains('limit') ||
+        lower.contains('capacity') ||
+        lower.contains('conducted in') ||
+        lower.contains('taught in') ||
+        lower.contains('in english') ||
+        lower.contains('in chinese') ||
+        lower.contains('easy') ||
+        lower.contains('chill') ||
+        lower.contains('light');
+
+    final hasSpecificLookup = lower.contains('linear algebra') ||
+        lower.contains('calculus') ||
+        lower.contains('i2p') ||
+        lower.contains('database') ||
+        lower.contains('operating system') ||
+        lower.contains('data structure') ||
+        lower.contains('professor') ||
+        lower.contains('taught by');
+
+    return hasPlanningWord && hasOnlyFilter && !hasSpecificLookup;
   }
 
   static String _extractTimePreference(String message) {
@@ -5389,6 +5681,18 @@ class _AiSearchPlan {
       r'\bprofessor\b',
       r'\bteacher\b',
       r'\binstructor\b',
+      r'\brecommend\b',
+      r'\bsuggest\b',
+      r'\bavoid\b',
+      r'\bearly\b',
+      r'\blate\b',
+      r'\bbut\b',
+      r'\band\b',
+      r'\bor\b',
+      r'\bnot\b',
+      r'\bno\b',
+      r'\bpreference\b',
+      r'\bpreferences\b',
     ];
 
     for (final pattern in removePatterns) {
@@ -5398,6 +5702,27 @@ class _AiSearchPlan {
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
 
     if (text.length < 2) {
+      return null;
+    }
+
+    final tokens = text.split(RegExp(r'\s+')).where((item) => item.isNotEmpty).toList();
+    const genericTokens = {
+      'recommend',
+      'suggest',
+      'avoid',
+      'early',
+      'late',
+      'but',
+      'and',
+      'or',
+      'not',
+      'no',
+      'preference',
+      'preferences',
+      'filter',
+    };
+
+    if (tokens.isNotEmpty && tokens.every(genericTokens.contains)) {
       return null;
     }
 

@@ -129,7 +129,7 @@ class BaoBaoCourseAgent {
             userPreferences: userPreferences,
           );
 
-    final languageAwareCourses = isDirectLookup
+    final languageAwareCourses = shouldBypassStrictPolicy
         ? memoryFilteredCourses
         : _filterByUserLanguagePreference(
             courses: memoryFilteredCourses,
