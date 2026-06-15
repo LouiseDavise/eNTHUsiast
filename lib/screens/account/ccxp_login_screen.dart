@@ -1,10 +1,11 @@
-import 'package:enthusiast/providers/ccxp_data_provider.dart';
+﻿import 'package:enthusiast/providers/ccxp_data_provider.dart';
 import 'package:enthusiast/routes/app_routes.dart';
 import 'package:enthusiast/widgets/button_circle_back.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:dio/dio.dart';
 import 'dart:convert';
@@ -139,6 +140,20 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     return userData;
   }
 
+  Future<void> _syncSemesterHistoryForCurrentUser() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final result = await FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('syncSemesterHistoryForUser')
+          .call();
+
+      debugPrint('Semester history synced: ${result.data}');
+    } catch (e) {
+      debugPrint('Semester history sync failed: $e');
+    }
+  }
   // Updated login UI mechanism triggered by your button
   void _handleLogin() async {
     if (_studentIdController.text.isEmpty || _passwordController.text.isEmpty) {
@@ -161,6 +176,8 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
         password: password,
       );
       print(userData);
+
+      await _syncSemesterHistoryForCurrentUser();
 
       final graduationData =
           userData['graduationData'] as Map<String, dynamic>?;
@@ -871,3 +888,5 @@ class _GradientLoginButton extends StatelessWidget {
     );
   }
 }
+
+
