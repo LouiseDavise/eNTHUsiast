@@ -94,9 +94,10 @@ class CoursesScreen extends StatelessWidget {
       final String? catalogTitleEn = _clean(catalogData['titleEn']);
       final String? catalogTitleZh = _clean(catalogData['titleZh']);
 
-      final String? catalogTypeOverride =
-          courseTypeOverrides[_typeKey(catalogTitleEn ?? '', courseRef.yearTerm)] ??
-              courseTypeOverrides[_typeKey(catalogTitleZh ?? '', courseRef.yearTerm)];
+      final String? catalogTypeOverride = courseTypeOverrides[
+              _typeKey(catalogTitleEn ?? '', courseRef.yearTerm)] ??
+          courseTypeOverrides[
+              _typeKey(catalogTitleZh ?? '', courseRef.yearTerm)];
 
       courses.addAll(
         CourseScheduleMapper.fromCourseCatalog(
@@ -144,10 +145,8 @@ class CoursesScreen extends StatelessWidget {
 
   Future<Map<String, dynamic>?> _findCourseCatalogData(String rawCode) async {
     final String semester = _semesterFromCourseCode(rawCode);
-    final CollectionReference<Map<String, dynamic>> coursesRef = _db
-        .collection('courseCatalogs')
-        .doc(semester)
-        .collection('courses');
+    final CollectionReference<Map<String, dynamic>> coursesRef =
+        _db.collection('courseCatalogs').doc(semester).collection('courses');
 
     for (final String docId in _candidateDocIds(rawCode)) {
       final DocumentSnapshot<Map<String, dynamic>> doc =
@@ -256,10 +255,7 @@ class CoursesScreen extends StatelessWidget {
   }
 
   String _normalizeText(String text) {
-    return text
-        .toLowerCase()
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
+    return text.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   List<String> _candidateDocIds(String rawCode) {
@@ -351,11 +347,9 @@ class CoursesScreen extends StatelessWidget {
                       ],
                     ),
                   ),
-
                   const SizedBox(height: 8),
                   const Divider(height: 1, color: Color(0xFFE5E7EB)),
                   const SizedBox(height: 12),
-
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -372,9 +366,7 @@ class CoursesScreen extends StatelessWidget {
                     padding: const EdgeInsets.all(12),
                     child: _buildTimetableState(snapshot),
                   ),
-
                   const SizedBox(height: 20),
-
                   Row(
                     children: [
                       Expanded(
@@ -394,9 +386,7 @@ class CoursesScreen extends StatelessWidget {
                           },
                         ),
                       ),
-
                       const SizedBox(width: 14),
-
                       Expanded(
                         child: MenuSquareButton(
                           title: 'Course\nPlanner',
@@ -416,9 +406,7 @@ class CoursesScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 16),
-
                   MenuWideButton(
                     title: 'Graduation Verification',
                     subtitle: 'CHECK YOUR DEGREE PROGRESS',
@@ -435,6 +423,7 @@ class CoursesScreen extends StatelessWidget {
                       );
                     },
                   ),
+                  const SizedBox(height: 90),
                 ],
               ),
             );
