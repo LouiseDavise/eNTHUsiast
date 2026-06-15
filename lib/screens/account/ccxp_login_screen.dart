@@ -315,7 +315,7 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     String password,
   ) async {
     const url = prod
-        ? 'http://localhost:5001/enthusiast-e3429/us-central1/api'
+        ? 'https://us-central1-enthusiast-e3429.cloudfunctions.net/api'
         : 'https://prowler-underpaid-smudgy.ngrok-free.dev';
     final response = await dio.post(
       '$url/login',

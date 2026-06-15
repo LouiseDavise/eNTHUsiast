@@ -567,6 +567,7 @@ const app = express();
 
 // Enable CORS for all incoming requests
 app.use(cors({ origin: true }));
+// app.options('*', cors({ origin: true }));
 app.use(express.json());
 
 // --- ENDPOINTS ---

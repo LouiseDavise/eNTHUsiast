@@ -669,6 +669,7 @@ class _AccountScreenState extends State<AccountScreen> {
                   child: FilledButton(
                     onPressed: () async {
                       await deleteCcxpAccount();
+                      Navigator.pop(ctx);
                       // deleteCcxpAccount();
                       if (context.mounted) {
                         Navigator.pushAndRemoveUntil(

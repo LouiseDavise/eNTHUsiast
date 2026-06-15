@@ -17,19 +17,20 @@ class CourseMaterialsScreen extends StatelessWidget {
       final materials = (course['materials'] as List?)?.map<MaterialItem>((m) {
             return MaterialItem(
               week: '',
-              title: m['title'] ?? 'Material',
-              url: m['url'],
+              title: m['title'] as String? ?? 'Material',
+              url: m['url'] as String? ?? '', // ← was: m['url']
             );
           }).toList() ??
           [];
 
       return CourseMaterial(
-        id: course['title'],
-        title: course['title'],
-        code: course['code'],
-        platform: course['platform'],
-        teacher: course['teacher'],
-        updatedText: course['room'],
+        id: course['title'] as String? ?? '', // ← was: course['title']
+        title: course['title'] as String? ?? '', // ← was: course['title']
+        code: course['code'] as String? ?? '', // ← was: course['code']
+        platform:
+            course['platform'] as String? ?? '', // ← was: course['platform']
+        teacher: course['teacher'] as String? ?? '', // ← was: course['teacher']
+        updatedText: course['room'] as String? ?? '', // ← was: course['room']
         units: materials.isNotEmpty
             ? [
                 CourseUnit(

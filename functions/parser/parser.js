@@ -82,6 +82,7 @@ function parseGraduationData(htmlContent) {
         }
 
         const code = $(tds[2]).text().trim();
+
         if (!code || code.includes("School Semester")) return;
 
         const nameBits = $(tds[3])
@@ -172,6 +173,9 @@ function parseSchedule(htmlContent) {
         rows.each((index, rowElement) => {
             const tds = $(rowElement).find('td');
             if (tds.length < 7) return; 
+            const teacher = $(tds[5]).text().trim();
+            const room = $(tds[4]).text().trim();
+            const time = $(tds[3]).text().trim();
 
             const rawFirst = $(tds[0]).text().trim();
             const yearMatch = rawFirst.match(/^(\d{3})/);
@@ -196,12 +200,12 @@ function parseSchedule(htmlContent) {
                 courseList.push({
                     "title": title || "",
                     "code": code,
-                    "day": 1,
-                    "startSlot": 0,
-                    "duration": 2,
+                    "time": time,
                     "bg": style.bg,
                     "border": style.border,
-                    "text": style.text
+                    "text": style.text,
+                    "teacher": teacher,
+                    "room": room,
                 });
             }
         });
