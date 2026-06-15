@@ -146,7 +146,7 @@ class PlannerCourseCard extends StatelessWidget {
   Color _typeColor(String type) {
     switch (type.toUpperCase()) {
       case 'CORE':
-        return const Color(0xFFFF2D55);
+        return Color.fromARGB(255, 204, 28, 28);
       case 'LAB':
         return const Color(0xFF14B8A6);
       case 'ELECTIVE':
