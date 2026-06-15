@@ -84,6 +84,88 @@ async function callOpenRouter(prompt, { jsonMode = false, model = "openrouter/fr
     return text;
 }
 
+
+
+async function callOpenAIChat({ systemPrompt, userContent, temperature = 0.05, maxTokens = 1000, model = "gpt-4.1-mini" }) {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${openaiApiKey.value()}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            model: model,
+            messages: [
+                { role: "system", content: systemPrompt || "" },
+                { role: "user", content: userContent || "" },
+            ],
+            temperature: temperature,
+            max_tokens: maxTokens,
+        }),
+    });
+
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`OpenAI request failed (${response.status}): ${errText}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+
+    if (!content) {
+        throw new Error("OpenAI returned no content.");
+    }
+
+    return content;
+}
+
+exports.baoBaoOpenAiChat = onCall(
+    {
+        region: "us-central1",
+        memory: "512MiB",
+        timeoutSeconds: 120,
+        secrets: [openaiApiKey],
+    },
+    async (request) => {
+        if (!request.auth) {
+            throw new HttpsError("unauthenticated", "Please log in first.");
+        }
+
+        const systemPrompt = String(request.data.systemPrompt || "");
+        const userContent = String(request.data.userContent || "");
+        const temperature = Number(request.data.temperature ?? 0.05);
+        const maxTokens = Math.min(Number(request.data.maxTokens ?? 1000), 2000);
+
+        if (!systemPrompt.trim() || !userContent.trim()) {
+            throw new HttpsError("invalid-argument", "Missing Bao-Bao prompt content.");
+        }
+
+        if (systemPrompt.length > 20000 || userContent.length > 120000) {
+            throw new HttpsError("invalid-argument", "Bao-Bao prompt is too large.");
+        }
+
+        try {
+            const content = await callOpenAIChat({
+                systemPrompt: systemPrompt,
+                userContent: userContent,
+                temperature: temperature,
+                maxTokens: maxTokens,
+            });
+
+            return {
+                ok: true,
+                content: content,
+            };
+        } catch (error) {
+            console.error("Bao-Bao OpenAI callable failed:", error);
+            throw new HttpsError(
+                "internal",
+                error.message || "Bao-Bao OpenAI request failed."
+            );
+        }
+    }
+);
+
 async function authenticateGmail(refreshToken) {
     const credentials = JSON.parse(gmailCredentials.value());
     const { client_secret, client_id, redirect_uris } = credentials.installed || credentials.web;
@@ -295,7 +377,9 @@ exports.nthuEmailParser = onSchedule({
 });
 
 exports.linkGmailAccount = onCall({
-    secrets: [gmailCredentials]
+    secrets: [gmailCredentials],
+    memory: "512MiB",
+    timeoutSeconds: 60,
 }, async (request) => {
     const { serverAuthCode, accessToken, email, studentId, uid, platform } = request.data;
 
