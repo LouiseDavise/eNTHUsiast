@@ -1,26 +1,17 @@
-﻿import * as cheerio from 'cheerio';
-import * as fs from 'fs';
-import * as path from 'path';
-import { json } from 'stream/consumers';
+const cheerio = require('cheerio');
+const fs = require('fs');
+const path = require('path');
 
-// const htmlPath = path.join(__dirname, 'html', 'graduation_data.html');
-// const outputPath = path.join(__dirname, 'json_files', 'graduation_data.json');
-
-// // Ensure output directory exists safely
-// const outputDir = path.dirname(outputPath);
-// if (!fs.existsSync(outputDir)) {
-//     fs.mkdirSync(outputDir, { recursive: true });
-// }
 const styleMap = {
-    'CS':   { bg: '0xFFECFDF5', border: '0xFFA7F3D0', text: '0xFF065F46' },
-    'EECS': { bg: '0xFFF5F3FF', border: '0xFFDDD6FE', text: '0xFF6D28D9' },
-    'PHYS': { bg: '0xFFFFF1F2', border: '0xFFFECACA', text: '0xFFB91C1C' },
-    'MATH': { bg: '0xFFFAF5FF', border: '0xFFE9D5FF', text: '0xFF7C3AED' },
-    'CLC':  { bg: '0xFFFFF7ED', border: '0xFFFED7AA', text: '0xFFC2410C' },
-    'PE':   { bg: '0xFFF8FAFC', border: '0xFFCBD5E1', text: '0xFF475569' },
+    'CS':    { bg: '0xFFECFDF5', border: '0xFFA7F3D0', text: '0xFF065F46' },
+    'EECS':  { bg: '0xFFF5F3FF', border: '0xFFDDD6FE', text: '0xFF6D28D9' },
+    'PHYS':  { bg: '0xFFFFF1F2', border: '0xFFFECACA', text: '0xFFB91C1C' },
+    'MATH':  { bg: '0xFFFAF5FF', border: '0xFFE9D5FF', text: '0xFF7C3AED' },
+    'CLC':   { bg: '0xFFFFF7ED', border: '0xFFFED7AA', text: '0xFFC2410C' },
+    'PE':    { bg: '0xFFF8FAFC', border: '0xFFCBD5E1', text: '0xFF475569' },
 };
 
-export function parseGraduationData(htmlContent) {
+function parseGraduationData(htmlContent) {
     // Handle both array and string inputs
     let html = htmlContent;
     if (Array.isArray(htmlContent)) {
@@ -28,10 +19,7 @@ export function parseGraduationData(htmlContent) {
         html = '<table>' + htmlContent.join('\n') + '</table>';
     }
     
-    // Read HTML file synchronously with UTF-8 encoding (same as open(..., encoding='utf-8'))
     const $ = cheerio.load(html);
-    
-    // Get all rows
     const rows = $('tr');
     
     const categories = {
@@ -45,6 +33,7 @@ export function parseGraduationData(htmlContent) {
     let totalGradePoints = 0.0;
     let totalGpaCredits = 0;
     let studentInfo;
+
     rows.each((index, rowElement) => {
         const tds = $(rowElement).find('td');
         if(tds.hasClass("input_red")) {
@@ -58,25 +47,19 @@ export function parseGraduationData(htmlContent) {
                 "studentName" : studentName,
                 "studentDepartment" : studentDepartment
             };
-            // console.log(studentInfo);
-            
             return;
         }
-        //year
 
         if(tds.length == 9) {
             const yearStr = $(tds[0]).text().trim() + $(tds[1]).text().trim();      
         }
         
-        
-
-        if (tds.length === 0) return; // Equivalent to 'if not tds: continue'
+        if (tds.length === 0) return; 
 
         // --- 1. PARSE SUMMARY ROWS (For Cumulative GPA) ---
         if (tds.length >= 16) {
             const gpaStr = $(tds[2]).text().trim();
-            const creditsStr = $(tds[6]).text().trim(); // "Deserved Credits"
-           // Check if gpa is valid and credits is a whole number string
+            const creditsStr = $(tds[6]).text().trim(); 
             if (gpaStr && gpaStr !== '**' && /^\d+$/.test(creditsStr)) {
                 const gpa = parseFloat(gpaStr);
                 const creds = parseInt(creditsStr, 10);
@@ -85,7 +68,7 @@ export function parseGraduationData(htmlContent) {
                     totalGpaCredits += creds;
                 }
             }
-            return; // Equivalent to 'continue' in a Cheerio loop
+            return; 
         }
 
         // --- 2. PARSE COURSE ROWS ---
@@ -95,14 +78,12 @@ export function parseGraduationData(htmlContent) {
         const parsedCredits = parseInt(parseFloat(rawCredits ? rawCredits : '0'), 10);
         
         if (isNaN(parsedCredits)) {
-            return; // Skips headers like "Relative Grade Average"
+            return; 
         }
 
         const code = $(tds[2]).text().trim();
         if (!code || code.includes("School Semester")) return;
 
-        // BeautifulSoup's get_text(separator="|") replacement:
-        // We find all text nodes inside the element, trim them, and filter out empties
         const nameBits = $(tds[3])
             .contents()
             .map((i, el) => $(el).text().trim())
@@ -118,8 +99,8 @@ export function parseGraduationData(htmlContent) {
             status = "inProgress";
         } else if (["E", "X", "F"].includes(grade)) {
             status = "failed";
-        } else if (grade.includes("Withdrawn") || grade.includes("åœä¿®")) {
-            return; // Skip item completely
+        } else if (grade.includes("Withdrawn") || grade.includes("停修")) {
+            return; 
         }
 
         const record = {
@@ -127,10 +108,10 @@ export function parseGraduationData(htmlContent) {
             "credits": parsedCredits,
             "grade": status === "passed" ? grade : "",
             "year": year,
+            "code": code,
             "status": status
         };
 
-        // Categorize using code prefixes
         allRecords.push(record);
         if (["PE", "ZY", "ZZ"].some(prefix => code.includes(prefix))) {
             categories["PE & Service"]["courses"].push(record);
@@ -164,7 +145,6 @@ export function parseGraduationData(htmlContent) {
         });
     }
 
-    // Wrap in parent JSON object
     const outputData = {
         "studentInfo": studentInfo,
         "summary": {
@@ -176,17 +156,12 @@ export function parseGraduationData(htmlContent) {
     };
 
     return outputData;
-    // Save JSON to disk (equivalent to json.dump with indent=4)
-    // fs.writeFileSync(outputPath, JSON.stringify(outputData, null, 4), 'utf-8');
-    // console.log(`Successfully generated: ${outputPath}`);
 }
 
-export function parseSchedule(htmlContent) {
+function parseSchedule(htmlContent) {
     try {
-        // Read file synchronously with UTF-8 encoding
         let html = htmlContent;
         if (Array.isArray(htmlContent)) {
-            // Join array of HTML strings into a single valid HTML table
             html = '<table>' + htmlContent.join('\n') + '</table>';
         }
         const $ = cheerio.load(html);
@@ -196,18 +171,15 @@ export function parseSchedule(htmlContent) {
 
         rows.each((index, rowElement) => {
             const tds = $(rowElement).find('td');
-            if (tds.length < 7) return; // Equivalent to 'continue'
+            if (tds.length < 7) return; 
 
             const rawFirst = $(tds[0]).text().trim();
-            
-            // RegEx matching equivalent to re.match(r'^(\d{3})', raw_first)
             const yearMatch = rawFirst.match(/^(\d{3})/);
             const year = yearMatch ? yearMatch[1] : null;
 
             if (year === "114") {
                 const code = rawFirst;
                 
-                // BeautifulSoup's get_text(separator="|") replacement for text segments
                 const nameBits = $(tds[1])
                     .contents()
                     .map((i, el) => $(el).text().trim())
@@ -216,11 +188,9 @@ export function parseSchedule(htmlContent) {
                     
                 const title = nameBits.length > 1 ? nameBits[1] : nameBits[0];
 
-                // Extract department alphabetic prefix
                 const prefixMatch = code.match(/^([a-zA-Z]+)/);
                 const prefix = prefixMatch ? prefixMatch[1] : "DEFAULT";
                 
-                // Fallback style config
                 const style = styleMap[prefix] || { bg: '0xFFEFF6FF', border: '0xFFBFDBFE', text: '0xFF1D4ED8' };
 
                 courseList.push({
@@ -236,21 +206,15 @@ export function parseSchedule(htmlContent) {
             }
         });
 
-        // Ensure output directory exists before generating file
-        // const outputDir = path.dirname(outputFile);
-        // if (!fs.existsSync(outputDir)) {
-        //     fs.mkdirSync(outputDir, { recursive: true });
-        // }
-
-        // Save JSON to disk safely
-        // fs.writeFileSync(outputFile, JSON.stringify(courseList, null, 4), 'utf-8');
-        
-        // // Formatted timestamp equivalent to time.strftime('%H:%M:%S')
-        // const timestamp = new Date().toTimeString().split(' ')[0];
-        // console.log(`[${timestamp}] JSON updated successfully in ${outputFile}`);
         return courseList;
 
     } catch (error) {
         console.error(`Error parsing file: ${error.message}`);
     }
 }
+
+// Export modules the CommonJS way
+module.exports = {
+    parseGraduationData,
+    parseSchedule
+};

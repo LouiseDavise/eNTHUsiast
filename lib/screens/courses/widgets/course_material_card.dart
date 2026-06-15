@@ -27,13 +27,11 @@ class _CourseMaterialCardState extends State<CourseMaterialCard> {
     final course = widget.course;
     final isElearn = course.platform.toUpperCase() == 'ELEARN';
 
-    final activeColor = isElearn
-        ? const Color(0xFF9333EA)
-        : const Color(0xFF2563EB);
+    final activeColor =
+        isElearn ? const Color(0xFF9333EA) : const Color(0xFF2563EB);
 
-    final inactiveIconBgColor = isElearn
-        ? const Color(0xFFF3E8FF)
-        : const Color(0xFFEFF6FF);
+    final inactiveIconBgColor =
+        isElearn ? const Color(0xFFF3E8FF) : const Color(0xFFEFF6FF);
 
     return MouseRegion(
       onEnter: (_) {
@@ -67,15 +65,13 @@ class _CourseMaterialCardState extends State<CourseMaterialCard> {
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOut,
           padding: const EdgeInsets.all(22),
-          transform: Matrix4.identity()
-            ..translate(0.0, isPressed ? 2.0 : 0.0),
+          transform: Matrix4.identity()..translate(0.0, isPressed ? 2.0 : 0.0),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(30),
             border: Border.all(
-              color: isActive
-                  ? activeColor.withOpacity(0.20)
-                  : Colors.transparent,
+              color:
+                  isActive ? activeColor.withOpacity(0.20) : Colors.transparent,
               width: 1.2,
             ),
             boxShadow: [
@@ -114,8 +110,8 @@ class _CourseMaterialCardState extends State<CourseMaterialCard> {
                         _PlatformBadge(
                           label: course.platform,
                           color: isElearn
-                              ? const Color(0xFF3B82F6)
-                              : const Color(0xFFF97316),
+                              ? const Color(0xFF9333EA)
+                              : const Color(0xFF2563EB),
                         ),
                       ],
                     ),
@@ -166,9 +162,7 @@ class _CourseMaterialCardState extends State<CourseMaterialCard> {
                   ],
                 ),
               ),
-
               const SizedBox(width: 16),
-
               AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
                 width: 58,
@@ -178,9 +172,7 @@ class _CourseMaterialCardState extends State<CourseMaterialCard> {
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Icon(
-                  isElearn
-                      ? Icons.menu_book_rounded
-                      : Icons.access_time_rounded,
+                  Icons.menu_book_rounded,
                   color: isActive ? Colors.white : activeColor,
                   size: 30,
                 ),

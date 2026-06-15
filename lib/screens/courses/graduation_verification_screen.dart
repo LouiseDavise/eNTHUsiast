@@ -104,6 +104,10 @@ class GraduationVerificationScreen extends StatelessWidget {
 class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final graduationData = context.watch<CcxpDataProvider>().graduationData;
+    final year = graduationData?['studentInfo']['studentDepartment'];
+    RegExp delimiters = RegExp(r'[一二三四五六七八九十]');
+    final department = year.split(delimiters).first;
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
       decoration: const BoxDecoration(
@@ -130,11 +134,11 @@ class _Header extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 14),
-          const Column(
+          Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'EECS-GS',
+                department,
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,

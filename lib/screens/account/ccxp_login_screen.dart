@@ -12,6 +12,8 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'dart:ui';
 
+const bool prod = false;
+
 class CcxpLoginScreen extends StatefulWidget {
   const CcxpLoginScreen({super.key});
 
@@ -93,7 +95,7 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     if (snapshot.docs.isEmpty) {
       print("User not found in Firebase. Fetching from API...");
 
-      final apiData = await _fetchCcxpDataFromApi(studentId, password);
+      final apiData = await fetchCcxpDataFromApi(studentId, password);
 
       // final newPw = hashPassword(password);
       // This registers them AND uploads their API data to Firestore using their new UID
@@ -110,11 +112,11 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
       uid = FirebaseAuth.instance.currentUser?.uid;
     } else {
       try {
-        UserCredential credential = await FirebaseAuth.instance
-            .signInWithEmailAndPassword(
-              email: email,
-              password: hashPassword(password),
-            );
+        UserCredential credential =
+            await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: email,
+          password: hashPassword(password),
+        );
         uid = credential.user?.uid;
         userDoc = await FirebaseFirestore.instance
             .collection('ccxpUsers')
@@ -127,10 +129,8 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     }
 
     // 3. Fetch the student profile from Firestore using the UID
-    userDoc = await FirebaseFirestore.instance
-        .collection('ccxpUsers')
-        .doc(uid)
-        .get();
+    userDoc =
+        await FirebaseFirestore.instance.collection('ccxpUsers').doc(uid).get();
 
     userData = userDoc.data();
     if (userData == null) {
@@ -234,7 +234,7 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     required String studentId,
     required String password,
   }) async {
-    final apiData = await _fetchCcxpDataFromApi(studentId, password);
+    final apiData = await fetchCcxpDataFromApi(studentId, password);
     final graduationData = apiData['graduationData'];
     final schedule = apiData['schedule'];
 
@@ -249,10 +249,8 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
       'lastUpdatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
-    final userDoc = await FirebaseFirestore.instance
-        .collection('ccxpUsers')
-        .doc(uid)
-        .get();
+    final userDoc =
+        await FirebaseFirestore.instance.collection('ccxpUsers').doc(uid).get();
 
     final userData = userDoc.data();
     if (userData == null) {
@@ -329,11 +327,13 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     return sha256.convert(utf8.encode(pw)).toString();
   }
 
-  Future<Map<String, dynamic>> _fetchCcxpDataFromApi(
+  Future<Map<String, dynamic>> fetchCcxpDataFromApi(
     String studentId,
     String password,
   ) async {
-    const url = 'https://prowler-underpaid-smudgy.ngrok-free.dev';
+    const url = prod
+        ? 'http://localhost:5001/enthusiast-e3429/us-central1/api'
+        : 'https://prowler-underpaid-smudgy.ngrok-free.dev';
     final response = await dio.post(
       '$url/login',
       data: {'uid': studentId, 'pw': password},
@@ -726,9 +726,8 @@ class _AnimatedLoginFieldState extends State<_AnimatedLoginField> {
 
   @override
   Widget build(BuildContext context) {
-    final activeColor = _hasFocus
-        ? _LoginColors.primaryPurple
-        : _LoginColors.border;
+    final activeColor =
+        _hasFocus ? _LoginColors.primaryPurple : _LoginColors.border;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
@@ -765,9 +764,8 @@ class _AnimatedLoginFieldState extends State<_AnimatedLoginField> {
           labelText: widget.label,
           hintText: widget.hintText,
           labelStyle: GoogleFonts.dmSans(
-            color: _hasFocus
-                ? _LoginColors.primaryPurple
-                : _LoginColors.mutedText,
+            color:
+                _hasFocus ? _LoginColors.primaryPurple : _LoginColors.mutedText,
             fontSize: 13,
             fontWeight: FontWeight.w800,
           ),
