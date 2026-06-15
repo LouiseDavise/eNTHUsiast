@@ -1,22 +1,21 @@
 import 'package:flutter/material.dart';
-import '../../../models/courses_model.dart';
-import 'course_card.dart';
-import 'grid_painter.dart';
 
-// ── Period definition ─────────────────────────────────────────────────────────
+import '../../../models/courses_model.dart';
+import 'course_timetable_detail_sheet.dart';
+import 'grid_painter.dart';
 
 class _Period {
   final String label;
   final String start;
   final String end;
 
-  const _Period({required this.label, required this.start, required this.end});
+  const _Period({
+    required this.label,
+    required this.start,
+    required this.end,
+  });
 }
 
-// ── TimetableGrid ─────────────────────────────────────────────────────────────
-
-/// Full-width timetable grid rendered via a single Stack of Positioned widgets.
-/// Layout mirrors the PlannerScheduleGrid pattern for predictable sizing.
 class TimetableGrid extends StatelessWidget {
   final List<CourseItem> schedule;
 
@@ -43,7 +42,10 @@ class TimetableGrid extends StatelessWidget {
   static const double _headerHeight = 34;
   static const double _periodHeight = 64;
 
-  const TimetableGrid({super.key, required this.schedule});
+  const TimetableGrid({
+    super.key,
+    required this.schedule,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +62,6 @@ class TimetableGrid extends StatelessWidget {
           child: Stack(
             clipBehavior: Clip.hardEdge,
             children: [
-              // ── Day header ─────────────────────────────────────────────
               Positioned(
                 left: _leftWidth,
                 top: 0,
@@ -76,7 +77,8 @@ class TimetableGrid extends StatelessWidget {
                           style: const TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.w900,
-                            color: Color(0xFFCBD5E1),
+                            color: Color(0xFF94A3B8),
+                            letterSpacing: 0.4,
                           ),
                         ),
                       ),
@@ -85,7 +87,6 @@ class TimetableGrid extends StatelessWidget {
                 ),
               ),
 
-              // ── Time labels column ─────────────────────────────────────
               Positioned(
                 left: 0,
                 top: _headerHeight,
@@ -97,7 +98,6 @@ class TimetableGrid extends StatelessWidget {
                       height: _periodHeight,
                       child: Stack(
                         children: [
-                          // Start time – top left
                           Positioned(
                             top: 4,
                             left: 0,
@@ -110,7 +110,6 @@ class TimetableGrid extends StatelessWidget {
                               ),
                             ),
                           ),
-                          // End time – bottom left
                           Positioned(
                             bottom: 4,
                             left: 0,
@@ -123,7 +122,6 @@ class TimetableGrid extends StatelessWidget {
                               ),
                             ),
                           ),
-                          // Period badge – vertically centered, right side
                           Positioned(
                             top: 0,
                             bottom: 0,
@@ -156,7 +154,6 @@ class TimetableGrid extends StatelessWidget {
                 ),
               ),
 
-              // ── Grid lines ─────────────────────────────────────────────
               Positioned(
                 left: _leftWidth,
                 top: _headerHeight,
@@ -172,27 +169,133 @@ class TimetableGrid extends StatelessWidget {
                 ),
               ),
 
-              // ── Course cards ───────────────────────────────────────────
-              ...schedule.map((c) {
+              ...schedule.map((course) {
                 final double left =
-                    _leftWidth + (c.day - 1) * dayWidth + 5;
+                    _leftWidth + (course.day - 1) * dayWidth + 5;
                 final double top =
-                    _headerHeight + c.startSlot * _periodHeight + 5;
+                    _headerHeight + course.startSlot * _periodHeight + 5;
                 final double width = dayWidth - 10;
-                final double height = c.duration * _periodHeight - 10;
+                final double height = course.duration * _periodHeight - 10;
 
                 return Positioned(
                   left: left,
                   top: top,
                   width: width,
                   height: height,
-                  child: CourseCard(course: c),
+                  child: _TimetableCourseCard(course: course),
                 );
               }),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+class _TimetableCourseCard extends StatelessWidget {
+  final CourseItem course;
+
+  const _TimetableCourseCard({
+    required this.course,
+  });
+
+  void _openDetail(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) {
+        return CourseTimetableDetailSheet(course: course);
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String timeText = course.timeText?.trim().isNotEmpty == true
+        ? course.timeText!.trim()
+        : 'Time N/A';
+
+    final String locationText = course.location?.trim().isNotEmpty == true
+        ? course.location!.trim()
+        : '';
+
+    final bool showLocation = course.duration >= 2 && locationText.isNotEmpty;
+
+    return GestureDetector(
+      onTap: () => _openDetail(context),
+      child: Container(
+        decoration: BoxDecoration(
+          color: course.bg,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: course.border,
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: course.text.withValues(alpha: 0.07),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 5,
+          vertical: 5,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Text(
+                course.title,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 8.8,
+                  fontWeight: FontWeight.w900,
+                  color: course.text,
+                  height: 1.12,
+                ),
+                maxLines: course.duration >= 2 ? 2 : 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+
+            const SizedBox(height: 3),
+
+            Text(
+              timeText,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 7.8,
+                fontWeight: FontWeight.w800,
+                color: course.text.withValues(alpha: 0.78),
+                height: 1.05,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+
+            if (showLocation) ...[
+              const SizedBox(height: 2),
+              Text(
+                locationText,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 7.3,
+                  fontWeight: FontWeight.w700,
+                  color: course.text.withValues(alpha: 0.66),
+                  height: 1.05,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
