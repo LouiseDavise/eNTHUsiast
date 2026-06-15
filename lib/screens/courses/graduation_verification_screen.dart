@@ -112,6 +112,10 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final graduationData = context.watch<CcxpDataProvider>().graduationData;
+    final year = graduationData?['studentInfo']['studentDepartment'];
+    RegExp delimiters = RegExp(r'[一二三四五六七八九十]');
+    final department = year.split(delimiters).first;
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
       decoration: const BoxDecoration(
@@ -141,8 +145,8 @@ class _Header extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'EECS-GS',
+              Text(
+                department,
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,

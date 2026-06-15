@@ -283,16 +283,17 @@ class _Header extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
           decoration: BoxDecoration(
-            color: isElearn ? const Color(0xFFDBEAFE) : const Color(0xFFFFEDD5),
-            borderRadius: BorderRadius.circular(8),
+            color: isElearn ? const Color(0xFFF3E8FF) : const Color(0xFFEFF6FF),
+            borderRadius: BorderRadius.circular(8), // Softened from 6 to 8
           ),
           child: Text(
             course.platform.toUpperCase(),
             style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.5,
-              color: isElearn ? const Color(0xFF2563EB) : const Color(0xFFF97316),
+              fontSize: 10, // Increased from 8
+              fontWeight: FontWeight.w700, // Reduced from w900
+              letterSpacing: 0.5, // Reduced from 0.8
+              color:
+                  isElearn ? const Color(0xFF9333EA) : const Color(0xFF2563EB),
             ),
           ),
         ),
