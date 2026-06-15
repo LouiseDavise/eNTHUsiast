@@ -37,6 +37,7 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
   List<AppEvent> _tasks = [];
   Set<String> _completedTaskIds = {};
   bool _isLoading = true;
+  bool _isAgentMode = true; // Default to "AI Autopilot" mode!
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _tasksSubscription;
 
   final Set<String> _selectedFilters = {};
@@ -297,33 +298,45 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
 
   @override
   Widget build(BuildContext context) {
-    // Active tasks: not completed by swipe
+    // 1. Grab all active uncompleted tasks as you originally do
     final activeTasks = _tasks
         .where((t) => !_completedTaskIds.contains(t.id))
         .toList();
 
-    _sortTasks(activeTasks);
+    // 2. This list will hold whichever tasks survive the current mode's rules
+    List<AppEvent> filteredActiveTasks;
 
-    bool _matchesFilter(AppEvent task) {
-      if (_selectedFilters.isEmpty) return true;
-      final type = task.type.toLowerCase();
-      bool matchesCritical = ['quiz', 'midterm', 'final'].contains(type);
-      bool matchesCoursework = ['homework', 'project'].contains(type);
-      bool matchesTodo = !matchesCritical && !matchesCoursework;
-      if (_selectedFilters.contains('CRITICAL') && matchesCritical) return true;
-      if (_selectedFilters.contains('COURSEWORK') && matchesCoursework)
-        return true;
-      if (_selectedFilters.contains('TODO') && matchesTodo) return true;
-      return false;
+    if (_isAgentMode) {
+      // ---- MODE A: AI AUTOPILOT ----
+      // For now, we temporarily sort by task progress as a fallback placeholder.
+      // We also bypass the tags entirely so everything shows up sorted by the AI.
+      activeTasks.sort((a, b) => b.progress.compareTo(a.progress));
+      filteredActiveTasks = activeTasks;
+    } else {
+      // ---- MODE B: USER CUSTOM SORT & FILTER (Your Original Logic) ----
+      _sortTasks(activeTasks);
+
+      bool _matchesFilter(AppEvent task) {
+        if (_selectedFilters.isEmpty) return true;
+        final type = task.type.toLowerCase();
+        bool matchesCritical = ['quiz', 'midterm', 'final'].contains(type);
+        bool matchesCoursework = ['homework', 'project'].contains(type);
+        bool matchesTodo = !matchesCritical && !matchesCoursework;
+        if (_selectedFilters.contains('CRITICAL') && matchesCritical) return true;
+        if (_selectedFilters.contains('COURSEWORK') && matchesCoursework) return true;
+        if (_selectedFilters.contains('TODO') && matchesTodo) return true;
+        return false;
+      }
+
+      filteredActiveTasks = activeTasks.where(_matchesFilter).toList();
     }
 
-    final filteredActiveTasks = activeTasks.where(_matchesFilter).toList();
-
-    // Completed tasks: swiped-to-complete, shown at the bottom faded/strikethrough
+    // 3. Keep completed tasks stacked gracefully at the bottom
     final completedTasks = _tasks
         .where((t) => _completedTaskIds.contains(t.id))
         .toList();
 
+    // 4. Combine them to generate the final array for the ListView renderer
     final filteredDisplayTasks = [...filteredActiveTasks, ...completedTasks];
 
     return Container(
