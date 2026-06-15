@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:enthusiast/providers/language_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -24,18 +25,18 @@ class CoursePlannerScreen extends StatefulWidget {
 
 class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
   static const String _baoBaoStarterPrompt =
-     'Bao-Bao, automatically create a useful first starter recommendation. '
-    'First check what data is available. '
-    'If curriculum is available, prioritize exact missing curriculum requirements. '
-    'If curriculum is missing, do not pretend this is a complete graduation plan. '
-    'Instead, create a practical starter plan using graduation data, user preferences, student year, and real available courses. '
-    'Choose fewer but higher-quality courses. '
-    'Prefer courses that match the user career goal, target credit load, language preference, GE interests, and year level. '
-    'Avoid completed courses, in-progress courses, duplicated course sections, schedule conflicts, and courses too advanced for the student year. '
-    'Build a balanced starter set: career-related courses first, then useful core/basic courses if safe, then GE/language/filler courses only if needed. '
-    'If curriculum is missing, clearly mention that uploading curriculum will make the plan more accurate.'
-    'If my preferences say English Taught, only recommend English-taught courses unless there are no matching courses. '; 
-  
+      'Bao-Bao, automatically create a useful first starter recommendation. '
+      'First check what data is available. '
+      'If curriculum is available, prioritize exact missing curriculum requirements. '
+      'If curriculum is missing, do not pretend this is a complete graduation plan. '
+      'Instead, create a practical starter plan using graduation data, user preferences, student year, and real available courses. '
+      'Choose fewer but higher-quality courses. '
+      'Prefer courses that match the user career goal, target credit load, language preference, GE interests, and year level. '
+      'Avoid completed courses, in-progress courses, duplicated course sections, schedule conflicts, and courses too advanced for the student year. '
+      'Build a balanced starter set: career-related courses first, then useful core/basic courses if safe, then GE/language/filler courses only if needed. '
+      'If curriculum is missing, clearly mention that uploading curriculum will make the plan more accurate.'
+      'If my preferences say English Taught, only recommend English-taught courses unless there are no matching courses. ';
+
   int selectedTab = 0;
 
   String searchQuery = '';
@@ -100,8 +101,6 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       });
     }
   }
-
-
 
   DocumentReference<Map<String, dynamic>>? get _coursePlannerDocRef {
     final user = FirebaseAuth.instance.currentUser;
@@ -187,9 +186,9 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
     }
 
     await plannedCoursesRef.doc(_planDocId(course)).set(
-      _plannedCourseToMap(course),
-      SetOptions(merge: true),
-    );
+          _plannedCourseToMap(course),
+          SetOptions(merge: true),
+        );
 
     await coursePlannerDocRef.set(
       {
@@ -399,9 +398,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
         return;
       }
 
-      final ccxpUserRef = FirebaseFirestore.instance
-          .collection('ccxpUsers')
-          .doc(user.uid);
+      final ccxpUserRef =
+          FirebaseFirestore.instance.collection('ccxpUsers').doc(user.uid);
 
       final snapshot = await ccxpUserRef.get();
       final data = snapshot.data();
@@ -433,7 +431,9 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
 
       if (shouldContinue == true && mounted) {
         await Future<void>.delayed(const Duration(milliseconds: 180));
-        await openBaoBaoChat(initialPrompt: _baoBaoStarterPrompt,);
+        await openBaoBaoChat(
+          initialPrompt: _baoBaoStarterPrompt,
+        );
       }
     } catch (error) {
       debugPrint('Bao-Bao intro check failed: $error');
@@ -575,9 +575,9 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
     if (baoBaoRecommendedCourseIds.contains(course.id)) {
       _baoBaoMemoryService
           .rememberAcceptedCourse(
-            course,
-            reasons: baoBaoCourseReasons[course.id] ?? const <String>[],
-          )
+        course,
+        reasons: baoBaoCourseReasons[course.id] ?? const <String>[],
+      )
           .catchError((error) {
         debugPrint('Failed to save Bao-Bao accepted-course memory: $error');
       });
@@ -629,9 +629,9 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
     if (wasBaoBaoRecommended) {
       _baoBaoMemoryService
           .rememberRejectedCourse(
-            course,
-            reason: 'User removed a Bao-Bao recommended course from My Plan.',
-          )
+        course,
+        reason: 'User removed a Bao-Bao recommended course from My Plan.',
+      )
           .catchError((error) {
         debugPrint('Failed to save Bao-Bao rejected-course memory: $error');
       });
@@ -773,11 +773,12 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
 
     _baoBaoMemoryService
         .rememberRecommendationSession(
-          courseIds: recommendedIds.toList(),
-          message: recommendationMessage,
-        )
+      courseIds: recommendedIds.toList(),
+      message: recommendationMessage,
+    )
         .catchError((error) {
-      debugPrint('Failed to save Bao-Bao recommendation-session memory: $error');
+      debugPrint(
+          'Failed to save Bao-Bao recommendation-session memory: $error');
     });
 
     setState(() {
@@ -899,8 +900,7 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
                               selectedType: selectedType,
                               selectedCredits: selectedCredits,
                               selectedDepartment: selectedDepartment,
-                              recommendedCourseIds:
-                                  baoBaoRecommendedCourseIds,
+                              recommendedCourseIds: baoBaoRecommendedCourseIds,
                               showBaoBaoRecommendationsOnly:
                                   showBaoBaoRecommendationsOnly,
                               baoBaoRecommendationMessage:
@@ -1126,7 +1126,6 @@ class _TabButton extends StatelessWidget {
     );
   }
 }
-
 
 class _PinnedDiscoverSearchBar extends StatefulWidget {
   final String searchQuery;
@@ -2201,7 +2200,6 @@ class _CourseLoadErrorView extends StatelessWidget {
   }
 }
 
-
 class _BaoBaoIntroDialog extends StatefulWidget {
   const _BaoBaoIntroDialog();
 
@@ -2266,8 +2264,37 @@ class _BaoBaoIntroDialogState extends State<_BaoBaoIntroDialog>
     });
   }
 
+  // Method to get messages based on language
+  List<String> _getIntroMessages(bool isChinese) {
+    if (isChinese) {
+      return [
+        '嗨，我是寶寶 🐼\n\n我是你在 eNTHUsiast 裡的課程規劃熊貓助手。',
+        '首先，我會讀取你上傳的課程大綱 📚\n\n我會檢查系所必修、基本核心、核心課程、專業課程、實驗課、通識及語言要求。',
+        '接著我會查看你的畢業資料 ✅\n\n我會刪除你已經修過或正在修的課程，這樣我就不會再推薦同樣的課。',
+        '我也會考量你的偏好 ✨\n\n職涯目標、通識興趣、語言偏好、目標學分數和時間區間，幫助我為你篩選更適合的課程。',
+        '最後，我會搜尋真實的課程列表 🔎\n\n告訴我你需要什麼，我就會推薦你可以加入課表的真實課程卡片。',
+      ];
+    }
+    return [
+      'Hi, I’m Bao-Bao 🐼\n\nI’m your agentic course-planning panda inside eNTHUsiast.',
+      'First, I read your uploaded curriculum 📚\n\nI check department required, basic core, core courses, professional courses, lab courses, GE, and language requirements.',
+      'Then I check your graduation data ✅\n\nI remove courses you already completed or are taking, so I don’t recommend the same class again.',
+      'I also look at your preferences ✨\n\nCareer goal, GE interest, language preference, target credits, and time window help me rank better courses for you.',
+      'Finally, I search the real course list 🔎\n\nTell me what you need, then I’ll recommend real course cards you can add to your plan.',
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
+    // 1. Get current language state
+    final language = LanguageScope.watch(context);
+    final isChinese = language.isChinese;
+    final messages = _getIntroMessages(isChinese);
+
+    // Ensure _introStep stays within bounds if language changes
+    final currentIntroStep = _introStep.clamp(0, messages.length - 1);
+    final bool isLastStep = currentIntroStep >= messages.length - 1;
+
     return Material(
       color: Colors.transparent,
       child: GestureDetector(
@@ -2419,10 +2446,14 @@ class _BaoBaoIntroDialogState extends State<_BaoBaoIntroDialog>
                             const SizedBox(height: 18),
                             _TapToContinuePill(
                               onTap: _handleTap,
-                              label: _isLastStep
-                                  ? 'Start chatting with Bao-Bao'
-                                  : 'Tap anywhere to continue',
-                              icon: _isLastStep ? '✨' : '☝️',
+                              label: isLastStep
+                                  ? (isChinese
+                                      ? '開始與寶寶對話'
+                                      : 'Start chatting with Bao-Bao')
+                                  : (isChinese
+                                      ? '點擊任意處繼續'
+                                      : 'Tap anywhere to continue'),
+                              icon: isLastStep ? '✨' : '☝️',
                             ),
                           ],
                         ),

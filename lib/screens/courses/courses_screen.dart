@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/courses_model.dart';
+import '../../providers/language_provider.dart';
 import './utilities/course_schedule_mapper.dart';
 import './widgets/timetable_grid.dart';
 import './widgets/menu_square_button.dart';
@@ -16,14 +17,18 @@ class CoursesScreen extends StatelessWidget {
 
   FirebaseFirestore get _db => FirebaseFirestore.instance;
 
-  Future<_CurrentScheduleResult> _fetchCurrentSchedule() async {
+  Future<_CurrentScheduleResult> _fetchCurrentSchedule({
+    required bool isChinese,
+  }) async {
     final User? user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      return const _CurrentScheduleResult(
-        semesterLabel: 'Current Semester',
+      return _CurrentScheduleResult(
+        semesterLabel: isChinese ? '本學期' : 'Current Semester',
         courses: [],
-        message: 'Please log in to view your schedule.',
+        message: isChinese
+            ? '請先登入以查看課表。'
+            : 'Please log in to view your schedule.',
       );
     }
 
@@ -31,10 +36,12 @@ class CoursesScreen extends StatelessWidget {
         await _findCcxpUserDocument(user.uid);
 
     if (ccxpDoc == null || !ccxpDoc.exists) {
-      return const _CurrentScheduleResult(
-        semesterLabel: 'Current Semester',
+      return _CurrentScheduleResult(
+        semesterLabel: isChinese ? '本學期' : 'Current Semester',
         courses: [],
-        message: 'No CCXP course data found for this account.',
+        message: isChinese
+            ? '找不到此帳號的 CCXP 課程資料。'
+            : 'No CCXP course data found for this account.',
       );
     }
 
@@ -46,10 +53,11 @@ class CoursesScreen extends StatelessWidget {
         (userData['scheduleData'] as List<dynamic>?) ?? [];
 
     if (rawSchedule.isEmpty) {
-      return const _CurrentScheduleResult(
-        semesterLabel: 'Current Semester',
+      return _CurrentScheduleResult(
+        semesterLabel: isChinese ? '本學期' : 'Current Semester',
         courses: [],
-        message: 'No current semester courses found.',
+        message:
+            isChinese ? '本學期尚無課程資料。' : 'No current semester courses found.',
       );
     }
 
@@ -72,10 +80,11 @@ class CoursesScreen extends StatelessWidget {
         .toList();
 
     if (courseRefs.isEmpty) {
-      return const _CurrentScheduleResult(
-        semesterLabel: 'Current Semester',
+      return _CurrentScheduleResult(
+        semesterLabel: isChinese ? '本學期' : 'Current Semester',
         courses: [],
-        message: 'No valid course codes found.',
+        message:
+            isChinese ? '找不到有效的課程代碼。' : 'No valid course codes found.',
       );
     }
 
@@ -115,7 +124,9 @@ class CoursesScreen extends StatelessWidget {
       semesterLabel: semester,
       courses: courses,
       message: courses.isEmpty
-          ? 'Your courses were found, but no valid timetable slots were available.'
+          ? isChinese
+              ? '已找到您的課程，但沒有有效的課表時段。'
+              : 'Your courses were found, but no valid timetable slots were available.'
           : null,
     );
   }
@@ -307,14 +318,16 @@ class CoursesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isChinese = LanguageScope.watch(context).isChinese;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
       body: SafeArea(
         child: FutureBuilder<_CurrentScheduleResult>(
-          future: _fetchCurrentSchedule(),
+          future: _fetchCurrentSchedule(isChinese: isChinese),
           builder: (context, snapshot) {
-            final String semesterLabel =
-                snapshot.data?.semesterLabel ?? 'Current Semester';
+            final String semesterLabel = snapshot.data?.semesterLabel ??
+                (isChinese ? '本學期' : 'Current Semester');
 
             return SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
@@ -335,10 +348,10 @@ class CoursesScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 5),
-                        const Text(
-                          'My current semester timetable',
+                        Text(
+                          isChinese ? '本學期課表' : 'My current semester timetable',
                           textAlign: TextAlign.center,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
                             color: Color(0xFF64748B),
@@ -364,14 +377,14 @@ class CoursesScreen extends StatelessWidget {
                       ],
                     ),
                     padding: const EdgeInsets.all(12),
-                    child: _buildTimetableState(snapshot),
+                    child: _buildTimetableState(snapshot, isChinese),
                   ),
                   const SizedBox(height: 20),
                   Row(
                     children: [
                       Expanded(
                         child: MenuSquareButton(
-                          title: 'Course\nMaterials',
+                          title: isChinese ? '課程\n資料' : 'Course\nMaterials',
                           icon: Icons.menu_book_rounded,
                           activeColor: const Color(0xFF7E22CE),
                           inactiveBgColor: const Color(0xFFF3E8FF),
@@ -389,7 +402,7 @@ class CoursesScreen extends StatelessWidget {
                       const SizedBox(width: 14),
                       Expanded(
                         child: MenuSquareButton(
-                          title: 'Course\nPlanner',
+                          title: isChinese ? '課程\n規劃' : 'Course\nPlanner',
                           icon: Icons.search_rounded,
                           activeColor: const Color(0xFF3B82F6),
                           inactiveBgColor: const Color(0xFFEFF6FF),
@@ -408,8 +421,9 @@ class CoursesScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   MenuWideButton(
-                    title: 'Graduation Verification',
-                    subtitle: 'CHECK YOUR DEGREE PROGRESS',
+                    title: isChinese ? '畢業資格審查' : 'Graduation Verification',
+                    subtitle:
+                        isChinese ? '確認畢業進度' : 'CHECK YOUR DEGREE PROGRESS',
                     icon: Icons.school_outlined,
                     activeColor: const Color(0xFFF97316),
                     inactiveBgColor: const Color(0xFFFFF7ED),
@@ -435,6 +449,7 @@ class CoursesScreen extends StatelessWidget {
 
   Widget _buildTimetableState(
     AsyncSnapshot<_CurrentScheduleResult> snapshot,
+    bool isChinese,
   ) {
     if (snapshot.connectionState == ConnectionState.waiting) {
       return const SizedBox(
@@ -462,7 +477,7 @@ class CoursesScreen extends StatelessWidget {
         height: 400,
         child: Center(
           child: Text(
-            result?.message ?? 'No courses found.',
+            result?.message ?? (isChinese ? '找不到課程。' : 'No courses found.'),
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 13,
