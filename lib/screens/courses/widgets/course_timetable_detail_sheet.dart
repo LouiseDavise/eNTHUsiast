@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-
+import '../../../models/courses_model.dart';
+import '../../../providers/language_provider.dart';
 import '../../../models/courses_model.dart';
 
 String displayTimetableCourseLanguage(String? language) {
@@ -112,46 +113,57 @@ class CourseTimetableDetailSheet extends StatelessWidget {
     required this.course,
   });
 
-  String get _courseType => course.courseType?.trim().isNotEmpty == true
-      ? course.courseType!.trim()
-      : 'COURSE';
-
-  String get _professor => course.teacher?.trim().isNotEmpty == true
-      ? course.teacher!.trim()
-      : 'N/A';
-
-  String get _department {
-    final full = course.departmentFullName?.trim();
-    if (full != null && full.isNotEmpty) return full;
-
-    final code = course.departmentCode?.trim();
-    if (code != null && code.isNotEmpty) return code;
-
-    return 'N/A';
+  // Localized label helper
+  String _getTranslatedLabel(String label, bool isChinese) {
+    if (!isChinese) return label;
+    return {
+          'Credits': '學分',
+          'Limit': '限額',
+          'Type': '類別',
+          'COURSE INFORMATION': '課程資訊',
+          'Department': '系所',
+          'Professor': '教授',
+          'Location': '地點',
+          'Time': '時間',
+          'Language': '授課語言',
+          'Requirement': '備註',
+          'QUICK NOTE': '課程筆記',
+        }[label] ??
+        label;
   }
 
-  String get _location => course.location?.trim().isNotEmpty == true
-      ? course.location!.trim()
-      : 'N/A';
+  String _buildQuickNote(bool isChinese) {
+    final creditsText = course.credits == null ? 'N/A' : '${course.credits}';
+    final lang = displayTimetableCourseLanguage(course.language);
+    final prof = course.teacher?.trim().isNotEmpty == true
+        ? course.teacher!.trim()
+        : (isChinese ? '待定' : 'TBA');
+    final type = course.courseType ?? (isChinese ? '課程' : 'course');
 
-  String get _timeText {
+    if (isChinese) {
+      return '這是一門 $creditsText 學分的 $type 課程。由 $prof 授課，教學語言為 $lang。時間：${_getTimeText(isChinese)}。';
+    }
+    return 'This course is a $creditsText-credit ${course.courseType ?? 'course'} course. '
+        'It is taught by $prof. '
+        'The instruction language is $lang. '
+        'Time: ${_getTimeText(isChinese)}.';
+  }
+
+  String _getTimeText(bool isChinese) {
     final day = course.dayLabel?.trim() ?? '';
     final time = course.timeText?.trim() ?? '';
     final slot = course.slotCode?.trim() ?? '';
-
     final mainTime = [day, time].where((e) => e.isNotEmpty).join(' ');
-
-    if (mainTime.isEmpty && slot.isEmpty) return 'N/A';
-    if (mainTime.isEmpty) return slot;
-    if (slot.isEmpty) return mainTime;
-
-    return '$mainTime ($slot)';
+    if (mainTime.isEmpty && slot.isEmpty) return isChinese ? '無' : 'N/A';
+    return mainTime.isEmpty
+        ? slot
+        : (slot.isEmpty ? mainTime : '$mainTime ($slot)');
   }
-
-  String get _requiredNote => course.requiredElectiveNote?.trim() ?? '';
 
   @override
   Widget build(BuildContext context) {
+    final language = LanguageScope.watch(context);
+    final isChinese = language.isChinese;
     final typeStyle = _getTimetableCourseTypeStyle(course.courseType);
 
     return DraggableScrollableSheet(
@@ -162,27 +174,22 @@ class CourseTimetableDetailSheet extends StatelessWidget {
         return Container(
           decoration: const BoxDecoration(
             color: Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(34),
-            ),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(34)),
           ),
           child: ListView(
             controller: scrollController,
             padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
             children: [
               Center(
-                child: Container(
-                  width: 44,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE2E8F0),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-              ),
-
+                  child: Container(
+                      width: 44,
+                      height: 5,
+                      decoration: BoxDecoration(
+                          color: const Color(0xFFE2E8F0),
+                          borderRadius: BorderRadius.circular(999)))),
               const SizedBox(height: 22),
 
+              // Top Profile Section
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -190,17 +197,11 @@ class CourseTimetableDetailSheet extends StatelessWidget {
                     width: 58,
                     height: 58,
                     decoration: BoxDecoration(
-                      color: typeStyle.softColor,
-                      borderRadius: BorderRadius.circular(19),
-                      border: Border.all(
-                        color: typeStyle.borderColor,
-                      ),
-                    ),
-                    child: Icon(
-                      typeStyle.icon,
-                      color: typeStyle.mainColor,
-                      size: 28,
-                    ),
+                        color: typeStyle.softColor,
+                        borderRadius: BorderRadius.circular(19),
+                        border: Border.all(color: typeStyle.borderColor)),
+                    child: Icon(typeStyle.icon,
+                        color: typeStyle.mainColor, size: 28),
                   ),
                   const SizedBox(width: 15),
                   Expanded(
@@ -208,191 +209,124 @@ class CourseTimetableDetailSheet extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: typeStyle.mainColor,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            course.code,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                                color: typeStyle.mainColor,
+                                borderRadius: BorderRadius.circular(999)),
+                            child: Text(course.code,
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.6,
+                                    color: Colors.white))),
+                        const SizedBox(height: 8),
+                        Text(course.title,
                             style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.6,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
+                                fontSize: 21,
+                                height: 1.18,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF0F172A))),
                         const SizedBox(height: 8),
                         Text(
-                          course.title,
-                          style: const TextStyle(
-                            fontSize: 21,
-                            height: 1.18,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Professor: $_professor',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            height: 1.35,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF64748B),
-                          ),
-                        ),
+                            '${isChinese ? '教授：' : 'Professor: '}${course.teacher ?? 'N/A'}',
+                            style: const TextStyle(
+                                fontSize: 13,
+                                height: 1.35,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF64748B))),
                       ],
                     ),
                   ),
                 ],
               ),
-
               const SizedBox(height: 24),
 
+              // Stats Row
               Row(
                 children: [
                   Expanded(
-                    child: _SmallStatCard(
-                      label: 'Credits',
-                      value: course.credits == null ? 'N/A' : '${course.credits}',
-                      icon: Icons.workspace_premium_rounded,
-                      typeStyle: typeStyle,
-                    ),
-                  ),
+                      child: _SmallStatCard(
+                          label: _getTranslatedLabel('Credits', isChinese),
+                          value: course.credits?.toString() ?? 'N/A',
+                          icon: Icons.workspace_premium_rounded,
+                          typeStyle: typeStyle)),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _SmallStatCard(
-                      label: 'Limit',
-                      value: course.capacity == null || course.capacity! <= 0
-                          ? 'N/A'
-                          : '${course.capacity}',
-                      icon: Icons.groups_rounded,
-                      typeStyle: typeStyle,
-                    ),
-                  ),
+                      child: _SmallStatCard(
+                          label: _getTranslatedLabel('Limit', isChinese),
+                          value: (course.capacity ?? 0) <= 0
+                              ? 'N/A'
+                              : '${course.capacity}',
+                          icon: Icons.groups_rounded,
+                          typeStyle: typeStyle)),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _SmallStatCard(
-                      label: 'Type',
-                      value: _courseType,
-                      icon: typeStyle.icon,
-                      typeStyle: typeStyle,
-                    ),
-                  ),
+                      child: _SmallStatCard(
+                          label: _getTranslatedLabel('Type', isChinese),
+                          value: course.courseType ??
+                              (isChinese ? '課程' : 'COURSE'),
+                          icon: typeStyle.icon,
+                          typeStyle: typeStyle)),
                 ],
               ),
-
               const SizedBox(height: 18),
 
+              // Details
               _SectionTitle(
-                icon: Icons.info_outline_rounded,
-                title: 'COURSE INFORMATION',
-                typeStyle: typeStyle,
-              ),
-
+                  icon: Icons.info_outline_rounded,
+                  title: _getTranslatedLabel('COURSE INFORMATION', isChinese),
+                  typeStyle: typeStyle),
               const SizedBox(height: 12),
-
               _DetailInfoRow(
-                icon: Icons.business_rounded,
-                label: 'Department',
-                value: _department,
-                typeStyle: typeStyle,
-              ),
+                  icon: Icons.business_rounded,
+                  label: _getTranslatedLabel('Department', isChinese),
+                  value: course.departmentFullName ?? 'N/A',
+                  typeStyle: typeStyle),
               const SizedBox(height: 10),
               _DetailInfoRow(
-                icon: Icons.person_rounded,
-                label: 'Professor',
-                value: _professor,
-                typeStyle: typeStyle,
-              ),
+                  icon: Icons.location_on_rounded,
+                  label: _getTranslatedLabel('Location', isChinese),
+                  value: course.location ?? 'N/A',
+                  typeStyle: typeStyle),
               const SizedBox(height: 10),
               _DetailInfoRow(
-                icon: Icons.location_on_rounded,
-                label: 'Location',
-                value: _location,
-                typeStyle: typeStyle,
-              ),
+                  icon: Icons.access_time_rounded,
+                  label: _getTranslatedLabel('Time', isChinese),
+                  value: _getTimeText(isChinese),
+                  typeStyle: typeStyle),
               const SizedBox(height: 10),
               _DetailInfoRow(
-                icon: Icons.access_time_rounded,
-                label: 'Time',
-                value: _timeText,
-                typeStyle: typeStyle,
-              ),
-              const SizedBox(height: 10),
-              _DetailInfoRow(
-                icon: Icons.language_rounded,
-                label: 'Language',
-                value: displayTimetableCourseLanguage(course.language),
-                typeStyle: typeStyle,
-              ),
-
-              if (_requiredNote.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                _DetailInfoRow(
-                  icon: Icons.assignment_rounded,
-                  label: 'Requirement',
-                  value: _requiredNote,
-                  typeStyle: typeStyle,
-                ),
-              ],
+                  icon: Icons.language_rounded,
+                  label: _getTranslatedLabel('Language', isChinese),
+                  value: displayTimetableCourseLanguage(course.language),
+                  typeStyle: typeStyle),
 
               const SizedBox(height: 22),
-
               _SectionTitle(
-                icon: Icons.auto_awesome_rounded,
-                title: 'QUICK NOTE',
-                typeStyle: typeStyle,
-              ),
-
+                  icon: Icons.auto_awesome_rounded,
+                  title: _getTranslatedLabel('QUICK NOTE', isChinese),
+                  typeStyle: typeStyle),
               const SizedBox(height: 12),
-
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: typeStyle.borderColor.withValues(alpha: 0.8),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: typeStyle.mainColor.withValues(alpha: 0.06),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Text(
-                  _buildQuickNote(),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    height: 1.45,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF64748B),
-                  ),
-                ),
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                        color: typeStyle.borderColor.withValues(alpha: 0.8))),
+                child: Text(_buildQuickNote(isChinese),
+                    style: const TextStyle(
+                        fontSize: 13,
+                        height: 1.45,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF64748B))),
               ),
             ],
           ),
         );
       },
     );
-  }
-
-  String _buildQuickNote() {
-    final creditsText = course.credits == null ? 'N/A' : '${course.credits}';
-    final language = displayTimetableCourseLanguage(course.language);
-
-    return 'This course is a $creditsText-credit $_courseType course. '
-        'It is taught by $_professor. '
-        'The instruction language is $language. '
-        'Time: $_timeText.';
   }
 }
 
@@ -572,5 +506,3 @@ class _DetailInfoRow extends StatelessWidget {
     );
   }
 }
-
-

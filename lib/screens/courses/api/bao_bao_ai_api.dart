@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
-import 'package:http/http.dart' as http;
+import 'package:cloud_functions/cloud_functions.dart';
 
 enum AiProvider {
   openRouter,
@@ -178,58 +178,30 @@ class BaoBaoAiApi {
     double temperature = 0.05,
     int maxTokens = 1000,
   }) async {
-    if (_apiKey.trim().isEmpty ||
-        _apiKey.contains('PASTE_') ||
-        _apiKey.contains('_KEY_HERE')) {
-      return null;
-    }
-
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $_apiKey',
-    };
-
-    if (_provider == AiProvider.openRouter) {
-      headers['HTTP-Referer'] = 'https://enthusiast.app';
-      headers['X-OpenRouter-Title'] = 'eNTHUsiast Bao-Bao';
-    }
-
     try {
-      final response = await http.post(
-        _chatUrl,
-        headers: headers,
-        body: jsonEncode({
-          'model': _model,
-          'messages': [
-            {
-              'role': 'system',
-              'content': systemPrompt,
-            },
-            {
-              'role': 'user',
-              'content': userContent,
-            },
-          ],
-          'temperature': temperature,
-          'max_tokens': maxTokens,
-        }),
-      );
+      final callable = FirebaseFunctions.instanceFor(
+        region: 'us-central1',
+      ).httpsCallable('baoBaoOpenAiChat');
 
-      if (response.statusCode != 200) {
-        print('Bao-Bao AI error ${response.statusCode}: ${response.body}');
-        return null;
+      final result = await callable.call({
+        'systemPrompt': systemPrompt,
+        'userContent': userContent,
+        'temperature': temperature,
+        'maxTokens': maxTokens,
+      });
+
+      final data = result.data;
+
+      if (data is Map) {
+        final content = data['content']?.toString().trim();
+        if (content != null && content.isNotEmpty) {
+          return content;
+        }
       }
 
-      final data = jsonDecode(response.body);
-      final content = data['choices']?[0]?['message']?['content'];
-
-      if (content == null || content.toString().trim().isEmpty) {
-        return null;
-      }
-
-      return content.toString().trim();
+      return null;
     } catch (error) {
-      print('Bao-Bao AI call failed: $error');
+      print('Bao-Bao Firebase OpenAI call failed: $error');
       return null;
     }
   }
@@ -302,6 +274,7 @@ Rules:
 - Keep every keyword short and searchable in course title, department, remarks, or metadata.
 - Prefer academic course-topic words over job titles.
 - If careerPaths exists, career/core/elective hints should be more important than GE hints.
+- If the latest user prompt explicitly asks for an academic area, that area becomes the main target. Do not replace it with the user’s saved department or career path. Use the user profile only to choose better courses inside or near that requested area.
 - If the user requests a number of core courses, planningNotes should mention it.
 ''',
       userContent: jsonEncode(_jsonSafe({
@@ -576,9 +549,6 @@ Output schema:
   }) {
     final lower = userMessage.toLowerCase().trim();
 
-    // A goal-style prompt should become a planning task, not an exact subject
-    // search. This lets Bao-Bao reason over broad, unique prompts such as
-    // "I want to study CS with a bit of business".
     if (_looksLikeOpenEndedStudyGoal(userMessage) &&
         !resolved.isMemoryUpdate &&
         !resolved.isClearMemory &&
@@ -596,8 +566,6 @@ Output schema:
       );
     }
 
-    // Instructor-style requests must be normalized into a clean instructor
-    // search. This avoids query pollution like "prof X class is easy add to my plan".
     final professorTokensFromMessage = _extractProfessorNameTokens(userMessage);
     if (professorTokensFromMessage.isNotEmpty) {
       final explicitlyCurrent = _explicitlyReferencesCurrentPlan(lower);
@@ -1286,20 +1254,22 @@ Output schema:
     final rawPlan = await _makeAiSearchPlan(
       userMessage,
       intent: intent,
-    );
-    final plan = _adjustPlanWithUserHints(
-      rawPlan,
-      userMessage,
-      curriculum: curriculum,
       userPreferences: enrichedUserPreferences,
-      intent: intent,
     );
 
-    print('Bao-Bao final search plan: ${plan.toDebugMap()}');
+    // AI should be the planner brain. This step only adds preference context;
+    // it does not convert the prompt into hardcoded course mappings.
+    final plan = _enhancePlanWithUserPreferences(
+      rawPlan,
+      enrichedUserPreferences,
+    );
+
+    print('Bao-Bao final AI tool plan: ${plan.toDebugMap()}');
 
     final selectedIds = <String>[];
     final usedIds = <String>{};
     final usedCourseTitles = <String>{};
+    final selectedCourses = <Map<String, dynamic>>[];
 
     final creditRange = _targetCreditRangeForPlan(
       plan,
@@ -1319,199 +1289,153 @@ Output schema:
       if (targetCreditMax == null) return true;
 
       final credits = _toInt(course['credits']);
-
       if (credits <= 0) return false;
+      if (selectedCredits >= targetCreditMax) return false;
 
-      if (selectedCredits >= targetCreditMax) {
-        return false;
-      }
-
-      final nextTotal = selectedCredits + credits;
-      return nextTotal <= targetCreditMax;
+      return selectedCredits + credits <= targetCreditMax;
     }
 
     bool tryAddCourse(Map<String, dynamic> course) {
       final id = course['id']?.toString() ?? '';
-
-      if (id.isEmpty || usedIds.contains(id)) {
-        return false;
-      }
+      if (id.isEmpty || usedIds.contains(id)) return false;
 
       final titleKey = _normalizeSearchText(course['title']?.toString() ?? '');
-
       if (titleKey.isNotEmpty && usedCourseTitles.contains(titleKey)) {
         return false;
       }
 
-      if (!canAddCourse(course)) {
+      // Tool guardrail: the AI can reason, but the app must never allow
+      // conflicting cards inside the same recommendation result.
+      if (_hasScheduleConflictWithSelected(course, selectedCourses)) {
         return false;
       }
 
+      if (!canAddCourse(course)) return false;
+
       selectedIds.add(id);
       usedIds.add(id);
-
-      if (titleKey.isNotEmpty) {
-        usedCourseTitles.add(titleKey);
-      }
-
+      if (titleKey.isNotEmpty) usedCourseTitles.add(titleKey);
       selectedCredits += _toInt(course['credits']);
-
+      selectedCourses.add(course);
       return true;
     }
 
-    for (final group in plan.groups) {
-      if (reachedTargetCredits()) {
-        break;
+    Future<int> askAiAndAddFromCandidates({
+      required _SearchGroup group,
+      required List<Map<String, dynamic>> candidates,
+      required int alreadyAddedForGroup,
+    }) async {
+      var addedForGroup = alreadyAddedForGroup;
+
+      final safeCandidates = candidates.where((course) {
+        return !_hasScheduleConflictWithSelected(course, selectedCourses);
+      }).toList();
+
+      if (safeCandidates.isEmpty) {
+        return addedForGroup;
       }
-
-      final candidates = _buildCandidatePool(
-        group: group,
-        catalog: courseCatalog,
-        usedIds: usedIds,
-        allowSpecialCourses: plan.allowSpecialCourses,
-      );
-
-      print(
-        'Bao-Bao candidate count for "${group.query}" '
-        '[subject=${group.subjectQuery}, mustSubject=${group.mustMatchSubject}, '
-        'type=${group.requiredType}, time=${group.timePreference}, '
-        'language=${group.language}, minLimit=${group.minLimit}, '
-        'maxLimit=${group.maxLimit}, count=${group.count}]: ${candidates.length}',
-      );
-
-      if (candidates.isEmpty) {
-        continue;
-      }
-
-      int addedForThisGroup = 0;
 
       final aiChosen = await _aiChooseCourseIds(
         userMessage: userMessage,
         group: group,
-        candidates: candidates,
+        candidates: safeCandidates,
         curriculum: curriculum,
+        userPreferences: enrichedUserPreferences,
       );
 
       for (final id in aiChosen) {
         if (reachedTargetCredits()) break;
-        if (addedForThisGroup >= group.count) break;
+        if (addedForGroup >= group.count) break;
         if (usedIds.contains(id)) continue;
 
-        final course = candidates.firstWhere(
+        final course = safeCandidates.firstWhere(
           (course) => course['id']?.toString() == id,
           orElse: () => {},
         );
 
         if (course.isEmpty) continue;
-
         if (tryAddCourse(course)) {
-          addedForThisGroup++;
+          addedForGroup++;
         }
       }
 
-      if (addedForThisGroup < group.count && !reachedTargetCredits()) {
-        final fallback = _localRankCoursesWithDiversity(
-          group,
-          candidates,
+      return addedForGroup;
+    }
+
+    for (final group in plan.groups) {
+      if (reachedTargetCredits()) break;
+
+      int addedForThisGroup = 0;
+      var attempts = 0;
+
+      while (addedForThisGroup < group.count && attempts < 3) {
+        attempts++;
+
+        final candidates = _buildCandidatePool(
+          group: group,
+          catalog: courseCatalog,
+          usedIds: usedIds,
+          allowSpecialCourses: plan.allowSpecialCourses,
+        ).where((course) {
+          return !_hasScheduleConflictWithSelected(course, selectedCourses);
+        }).toList();
+
+        print(
+          'Bao-Bao AI tool candidate count for "${group.query}" '
+          '[subject=${group.subjectQuery}, mustSubject=${group.mustMatchSubject}, '
+          'type=${group.requiredType}, time=${group.timePreference}, '
+          'language=${group.language}, count=${group.count}, '
+          'attempt=$attempts]: ${candidates.length}',
         );
 
-        for (final course in fallback) {
-          if (reachedTargetCredits()) break;
-          if (addedForThisGroup >= group.count) break;
+        if (candidates.isEmpty) break;
 
-          if (tryAddCourse(course)) {
-            addedForThisGroup++;
-          }
+        final before = addedForThisGroup;
+        addedForThisGroup = await askAiAndAddFromCandidates(
+          group: group,
+          candidates: candidates,
+          alreadyAddedForGroup: addedForThisGroup,
+        );
+
+        if (addedForThisGroup == before) {
+          break;
         }
       }
     }
 
+    // Only full-semester/general plans use the saved target-credit range.
+    // Exact requests like "2 GE" should stay exactly 2 courses and should not
+    // be padded with random fillers.
     if (targetCreditMin != null && selectedCredits < targetCreditMin) {
-      void fillFromGroup(_SearchGroup fillerGroup) {
-        final fillerCandidates = _buildCandidatePool(
-          group: fillerGroup,
-          catalog: courseCatalog,
-          usedIds: usedIds,
-          allowSpecialCourses: plan.allowSpecialCourses,
-        );
-
-        final rankedFillers = _localRankCoursesWithDiversity(
-          fillerGroup,
-          fillerCandidates,
-        );
-
-        for (final course in rankedFillers) {
-          if (selectedCredits >= targetCreditMin) break;
-          tryAddCourse(course);
-        }
-      }
-
-      final preferredFiller = _creditFillerSearchGroup(
+      final fillerGroup = _creditFillerSearchGroup(
         enrichedUserPreferences,
         language: _languagePreferenceFromPrefs(
           _preferenceMap(enrichedUserPreferences),
         ),
       );
 
-      fillFromGroup(preferredFiller);
+      var attempts = 0;
+      while (selectedCredits < targetCreditMin && attempts < 3) {
+        attempts++;
+        final candidates = _buildCandidatePool(
+          group: fillerGroup,
+          catalog: courseCatalog,
+          usedIds: usedIds,
+          allowSpecialCourses: plan.allowSpecialCourses,
+        ).where((course) {
+          return !_hasScheduleConflictWithSelected(course, selectedCourses);
+        }).toList();
 
-      // If strict language metadata or preference filters make the plan too small,
-      // do one safe fallback pass over the same AI-generated profile without a hard
-      // language block. This keeps the plan near the user's credit range without
-      // inventing courses or career-specific rules.
-      if (selectedCredits < targetCreditMin && preferredFiller.language != 'any') {
-        fillFromGroup(
-          _creditFillerSearchGroup(
-            enrichedUserPreferences,
-            language: 'any',
-          ),
+        if (candidates.isEmpty) break;
+
+        final beforeCount = selectedIds.length;
+        await askAiAndAddFromCandidates(
+          group: fillerGroup,
+          candidates: candidates,
+          alreadyAddedForGroup: 0,
         );
-      }
-    }
 
-    // Emergency safety net for open-ended goal prompts such as
-    // "I want to study CS with a bit of business". These are not exact
-    // course-title searches, so Bao-Bao should never fail just because the
-    // goal wording does not literally match metadata. Use the AI-generated
-    // profile and rank the real catalog broadly.
-    if (selectedIds.isEmpty &&
-        intent != null &&
-        intent.intent == 'new_plan' &&
-        intent.searchMode.toLowerCase().trim() == 'general_plan') {
-      final fallbackGroup = _creditFillerSearchGroup(
-        enrichedUserPreferences,
-        language: 'any',
-      ).copyWith(
-        query: [
-          intent.query,
-          _careerPreferenceQuery(_preferenceMap(enrichedUserPreferences)),
-          _departmentPreferenceQuery(_preferenceMap(enrichedUserPreferences)),
-          _gePreferenceQuery(_preferenceMap(enrichedUserPreferences)),
-          'interdisciplinary academic plan practical foundation elective',
-        ].where((item) => item.trim().isNotEmpty).join(' '),
-        count: 12,
-      );
-
-      final fallbackCandidates = _buildCandidatePool(
-        group: fallbackGroup,
-        catalog: courseCatalog,
-        usedIds: usedIds,
-        allowSpecialCourses: plan.allowSpecialCourses,
-      );
-
-      for (final course in _localRankCoursesWithDiversity(
-        fallbackGroup,
-        fallbackCandidates,
-      )) {
-        if (targetCreditMin != null && selectedCredits >= targetCreditMin) {
-          break;
-        }
-
-        if (selectedIds.length >= 8 && targetCreditMin == null) {
-          break;
-        }
-
-        tryAddCourse(course);
+        if (selectedIds.length == beforeCount) break;
       }
     }
 
@@ -1523,17 +1447,101 @@ Output schema:
     return selectedIds;
   }
 
+  bool _hasScheduleConflictWithSelected(
+    Map<String, dynamic> course,
+    List<Map<String, dynamic>> selectedCourses,
+  ) {
+    final courseSlots = _courseScheduleSlotKeys(course);
+    if (courseSlots.isEmpty) return false;
+
+    for (final selected in selectedCourses) {
+      final selectedSlots = _courseScheduleSlotKeys(selected);
+      if (selectedSlots.isEmpty) continue;
+      if (courseSlots.intersection(selectedSlots).isNotEmpty) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  Set<String> _courseScheduleSlotKeys(Map<String, dynamic> course) {
+    final keys = <String>{};
+
+    final slotText = [
+      course['slotCode'],
+      course['timeSlot'],
+      course['schedule'],
+      course['classTime'],
+      course['courseTime'],
+      course['period'],
+      course['periods'],
+    ].whereType<Object>().map((item) => item.toString()).join(' ');
+
+    keys.addAll(_parseNthuSlotText(slotText));
+
+    final day = _toInt(course['day']);
+    final startSlot = _toInt(course['startSlot']);
+    final duration = _toInt(course['duration']);
+
+    if (day >= 1 && day <= 7 && duration > 0) {
+      for (int offset = 0; offset < duration; offset++) {
+        keys.add('D$day:${startSlot + offset}');
+      }
+    }
+
+    return keys;
+  }
+
+  Set<String> _parseNthuSlotText(String raw) {
+    final text = raw.toUpperCase().replaceAll(RegExp(r'\s+'), '');
+    final keys = <String>{};
+    const dayLetters = {'M', 'T', 'W', 'R', 'F', 'S', 'U'};
+    const periodLetters = {'1', '2', '3', '4', 'N', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D'};
+
+    String? currentDay;
+
+    for (int i = 0; i < text.length; i++) {
+      final ch = text[i];
+      final previous = i == 0 ? '' : text[i - 1];
+      final next = i + 1 < text.length ? text[i + 1] : '';
+
+      if (dayLetters.contains(ch) && periodLetters.contains(next)) {
+        // Avoid reading location words such as DELTA as time slots.
+        if (previous.isNotEmpty && RegExp(r'[A-Z]').hasMatch(previous)) {
+          continue;
+        }
+
+        currentDay = ch;
+        continue;
+      }
+
+      if (currentDay != null && periodLetters.contains(ch)) {
+        keys.add('$currentDay:$ch');
+      }
+    }
+
+    return keys;
+  }
+
   _BaoBaoCreditRange _targetCreditRangeForPlan(
     _AiSearchPlan plan,
     Map<String, dynamic>? rawPreferences,
     BaoBaoCourseIntent? intent,
   ) {
-    // Direct search and follow-up edits should not be padded to the user's
-    // semester credit target. Example: "course taught by Chen Yi-Shin" should
-    // return that professor's courses only, not random extra courses.
-    if (intent != null &&
-        (intent.isDirectSearch || intent.isModifyPreviousPlan)) {
-      return const _BaoBaoCreditRange(min: null, max: null);
+    // Exact search/edit/type-count requests should not be padded to the saved
+    // semester credit target. Example: "recommend 2 GE" means exactly 2 GE,
+    // not 2 GE + random fillers until 16–18 credits.
+    if (intent != null) {
+      final mode = intent.searchMode.toLowerCase().trim();
+      if (intent.isDirectSearch ||
+          intent.isModifyPreviousPlan ||
+          mode == 'course_type' ||
+          mode == 'subject' ||
+          mode == 'instructor' ||
+          mode == 'time') {
+        return const _BaoBaoCreditRange(min: null, max: null);
+      }
     }
 
     if (plan.targetCredits != null && plan.targetCredits! > 0) {
@@ -1541,6 +1549,14 @@ Output schema:
         min: plan.targetCredits,
         max: plan.targetCredits,
       );
+    }
+
+    final looksLikeExactTypeRequest = plan.groups.isNotEmpty &&
+        plan.groups.every((group) => group.requiredType != 'any') &&
+        plan.groups.fold<int>(0, (sum, group) => sum + group.count) <= 8;
+
+    if (looksLikeExactTypeRequest) {
+      return const _BaoBaoCreditRange(min: null, max: null);
     }
 
     return _targetCreditRangeFromPreferences(rawPreferences);
@@ -1659,9 +1675,7 @@ Output schema:
       return ranked;
     }
 
-    // Keep Bao-Bao accurate, but avoid returning the exact same cards every
-    // time the same starter/chill prompt is tested. We only rotate inside the
-    // top ranked window, so the result stays relevant but feels less robotic.
+  
     final windowSize = math.min(
       ranked.length,
       math.max(group.count * 3, group.count + 4),
@@ -1705,9 +1719,7 @@ Output schema:
       );
     }
 
-    // For real user prompts that already passed through the AI intent resolver,
-    // do not run local keyword/category/time/professor parsers on the raw text.
-    // Use the AI search plan as the plan, then only add user preference context.
+
     if (intent != null && !_isAutoStarterRequest(userMessage)) {
       return _enhancePlanWithUserPreferences(
         plan,
@@ -2453,20 +2465,23 @@ Output schema:
         extra.addAll([departmentText, careerText, geText, memoryText]);
       }
 
-      final extraHasPreference = extra.any((item) => item.trim().isNotEmpty);
-      final controlMustHave = extraHasPreference
-          ? _mergeStringLists(group.mustHave, const ['__BAOBAO_PREF_FIT__'])
-          : group.mustHave;
-
+      // User profile is advisor context, not a hard gate.
+      // Do not add __BAOBAO_PREF_FIT__ here, because that can reject courses
+      // the user explicitly asked for just because they do not match saved memory/profile keywords.
       return group.copyWith(
         query: [
           group.query,
           ...extra.where((item) => item.trim().isNotEmpty),
         ].join(' '),
-        language: group.language == 'any'
-            ? _languagePreferenceFromPrefs(prefs)
-            : group.language,
-        mustHave: controlMustHave,
+        // For requiredType LANGUAGE, the word language is the course type/subject,
+        // not instruction language. Do not apply the user's English/Chinese
+        // instruction preference here unless the prompt explicitly asked it.
+        language: group.requiredType == 'LANGUAGE'
+            ? group.language
+            : (group.language == 'any'
+                ? _languagePreferenceFromPrefs(prefs)
+                : group.language),
+        mustHave: group.mustHave,
         avoid: _mergeStringLists(group.avoid, memoryAvoid),
       );
     }).toList();
@@ -2491,13 +2506,39 @@ Output schema:
     if (memory.isEmpty) return '';
 
     return [
-      ..._stringListFromAny(memory['preferredKeywords']),
+      ..._stringListFromAny(memory['preferredKeywords'])
+          .where((item) => !_isGenericPlanningMemoryKeyword(item)),
       ..._stringListFromAny(memory['likedCourseTitles']).take(5),
     ]
         .map((item) => item.trim())
         .where((item) => item.isNotEmpty)
         .toSet()
         .join(' ');
+  }
+
+  bool _isGenericPlanningMemoryKeyword(String value) {
+    final text = value.toLowerCase().trim();
+    if (text.isEmpty) return true;
+
+    final generic = {
+      'core',
+      'ge',
+      'general education',
+      'elective',
+      'electives',
+      'language',
+      'course',
+      'courses',
+      'class',
+      'classes',
+      'major',
+      'required',
+      'requirement',
+      'requirements',
+      'any',
+    };
+
+    return generic.contains(text);
   }
 
   List<String> _memoryAvoidKeywords(Map<String, dynamic> prefs) {
@@ -3153,7 +3194,7 @@ _AiSearchPlan _buildCreditMixPlan(String message) {
         mustMatchSubject: true,
         count: languageCount,
         credits: null,
-        requiredType: 'ELECTIVE',
+        requiredType: 'LANGUAGE',
         timePreference: 'any',
         language: 'any',
         minLimit: null,
@@ -3260,6 +3301,7 @@ int? _smallNumberToInt(String value) {
   Future<_AiSearchPlan> _makeAiSearchPlan(
     String userMessage, {
     BaoBaoCourseIntent? intent,
+    Map<String, dynamic>? userPreferences,
   }) async {
     // Prompt-first fallback: if the model cannot return a search plan, do not
     // convert the raw prompt into a strict keyword/subject search. Use the
@@ -3299,6 +3341,12 @@ Schema:
 Core idea:
 - You may receive JSON containing userMessage and resolvedIntent.
 - Use resolvedIntent if present.
+- Priority order is strict:
+  1. The user's latest prompt / resolvedIntent is the main task. Give the user what they asked for.
+  2. The user's profile is advisor context only: department, career path, curriculum, language, credit target, and memory help choose among courses that fit the prompt.
+  3. General quality signals like capacity, year fit, and rating are tie-breakers.
+- If userProfile conflicts with the latest prompt, the latest prompt wins.
+- Never change the requested topic/type/count/time/language just because old memory or profile says something else.
 - If resolvedIntent.intent is direct_search, build a clean direct search plan from resolvedIntent.query and resolvedIntent.searchMode.
 - If resolvedIntent.searchMode is general_plan, build broad planning groups from the student's goal; do not use mustMatchSubject, and do not treat the full sentence as an exact course title.
 - For general_plan, use a mix of CORE/foundation courses, useful ELECTIVE/supporting courses, and possibly GE/context courses according to the user's wording and preferences.
@@ -3312,10 +3360,24 @@ Core idea:
 - If mustMatchSubject is true, the app will reject courses that do not match subjectPhrases.
 - Do not replace a specific subject request with a random course that only matches language/time/limit.
 
+User profile rules:
+- You may receive userProfile with department/program, career paths, target credits, language preference, and AI-generated profile keywords.
+- User profile is SECOND priority, not the main request. Use it to make the prompt result more personalized, not to replace the prompt.
+- For broad goal prompts, keep the user's stated goal as the main direction. Use department/career as academic context and tie-breakers.
+- If the student says "X with a bit/little/some Y", X is primary because the prompt says so; Y is small support. The user's department/career can strengthen X if related, but must not erase X or make Y dominate.
+- For mixed-interest plans, create mostly primary/prompt-matching groups and only a small supporting group for the secondary interest.
+- Do not treat generic memory words such as core, GE, elective, language, course, or class as real academic interests.
+
 Course type rules:
-- Course type only has: CORE, ELECTIVE, GE, any.
-- Do not use LANGUAGE, PE, or LAB as requiredType.
-- Language courses, PE courses, and lab courses are usually ELECTIVE with special words in query.
+- requiredType can be: CORE, ELECTIVE, GE, PE, LAB, LANGUAGE, any.
+- If the user explicitly asks for PE / physical education / sport, use requiredType "PE".
+- If the user explicitly asks for lab / laboratory / experiment course, use requiredType "LAB".
+- If the user explicitly asks for language / English / Japanese / Chinese course, use requiredType "LANGUAGE".
+- If the user says "Mandarin course", "Chinese course", "中文課", or "華語課", this means a LANGUAGE course, not Chinese instruction language. Use requiredType "LANGUAGE" and language "any".
+- Only use language "chinese" when the user clearly says "taught in Chinese", "conducted in Chinese", "Chinese instruction", "中文授課", or "華語授課".
+- Do not collapse PE, LAB, or LANGUAGE into ELECTIVE when the user asks for them directly.
+- "early morning PE course" means requiredType "PE" and timePreference "morning".
+- "lab course" means requiredType "LAB".
 - "4 GE courses" means count 4 and requiredType "GE".
 - "2 CS core courses" means count 2 and requiredType "CORE".
 - "CS related core" means requiredType "CORE" and query should contain CS-related words.
@@ -3548,7 +3610,7 @@ Return:
       "mustMatchSubject": true,
       "count": 1,
       "credits": null,
-      "requiredType": "ELECTIVE",
+      "requiredType": "LANGUAGE",
       "timePreference": "any",
       "language": "any",
       "minLimit": null,
@@ -3562,6 +3624,7 @@ Return:
       userContent: jsonEncode(_jsonSafe({
         'userMessage': userMessage,
         'resolvedIntent': intent?.toJson(),
+        'userProfile': _compactUserProfileForAi(userPreferences),
       })),
       temperature: 0.05,
       maxTokens: 1200,
@@ -3608,11 +3671,17 @@ Return:
         );
       }).toList();
 
+      final hasRequestedSpecialType = groups.any((group) =>
+          group.requiredType == 'PE' ||
+          group.requiredType == 'LAB' ||
+          group.requiredType == 'LANGUAGE');
+
       return _AiSearchPlan(
         targetCredits: parsed['targetCredits'] == null
             ? null
             : _toInt(parsed['targetCredits']),
-        allowSpecialCourses: parsed['allowSpecialCourses'] == true,
+        allowSpecialCourses: parsed['allowSpecialCourses'] == true ||
+            hasRequestedSpecialType,
         groups: groups,
       );
     } catch (error) {
@@ -3660,9 +3729,14 @@ Return:
         continue;
       }
 
+      final allowSpecialForThisGroup = allowSpecialCourses ||
+          group.requiredType == 'PE' ||
+          group.requiredType == 'LAB' ||
+          group.requiredType == 'LANGUAGE';
+
       if (!_isNormalRecommendation(
         course,
-        allowSpecialCourses: allowSpecialCourses,
+        allowSpecialCourses: allowSpecialForThisGroup,
       )) {
         continue;
       }
@@ -3710,7 +3784,15 @@ Return:
         continue;
       }
 
-      if (!_matchesInstructionLanguage(course, group.language)) {
+      // IMPORTANT: requiredType LANGUAGE means the user wants a language-class
+      // course card, for example Mandarin / Chinese / Japanese / English course.
+      // That is different from instruction language like "taught in Chinese".
+      // So do not force language-course candidates to also be Chinese-taught
+      // or English-taught unless this is a non-language course request.
+      final effectiveInstructionLanguage =
+          group.requiredType == 'LANGUAGE' ? 'any' : group.language;
+
+      if (!_matchesInstructionLanguage(course, effectiveInstructionLanguage)) {
         continue;
       }
 
@@ -3768,10 +3850,19 @@ Return:
 
       final hasSpecificSearchIntent = _hasSpecificSearchIntent(group);
 
+      // Candidate pool is a tool, not the brain. For broad AI planning
+      // groups, give the model enough real courses to reason over instead of
+      // requiring raw prompt words to literally appear in every course title.
+      final isBroadAiPlanningGroup = !group.mustMatchSubject &&
+          !requiresInstructorMatch &&
+          !group.mustHave.any((item) =>
+              item.trim().toUpperCase() == '__BAOBAO_PREF_FIT__');
+
       final shouldInclude = group.mustMatchSubject ||
           mustTokens.isNotEmpty ||
           score > 0 ||
-          (hasStrongConstraint && !hasSpecificSearchIntent);
+          hasStrongConstraint ||
+          isBroadAiPlanningGroup;
 
       if (shouldInclude) {
         scored.add(
@@ -3880,11 +3971,58 @@ Return:
 
     phrases.addAll(group.subjectPhrases);
 
-    return phrases
+    final expanded = <String>[];
+    for (final phrase in phrases) {
+      final trimmed = phrase.trim();
+      if (trimmed.isEmpty) continue;
+      expanded.add(trimmed);
+      expanded.addAll(_subjectSynonymsFor(trimmed));
+    }
+
+    return expanded
         .map((item) => item.trim())
         .where((item) => item.isNotEmpty)
         .toSet()
         .toList();
+  }
+
+  List<String> _subjectSynonymsFor(String phrase) {
+    final lower = phrase.toLowerCase();
+    final synonyms = <String>[];
+
+    void addAll(List<String> values) {
+      for (final value in values) {
+        if (!synonyms.contains(value)) synonyms.add(value);
+      }
+    }
+
+    if (lower.contains('swim') || phrase.contains('游泳')) {
+      addAll(['swimming', 'swim', '游泳']);
+    }
+    if (lower.contains('basketball') || phrase.contains('籃球') || phrase.contains('篮球')) {
+      addAll(['basketball', '籃球', '篮球']);
+    }
+    if (lower.contains('badminton') || phrase.contains('羽球') || phrase.contains('羽毛球')) {
+      addAll(['badminton', '羽球', '羽毛球']);
+    }
+    if (lower.contains('volleyball') || phrase.contains('排球')) {
+      addAll(['volleyball', '排球']);
+    }
+    if (lower.contains('tennis') || phrase.contains('網球') || phrase.contains('网球')) {
+      addAll(['tennis', '網球', '网球']);
+    }
+    if (lower.contains('yoga') || phrase.contains('瑜伽')) {
+      addAll(['yoga', '瑜伽']);
+    }
+    if (lower.contains('fitness') || lower.contains('physical fitness') ||
+        phrase.contains('體適能') || phrase.contains('体适能')) {
+      addAll(['fitness', 'physical fitness', '體適能', '体适能']);
+    }
+    if (lower == 'pe' || lower.contains('physical education') || phrase.contains('體育') || phrase.contains('体育')) {
+      addAll(['PE', 'physical education', '體育', '体育']);
+    }
+
+    return synonyms;
   }
 
   bool _matchesAnySubjectPhrase(
@@ -4179,12 +4317,9 @@ Return:
     required _SearchGroup group,
     required List<Map<String, dynamic>> candidates,
     Map<String, dynamic>? curriculum,
+    Map<String, dynamic>? userPreferences,
   }) async {
-    if (_apiKey.trim().isEmpty) {
-      return [];
-    }
-
-    final compactCandidates = candidates.take(60).map((course) {
+    final compactCandidates = candidates.take(120).map((course) {
       return {
         'id': course['id'],
         'code': _short(course['code'], 40),
@@ -4212,137 +4347,145 @@ Return:
       };
     }).toList();
 
-    final url = Uri.parse('https://openrouter.ai/api/v1/chat/completions');
+    final content = await _callAiChat(
+      systemPrompt: '''
+You are Bao-Bao's course-selection brain.
+
+You are given the user's prompt, the planner tool constraints, curriculum context,
+and a real candidate list from Firestore. Think like an academic advisor and choose
+only real candidate IDs.
+
+Priority order is strict:
+1. Latest user prompt: satisfy what the student asked for first.
+2. User profile: use department/program/career/curriculum/language/memory to personalize and break ties.
+3. General quality: year fit, capacity, rating, and balance.
+
+If userProfile or old memory conflicts with the latest prompt, the latest prompt wins.
+Do not invent course IDs. Do not use hidden assumptions. Do not rely on hardcoded
+career/professor/course mappings. Use the candidate metadata.
+
+Tool constraints are mandatory:
+- Choose at most group.count IDs.
+- If requiredType is GE, every selected course must have type GE / GE metadata.
+- If requiredType is CORE, every selected course must have type CORE / core metadata.
+- If requiredType is ELECTIVE, every selected course must have type ELECTIVE / elective metadata.
+- If requiredType is PE, every selected course must be PE / physical education / sport metadata.
+- If requiredType is LAB, every selected course must be LAB / laboratory / experiment metadata.
+- If requiredType is LANGUAGE, every selected course must be language-course metadata.
+- If mustMatchSubject is true, selected courses must match subjectQuery/subjectPhrases.
+- If language/time/credits/limit constraints are present, respect them.
+- Do not choose thesis, seminar, research, lab rotation, or 0-credit courses unless directly requested.
+- Prefer courses that fit the user's latest prompt first, then curriculum, student year, preferences, and memory.
+- Avoid time conflicts when times are visible in the candidates.
+
+For broad goal prompts, do not require exact words in every title. Choose a balanced set that helps the user's stated goal using departments, course types, curriculum buckets, and titles.
+
+Prompt-first profile rules:
+- The prompt is priority 1. userProfile is priority 2.
+- Use department/program/career/searchProfile as advisor context only after the prompt meaning is satisfied.
+- If the prompt asks for a topic different from the profile, still answer the prompt; use the profile to choose the most suitable courses inside that topic.
+- If the prompt says "X with a bit/little/some Y", choose mostly courses that support X. Choose only a small number that support Y. Do not let Y or old memory dominate.
+- Generic memory words like core, GE, elective, language, course, or class are not real academic interests.
+- If a course only matches a generic memory word, do not treat that as a strong reason.
+
+Return JSON only:
+{
+  "courseIds": ["id1", "id2"]
+}
+''',
+      userContent: jsonEncode(_jsonSafe({
+        'userMessage': userMessage,
+        'userCurriculum': _compactCurriculumForAi(curriculum),
+        'userProfile': _compactUserProfileForAi(userPreferences),
+        'group': {
+          'query': group.query,
+          'subjectQuery': group.subjectQuery,
+          'subjectPhrases': group.subjectPhrases,
+          'mustMatchSubject': group.mustMatchSubject,
+          'count': group.count,
+          'credits': group.credits,
+          'requiredType': group.requiredType,
+          'timePreference': group.timePreference,
+          'language': group.language,
+          'minLimit': group.minLimit,
+          'maxLimit': group.maxLimit,
+          'mustHave': group.mustHave,
+          'avoid': group.avoid,
+        },
+        'candidates': compactCandidates,
+      })),
+      temperature: 0.03,
+      maxTokens: 500,
+    );
+
+    if (content == null || content.trim().isEmpty) {
+      return const [];
+    }
 
     try {
-      final response = await http.post(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_apiKey',
-          'HTTP-Referer': 'https://enthusiast.app',
-          'X-OpenRouter-Title': 'eNTHUsiast Bao-Bao',
-        },
-        body: jsonEncode({
-          'model': _model,
-          'messages': [
-            {
-              'role': 'system',
-              'content': '''
-  You are Bao-Bao's course selector.
-
-  You MUST choose only from the given candidate list.
-  Never invent IDs.
-  Choose the courses that best match the user's request.
-  Respect count, subjectQuery, subjectPhrases, mustMatchSubject, requiredType, credits, professor names, timePreference, language of instruction, minLimit, maxLimit, and the search query.
-  If the group asks for an instructor/professor, every selected course must have that instructor name in the professor/instructor metadata.
-  If several candidate courses satisfy the request, return as many matching IDs as allowed by group.count instead of only one.
-
-  Curriculum rule:
-  - If userCurriculum is provided, use it as the student's curriculum reference.
-  - Prefer candidate courses that match curriculum requirement groups, accepted course codes, required course names, GE requirements, core requirements, and graduation requirements.
-  - Never invent curriculum requirements.
-  - Never invent courses.
-  - Only choose from the candidates list.
-
-  Curriculum bucket rule:
-  - Candidates may include curriculumBucket values:
-    DEPT_REQUIRED, BASIC_CORE, CORE_COURSE, PROFESSIONAL, LAB,
-    GE, LANGUAGE, FREE_ELECTIVE, SCHOOL_COMPULSORY, UNKNOWN.
-  - For normal planning requests, prioritize buckets in this order:
-    1. DEPT_REQUIRED
-    2. BASIC_CORE
-    3. CORE_COURSE
-    4. PROFESSIONAL
-    5. LAB
-    6. GE
-    7. LANGUAGE
-    8. FREE_ELECTIVE
-  - Do not treat CORE / ELECTIVE / GE as the full curriculum requirement.
-    The curriculumBucket is more important than the display type.
-  - If the user asks for CS core, prefer DEPT_REQUIRED, BASIC_CORE, or CORE_COURSE.
-  - If the user asks for language, prefer LANGUAGE.
-  - If the user asks for GE, prefer GE.
-  - If the user asks for lab, prefer LAB.
-
-  User preference rule:
-  - Candidates include preferenceFitScore and preferenceReasons calculated by Bao-Bao.
-  - Prefer higher preferenceFitScore when courses otherwise satisfy the request.
-  - CORE / DEPT_REQUIRED / BASIC_CORE / CORE_COURSE / PROFESSIONAL / LAB candidates should fit the student's career path or department when possible.
-  - GE interests may be satisfied by GE courses first, but relevant ELECTIVE courses are also acceptable.
-  - Do not match Arts & Aesthetics using isolated technical words. For example, Computer Architecture is NOT Arts & Aesthetics just because it contains the word architecture. Only treat architecture as Arts & Aesthetics when the course is about building design, urban design, art history, visual design, or aesthetics.
-  - If the student has no uploaded curriculum, do not claim exact curriculum-bucket planning. Use career path, department, graduation data, GE interests, and the real course list.
-
-  Important:
-  - If mustMatchSubject is true, only choose courses matching the requested subject/topic.
-  - If the user asks for a specific subject AND language of instruction, choose courses matching both.
-  - Do not replace a specific subject request with a random language course.
-  - If the user asks for English/Chinese instruction, prioritize matching language.
-  - Use the course language/instruction metadata for English/Chinese taught filtering, not the title text.
-  - If the user asks for morning/night/afternoon/evening classes, prioritize matching time.
-  - If the user asks for large limit/capacity, prioritize higher limit.
-  - Avoid thesis, seminar, colloquium, research, MOOC, lab rotation, and 0-credit courses unless directly requested.
-
-  Return JSON only:
-  {
-    "courseIds": ["id1", "id2"]
-  }
-  ''',
-            },
-            {
-              'role': 'user',
-              'content': jsonEncode({
-                'userMessage': userMessage,
-                'userCurriculum': _compactCurriculumForAi(curriculum),
-                'group': {
-                  'query': group.query,
-                  'subjectQuery': group.subjectQuery,
-                  'subjectPhrases': group.subjectPhrases,
-                  'mustMatchSubject': group.mustMatchSubject,
-                  'count': group.count,
-                  'credits': group.credits,
-                  'requiredType': group.requiredType,
-                  'timePreference': group.timePreference,
-                  'language': group.language,
-                  'minLimit': group.minLimit,
-                  'maxLimit': group.maxLimit,
-                  'mustHave': group.mustHave,
-                  'avoid': group.avoid,
-                },
-                'candidates': compactCandidates,
-              }),
-            },
-          ],
-          'temperature': 0.05,
-          'max_tokens': 500,
-        }),
-      );
-
-      if (response.statusCode != 200) {
-        return [];
-      }
-
-      final data = jsonDecode(response.body);
-      final content = data['choices']?[0]?['message']?['content']?.toString();
-
-      if (content == null || content.trim().isEmpty) {
-        return [];
-      }
-
       final parsed = jsonDecode(_extractJsonObject(content));
       final ids = parsed['courseIds'];
 
       if (ids is! List) {
-        return [];
+        return const [];
       }
 
-      return ids.map((id) => id.toString()).toList();
+      final validIds = candidates
+          .map((course) => course['id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+
+      return ids
+          .map((id) => id.toString())
+          .where(validIds.contains)
+          .toList();
     } catch (error) {
-      print('Bao-Bao AI rerank failed: $error');
-      return [];
+      print('Bao-Bao AI selector parse failed: $error');
+      print('Bao-Bao raw selector response: $content');
+      return const [];
     }
   }
-    Map<String, dynamic>? _compactCurriculumForAi(Map<String, dynamic>? curriculum) {
+
+  Map<String, dynamic> _compactUserProfileForAi(
+    Map<String, dynamic>? rawPreferences,
+  ) {
+    final prefs = _preferenceMap(rawPreferences);
+    if (prefs.isEmpty) return {};
+
+    final memory = _memoryMap(prefs);
+
+    final departmentHints = <String>{};
+    for (final entry in prefs.entries) {
+      final key = entry.key.toString().toLowerCase();
+      if (key.contains('department') ||
+          key.contains('dept') ||
+          key.contains('major') ||
+          key.contains('program')) {
+        final value = entry.value?.toString().trim() ?? '';
+        if (value.isNotEmpty) departmentHints.add(value);
+      }
+    }
+
+    return _jsonSafe({
+      'departmentOrProgram': departmentHints.toList(),
+      'careerPaths': _stringListFromAny(prefs['careerPaths']),
+      'geInterests': _stringListFromAny(prefs['geInterests']),
+      'targetCreditLoad': prefs['targetCreditLoad'],
+      'languagePreference': prefs['languagePreference'],
+      'aiSearchProfile': _searchProfileMap(prefs),
+      'baoBaoMemory': {
+        'preferredKeywords': _stringListFromAny(memory['preferredKeywords'])
+            .where((item) => !_isGenericPlanningMemoryKeyword(item))
+            .take(8)
+            .toList(),
+        'avoidKeywords': _stringListFromAny(memory['avoidKeywords']).take(8).toList(),
+        'likedCourseTitles': _stringListFromAny(memory['likedCourseTitles']).take(5).toList(),
+        'dislikedCourseTitles': _stringListFromAny(memory['dislikedCourseTitles']).take(5).toList(),
+      },
+    }) as Map<String, dynamic>;
+  }
+
+  Map<String, dynamic>? _compactCurriculumForAi(Map<String, dynamic>? curriculum) {
     if (curriculum == null) {
       return null;
     }
@@ -4881,11 +5024,30 @@ Return:
       return true;
     }
 
+    final normalizedType = _normalizeType(
+      [
+        course['type'],
+        course['department'],
+        course['curriculumBucket'],
+        course['curriculumCategory'],
+        course['title'],
+        course['titleZh'],
+        course['titleEn'],
+      ].whereType<Object>().join(' '),
+    );
+
+    // PE / LAB / LANGUAGE are normal user-requestable course types in this app.
+    // They are not random special filler. Many PE courses have 0 credits or
+    // missing limits, and some language/lab metadata is incomplete. Do not
+    // delete them before the AI tool can choose from the real catalog.
+    final isRequestedSpecialType =
+        normalizedType == 'PE' || normalizedType == 'LAB' || normalizedType == 'LANGUAGE';
+
     final credits = _toInt(course['credits']);
-    if (credits <= 0) return false;
+    if (credits <= 0 && !isRequestedSpecialType) return false;
 
     final limit = _toInt(course['limit']);
-    if (limit <= 0) return false;
+    if (limit <= 0 && !isRequestedSpecialType) return false;
 
     final text = _searchText(course);
 
@@ -4911,7 +5073,14 @@ Return:
       '輪轉',
     ];
 
-    for (final word in badWords) {
+    // If the user explicitly asks for LAB, do not reject a real lab course just
+    // because its title contains "experiment" / "laboratory". Still reject
+    // research-style project/seminar/thesis items.
+    final relaxedBadWords = normalizedType == 'LAB'
+        ? badWords.where((word) => word != 'lab rotation').toList()
+        : badWords;
+
+    for (final word in relaxedBadWords) {
       if (text.contains(word)) {
         return false;
       }
@@ -4925,20 +5094,119 @@ Return:
 
     final type = (course['type'] ?? '').toString().toUpperCase();
     final department = (course['department'] ?? '').toString().toUpperCase();
+    final bucket = (course['curriculumBucket'] ?? '').toString().toUpperCase();
+    final category = (course['curriculumCategory'] ?? '').toString().toUpperCase();
     final text = _searchText(course);
+    final identityText = _normalizeSearchText([
+      course['id'],
+      course['code'],
+      course['title'],
+      course['titleZh'],
+      course['titleEn'],
+      course['department'],
+      course['type'],
+      course['curriculumBucket'],
+      course['curriculumCategory'],
+    ].whereType<Object>().join(' '));
+
+    bool containsAny(List<String> words) {
+      return words.any((word) => text.contains(word));
+    }
+
+    bool identityContainsAny(List<String> words) {
+      return words.any((word) => identityText.contains(_normalizeSearchText(word)));
+    }
 
     switch (requiredType) {
       case 'CORE':
-        return type == 'CORE';
+        return type == 'CORE' ||
+            bucket == 'CORE_COURSE' ||
+            bucket == 'BASIC_CORE' ||
+            bucket == 'DEPT_REQUIRED';
 
       case 'ELECTIVE':
-        return type == 'ELECTIVE';
+        return type == 'ELECTIVE' || bucket == 'FREE_ELECTIVE';
 
       case 'GE':
         return type == 'GE' ||
             department == 'GE' ||
+            bucket == 'GE' ||
             text.contains('通識') ||
             text.contains('general education');
+
+      case 'PE':
+        return type == 'PE' ||
+            department == 'PE' ||
+            bucket == 'PE' ||
+            category == 'PE' ||
+            containsAny([
+              'physical education',
+              'pe ',
+              ' pe',
+              'sports',
+              'sport',
+              '體育',
+              '體適能',
+              'basketball',
+              'volleyball',
+              'badminton',
+              'swimming',
+              'swim',
+              'tennis',
+              'yoga',
+              'fitness',
+              '游泳',
+              '籃球',
+              '篮球',
+              '羽球',
+              '羽毛球',
+              '排球',
+              '網球',
+              '网球',
+              '瑜伽',
+              '體適能',
+              '体适能',
+            ]);
+
+      case 'LAB':
+        return type == 'LAB' ||
+            bucket == 'LAB' ||
+            category == 'LAB' ||
+            containsAny([
+              'laboratory',
+              ' lab',
+              'lab ',
+              'experiment',
+              'experimental',
+              '實驗',
+            ]);
+
+      case 'LANGUAGE':
+        return type == 'LANGUAGE' ||
+            type == 'LANG' ||
+            department == 'LANG' ||
+            department == 'CLC' ||
+            bucket == 'LANGUAGE' ||
+            category == 'LANGUAGE' ||
+            identityContainsAny([
+              'language',
+              'english reading',
+              'english communication',
+              'academic english',
+              'japanese',
+              'mandarin',
+              'mandarin basic',
+              'mandarin intermediate',
+              'chinese',
+              'chinese language',
+              'language course',
+              '華語',
+              '中文',
+              '英文',
+              '日文',
+              '語言',
+              '外語',
+            ]);
 
       default:
         return true;
@@ -4950,14 +5218,46 @@ Return:
 
     if (upper.contains('CORE')) return 'CORE';
     if (upper.contains('GE') || upper.contains('GENERAL')) return 'GE';
-
     if (upper.contains('LANG') ||
-        upper.contains('LAB') ||
-        upper == 'PE' ||
-        upper.contains('SPORT')) {
-      return 'ELECTIVE';
+        upper.contains('CLC') ||
+        upper.contains('MANDARIN') ||
+        upper.contains('CHINESE LANGUAGE') ||
+        upper.contains('華語') ||
+        upper.contains('中文課') ||
+        upper.contains('語言')) {
+      return 'LANGUAGE';
     }
-
+    if (upper.contains('LAB') ||
+        upper.contains('LABORATORY') ||
+        upper.contains('EXPERIMENT')) {
+      return 'LAB';
+    }
+    if (upper == 'PE' ||
+        upper.contains('PHYSICAL') ||
+        upper.contains('SPORT') ||
+        upper.contains('SWIMMING') ||
+        upper.contains('SWIM') ||
+        upper.contains('BASKETBALL') ||
+        upper.contains('VOLLEYBALL') ||
+        upper.contains('BADMINTON') ||
+        upper.contains('TENNIS') ||
+        upper.contains('YOGA') ||
+        upper.contains('FITNESS') ||
+        upper.contains('體育') ||
+        upper.contains('体育') ||
+        upper.contains('游泳') ||
+        upper.contains('籃球') ||
+        upper.contains('篮球') ||
+        upper.contains('羽球') ||
+        upper.contains('羽毛球') ||
+        upper.contains('排球') ||
+        upper.contains('網球') ||
+        upper.contains('网球') ||
+        upper.contains('瑜伽') ||
+        upper.contains('體適能') ||
+        upper.contains('体适能')) {
+      return 'PE';
+    }
     if (upper.contains('ELECTIVE')) return 'ELECTIVE';
 
     return 'any';
@@ -4974,7 +5274,7 @@ Return:
       return 'no_morning';
     }
 
-    if (lower.contains('morning')) return 'morning';
+    if (lower.contains('early') || lower.contains('morning')) return 'morning';
     if (lower.contains('afternoon')) return 'afternoon';
     if (lower.contains('evening')) return 'evening';
     if (lower.contains('night')) return 'night';
@@ -5439,27 +5739,89 @@ class _AiSearchPlan {
   });
 
   factory _AiSearchPlan.promptFirst(String message) {
+    final requestedType = _extractRequiredType(message);
+
     return _AiSearchPlan(
       targetCredits: null,
-      allowSpecialCourses: false,
+      allowSpecialCourses: requestedType == 'PE' ||
+          requestedType == 'LAB' ||
+          requestedType == 'LANGUAGE',
       groups: [
         _SearchGroup(
           query: message,
           subjectQuery: null,
           subjectPhrases: const [],
           mustMatchSubject: false,
-          count: 8,
+          count: _extractCount(message),
           credits: null,
-          requiredType: 'any',
-          timePreference: 'any',
-          language: 'any',
-          minLimit: null,
-          maxLimit: null,
+          requiredType: requestedType,
+          timePreference: _extractTimePreference(message),
+          language: _extractLanguagePreference(message),
+          minLimit: _extractMinLimit(message),
+          maxLimit: _extractMaxLimit(message),
           mustHave: const [],
           avoid: const [],
         ),
       ],
     );
+  }
+
+  static String _extractRequiredType(String message) {
+    final lower = message.toLowerCase();
+
+    if (RegExp(r'\b(pe|physical education|sport|sports|basketball|volleyball|badminton|swimming|swim|tennis|yoga|fitness)\b').hasMatch(lower) ||
+        lower.contains('體育') ||
+        lower.contains('体育') ||
+        lower.contains('游泳') ||
+        lower.contains('籃球') ||
+        lower.contains('篮球') ||
+        lower.contains('羽球') ||
+        lower.contains('羽毛球') ||
+        lower.contains('排球') ||
+        lower.contains('網球') ||
+        lower.contains('网球') ||
+        lower.contains('瑜伽') ||
+        lower.contains('體適能') ||
+        lower.contains('体适能')) {
+      return 'PE';
+    }
+
+    if (RegExp(r'\b(lab|laboratory|experiment|experimental)\b').hasMatch(lower) ||
+        lower.contains('實驗')) {
+      return 'LAB';
+    }
+
+    final asksInstructionLanguage = _extractLanguagePreference(message) != 'any';
+
+    final asksLanguageCourse =
+        RegExp(r'\b(language|foreign language|english course|english class|japanese|japanese course|japanese class|mandarin|mandarin course|mandarin class|chinese course|chinese class|chinese language)\b')
+                .hasMatch(lower) ||
+            lower.contains('華語') ||
+            lower.contains('華語課') ||
+            lower.contains('中文課') ||
+            lower.contains('日文') ||
+            lower.contains('日文課') ||
+            lower.contains('英文課') ||
+            lower.contains('語言課') ||
+            lower.contains('外語');
+
+    if (asksLanguageCourse && !asksInstructionLanguage) {
+      return 'LANGUAGE';
+    }
+
+    if (RegExp(r'\bge\b').hasMatch(lower) || lower.contains('general education') || lower.contains('通識')) {
+      return 'GE';
+    }
+
+    if (RegExp(r'\bcore\b').hasMatch(lower)) {
+      return 'CORE';
+    }
+
+    if (RegExp(r'\belective\b').hasMatch(lower) || lower.contains('選修')) {
+      return 'ELECTIVE';
+    }
+
+    return 'any';
   }
 
   factory _AiSearchPlan.local(String message) {
@@ -5478,7 +5840,7 @@ class _AiSearchPlan {
           mustMatchSubject: hasSubject,
           count: _extractCount(message),
           credits: null,
-          requiredType: 'any',
+          requiredType: _extractRequiredType(message),
           timePreference: _extractTimePreference(message),
           language: _extractLanguagePreference(message),
           minLimit: _extractMinLimit(message),
@@ -5574,7 +5936,7 @@ class _AiSearchPlan {
       return 'no_morning';
     }
 
-    if (lower.contains('morning')) return 'morning';
+    if (lower.contains('early') || lower.contains('morning')) return 'morning';
     if (lower.contains('afternoon')) return 'afternoon';
     if (lower.contains('night')) return 'night';
     if (lower.contains('evening')) return 'evening';

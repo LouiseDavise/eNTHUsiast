@@ -96,7 +96,7 @@ function parseGraduationData(htmlContent) {
         const year =  $(tds[0]).text().trim() + $(tds[1]).text().trim();
         
         let status = "passed";
-        if (grade.includes("Grade Not Submitted") || grade.includes("成績未到")) {
+        if (grade.includes("Grade Not Submitted") || grade.includes("æˆç¸¾æœªåˆ°")) {
             status = "inProgress";
         } else if (["E", "X", "F"].includes(grade)) {
             status = "failed";

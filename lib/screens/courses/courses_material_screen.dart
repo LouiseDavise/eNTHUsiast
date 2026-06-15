@@ -5,20 +5,24 @@ import '../../models/courses_material_model.dart';
 import 'widgets/course_material_card.dart';
 import 'widgets/material_week_card.dart';
 import 'package:provider/provider.dart';
+import '../../providers/language_provider.dart'; // Added for language support
 
 class CourseMaterialsScreen extends StatelessWidget {
   const CourseMaterialsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final language = LanguageScope.watch(context); // Watch language
+    final isChinese = language.isChinese;
     final currCourses = context.watch<CcxpDataProvider>().scheduleData;
+
     final courses = List.generate(currCourses.length, (idx) {
       final course = currCourses[idx];
       final materials = (course['materials'] as List?)?.map<MaterialItem>((m) {
             return MaterialItem(
               week: '',
-              title: m['title'] as String? ?? 'Material',
-              url: m['url'] as String? ?? '', // ← was: m['url']
+              title: m['title'] ?? (isChinese ? '教材' : 'Material'),
+              url: m['url'],
             );
           }).toList() ??
           [];
@@ -34,7 +38,7 @@ class CourseMaterialsScreen extends StatelessWidget {
         units: materials.isNotEmpty
             ? [
                 CourseUnit(
-                  title: 'MATERIALS',
+                  title: isChinese ? '課程教材' : 'MATERIALS',
                   materials: materials,
                 )
               ]
@@ -56,12 +60,11 @@ class CourseMaterialsScreen extends StatelessWidget {
                     onTap: () => Navigator.pop(context),
                   ),
                   const SizedBox(width: 14),
-                  const Text(
-                    'Course Materials',
-                    style: TextStyle(
-                      fontSize: 24, // Increased from 22
-                      fontWeight:
-                          FontWeight.w800, // Reduced from w900, removed italic
+                  Text(
+                    isChinese ? '課程教材' : 'Course Materials',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
                       color: Color(0xFF0F172A),
                     ),
                   ),
@@ -85,6 +88,7 @@ class CourseMaterialsScreen extends StatelessWidget {
                             builder: (_) => CourseMaterialDetailScreen(
                               course: course,
                               courseUrl: rawCourse['url'],
+                              isChinese: isChinese,
                             ),
                           ),
                         );
@@ -104,11 +108,13 @@ class CourseMaterialsScreen extends StatelessWidget {
 class CourseMaterialDetailScreen extends StatelessWidget {
   final CourseMaterial course;
   final String? courseUrl;
+  final bool isChinese;
 
   const CourseMaterialDetailScreen({
     super.key,
     required this.course,
     this.courseUrl,
+    required this.isChinese,
   });
 
   Future<void> _launchUrl(String url) async {
@@ -169,19 +175,21 @@ class CourseMaterialDetailScreen extends StatelessWidget {
                                   ),
                                 ),
                                 const SizedBox(height: 20),
-                                const Text(
-                                  'No Materials Yet',
-                                  style: TextStyle(
+                                Text(
+                                  isChinese ? '暫無教材' : 'No Materials Yet',
+                                  style: const TextStyle(
                                     fontSize: 20,
                                     fontWeight: FontWeight.w800,
                                     color: Color(0xFF0F172A),
                                   ),
                                 ),
                                 const SizedBox(height: 10),
-                                const Text(
-                                  'Visit the course page to access materials',
+                                Text(
+                                  isChinese
+                                      ? '前往課程頁面以獲取教材'
+                                      : 'Visit the course page to access materials',
                                   textAlign: TextAlign.center,
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w500,
                                     color: Color(0xFF64748B),
@@ -197,18 +205,20 @@ class CourseMaterialDetailScreen extends StatelessWidget {
                                     color: const Color(0xFF3B82F6),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
-                                  child: const Row(
+                                  child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(
+                                      const Icon(
                                         Icons.open_in_new_rounded,
                                         color: Colors.white,
                                         size: 18,
                                       ),
-                                      SizedBox(width: 8),
+                                      const SizedBox(width: 8),
                                       Text(
-                                        'Go to Course Page',
-                                        style: TextStyle(
+                                        isChinese
+                                            ? '前往課程頁面'
+                                            : 'Go to Course Page',
+                                        style: const TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w700,
                                           color: Colors.white,
@@ -227,20 +237,17 @@ class CourseMaterialDetailScreen extends StatelessWidget {
                         separatorBuilder: (_, __) => const SizedBox(height: 26),
                         itemBuilder: (context, index) {
                           final unit = course.units[index];
-
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               _UnitTitle(title: unit.title),
                               const SizedBox(height: 12),
-                              ...unit.materials.map(
-                                (material) {
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 12),
-                                    child: MaterialWeekCard(material: material),
-                                  );
-                                },
-                              ),
+                              ...unit.materials.map((material) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: MaterialWeekCard(material: material),
+                                );
+                              }),
                             ],
                           );
                         },
@@ -257,35 +264,29 @@ class CourseMaterialDetailScreen extends StatelessWidget {
 class _Header extends StatelessWidget {
   final CourseMaterial course;
 
-  const _Header({
-    required this.course,
-  });
+  const _Header({required this.course});
 
   @override
   Widget build(BuildContext context) {
     final isElearn = course.platform.toUpperCase() == 'ELEARN';
-
     return Row(
       children: [
-        _CircleBackButton(
-          onTap: () => Navigator.pop(context),
-        ),
+        _CircleBackButton(onTap: () => Navigator.pop(context)),
         const SizedBox(width: 14),
         Flexible(
           child: Text(
             course.title,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              fontSize: 24, // Increased from 22
-              fontWeight: FontWeight.w800, // Reduced from w900, removed italic
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
               color: Color(0xFF0F172A),
             ),
           ),
         ),
-        const SizedBox(width: 10), // Slightly increased spacing
+        const SizedBox(width: 10),
         Container(
-          padding: const EdgeInsets.symmetric(
-              horizontal: 8, vertical: 5), // Increased vertical padding
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
           decoration: BoxDecoration(
             color: isElearn ? const Color(0xFFF3E8FF) : const Color(0xFFEFF6FF),
             borderRadius: BorderRadius.circular(8), // Softened from 6 to 8
@@ -308,10 +309,7 @@ class _Header extends StatelessWidget {
 
 class _UnitTitle extends StatelessWidget {
   final String title;
-
-  const _UnitTitle({
-    required this.title,
-  });
+  const _UnitTitle({required this.title});
 
   @override
   Widget build(BuildContext context) {
@@ -319,7 +317,7 @@ class _UnitTitle extends StatelessWidget {
       children: [
         Container(
           width: 22,
-          height: 3, // Slightly thicker line to match larger text
+          height: 3,
           decoration: BoxDecoration(
             color: const Color(0xFFD8B4FE),
             borderRadius: BorderRadius.circular(99),
@@ -330,11 +328,10 @@ class _UnitTitle extends StatelessWidget {
           child: Text(
             title.toUpperCase(),
             style: const TextStyle(
-              fontSize: 12, // Increased from 10
-              fontWeight: FontWeight.w700, // Reduced from w900
-              letterSpacing: 1.0, // Reduced from 2.0
-              color: Color(
-                  0xFF64748B), // Slightly darker gray for better legibility
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.0,
+              color: Color(0xFF64748B),
             ),
           ),
         ),
@@ -345,10 +342,7 @@ class _UnitTitle extends StatelessWidget {
 
 class _CircleBackButton extends StatelessWidget {
   final VoidCallback onTap;
-
-  const _CircleBackButton({
-    required this.onTap,
-  });
+  const _CircleBackButton({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -356,7 +350,7 @@ class _CircleBackButton extends StatelessWidget {
       borderRadius: BorderRadius.circular(100),
       onTap: onTap,
       child: Container(
-        width: 38, // Slightly increased from 36
+        width: 38,
         height: 38,
         decoration: const BoxDecoration(
           color: Colors.white,
@@ -364,7 +358,7 @@ class _CircleBackButton extends StatelessWidget {
         ),
         child: const Icon(
           Icons.chevron_left_rounded,
-          color: Color(0xFF64748B), // Darkened slightly from 94A3B8
+          color: Color(0xFF64748B),
           size: 26,
         ),
       ),
