@@ -8,6 +8,126 @@ enum AiProvider {
   openAi,
 }
 
+class _BaoBaoCreditRange {
+  final int? min;
+  final int? max;
+
+  const _BaoBaoCreditRange({
+    required this.min,
+    required this.max,
+  });
+
+  bool get hasTarget => min != null || max != null;
+
+  @override
+  String toString() {
+    if (min == null && max == null) return 'no target';
+    if (min != null && max != null && min != max) return '$min-$max credits';
+    final value = min ?? max;
+    return '$value credits';
+  }
+}
+
+class BaoBaoCourseIntent {
+  final String intent;
+  final String basePlan;
+  final List<Map<String, dynamic>> actions;
+  final Map<String, dynamic>? memoryUpdate;
+  final bool needsClarification;
+  final String? clarifyingQuestion;
+  final bool usePreviousRecommendation;
+  final String searchMode;
+  final String query;
+
+  const BaoBaoCourseIntent({
+    required this.intent,
+    required this.basePlan,
+    required this.actions,
+    required this.memoryUpdate,
+    required this.needsClarification,
+    required this.clarifyingQuestion,
+    this.usePreviousRecommendation = false,
+    this.searchMode = 'unknown',
+    this.query = '',
+  });
+
+  factory BaoBaoCourseIntent.fromJson(Map<String, dynamic> json) {
+    final rawActions = json['actions'];
+    final parsedActions = <Map<String, dynamic>>[];
+
+    if (rawActions is Iterable) {
+      for (final item in rawActions) {
+        if (item is Map) {
+          parsedActions.add(Map<String, dynamic>.from(item));
+        }
+      }
+    }
+
+    final rawMemory = json['memoryUpdate'];
+
+    return BaoBaoCourseIntent(
+      intent: (json['intent'] ?? 'new_plan').toString(),
+      basePlan: (json['basePlan'] ?? 'none').toString(),
+      actions: parsedActions,
+      memoryUpdate: rawMemory is Map
+          ? Map<String, dynamic>.from(rawMemory)
+          : null,
+      needsClarification: json['needsClarification'] == true,
+      clarifyingQuestion: json['clarifyingQuestion']?.toString(),
+      usePreviousRecommendation: json['usePreviousRecommendation'] == true,
+      searchMode: (json['searchMode'] ?? 'unknown').toString(),
+      query: (json['query'] ?? '').toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'intent': intent,
+      'basePlan': basePlan,
+      'actions': actions,
+      'memoryUpdate': memoryUpdate,
+      'needsClarification': needsClarification,
+      'clarifyingQuestion': clarifyingQuestion,
+      'usePreviousRecommendation': usePreviousRecommendation,
+      'searchMode': searchMode,
+      'query': query,
+    };
+  }
+
+  bool get isModifyPreviousPlan => intent == 'modify_previous_plan';
+  bool get isDirectSearch => intent == 'direct_search';
+  bool get isMemoryUpdate => intent == 'memory_update';
+  bool get isClearMemory => intent == 'clear_memory';
+  bool get isClarificationNeeded =>
+      needsClarification || intent == 'clarification_needed';
+  bool get isSmallTalk => intent == 'small_talk';
+
+  List<String> get avoidKeywords {
+    final value = memoryUpdate?['avoidKeywords'];
+    if (value is Iterable) {
+      return value
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+    }
+    return const [];
+  }
+
+  List<String> get preferredKeywords {
+    final value = memoryUpdate?['preferredKeywords'];
+    if (value is Iterable) {
+      return value
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+    }
+    return const [];
+  }
+
+  @override
+  String toString() => toJson().toString();
+}
+
 class BaoBaoAiApi {
   // ============================================================
   // CHANGE ONLY THIS PART WHEN SWITCHING PROVIDER
@@ -140,6 +260,1015 @@ Do not make fake course codes.
     return content;
   }
 
+
+  Future<Map<String, dynamic>> buildBaoBaoPreferenceSearchProfile({
+    required Map<String, dynamic>? userPreferences,
+  }) async {
+    final prefs = _preferenceMap(userPreferences);
+
+    if (prefs.isEmpty) {
+      return {};
+    }
+
+    final content = await _callAiChat(
+      systemPrompt: '''
+You are Bao-Bao's academic preference resolver.
+
+Return JSON only. No markdown. Do not recommend course IDs.
+
+Your job is to translate ANY student's preference profile into flexible course-search hints.
+Use reasoning from the career path, department/program, GE interests, language preference, target credits, and requested core-course count.
+Do not use fixed if/else career mappings.
+Do not force GE interests to dominate career planning when careerPaths exists.
+
+Schema:
+{
+  "careerKeywords": [],
+  "departmentKeywords": [],
+  "coreCourseHints": [],
+  "electiveHints": [],
+  "geHints": [],
+  "avoidKeywords": [],
+  "planningNotes": []
+}
+
+Rules:
+- careerKeywords should be academic topics related to the career path.
+- departmentKeywords should include department/program vocabulary if available.
+- coreCourseHints should be foundational or required-style course topics useful for that career/department.
+- electiveHints should be supporting or advanced topics useful for that career.
+- geHints should come from GE interests only.
+- avoidKeywords should contain courses/topics that clearly conflict with the profile.
+- Keep every keyword short and searchable in course title, department, remarks, or metadata.
+- Prefer academic course-topic words over job titles.
+- If careerPaths exists, career/core/elective hints should be more important than GE hints.
+- If the user requests a number of core courses, planningNotes should mention it.
+''',
+      userContent: jsonEncode(_jsonSafe({
+        'userPreferences': prefs,
+      })),
+      temperature: 0.04,
+      maxTokens: 700,
+    );
+
+    if (content == null || content.trim().isEmpty) {
+      return {};
+    }
+
+    try {
+      final parsed = jsonDecode(_extractJsonObject(content));
+
+      if (parsed is! Map) {
+        return {};
+      }
+
+      final profile = Map<String, dynamic>.from(parsed);
+
+      print('Bao-Bao AI preference search profile: $profile');
+
+      return profile;
+    } catch (error) {
+      print('Bao-Bao preference profile parse failed: $error');
+      print('Bao-Bao raw preference profile AI response: $content');
+
+      // Some OpenRouter free models answer with prose or truncated text even
+      // when we ask for JSON. Repair once instead of silently losing the
+      // AI-generated preference understanding.
+      final repaired = await _callAiChat(
+        systemPrompt: '''
+Return valid JSON only. No markdown.
+Convert the user's text into this exact schema:
+{
+  "careerKeywords": [],
+  "departmentKeywords": [],
+  "coreCourseHints": [],
+  "electiveHints": [],
+  "geHints": [],
+  "avoidKeywords": [],
+  "planningNotes": []
+}
+Use empty arrays for missing fields.
+''',
+        userContent: content,
+        temperature: 0.0,
+        maxTokens: 500,
+      );
+
+      if (repaired == null || repaired.trim().isEmpty) {
+        return {};
+      }
+
+      try {
+        final parsed = jsonDecode(_extractJsonObject(repaired));
+        return parsed is Map ? Map<String, dynamic>.from(parsed) : {};
+      } catch (repairError) {
+        print('Bao-Bao preference profile repair failed: $repairError');
+        print('Bao-Bao repaired preference profile response: $repaired');
+        return {};
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>?> _withAiGeneratedPreferenceSearchProfile(
+    Map<String, dynamic>? rawPreferences,
+  ) async {
+    if (rawPreferences == null) {
+      return null;
+    }
+
+    final existingPrefs = _preferenceMap(rawPreferences);
+    if (_searchProfileMap(existingPrefs).isNotEmpty) {
+      return rawPreferences;
+    }
+
+    final profile = await buildBaoBaoPreferenceSearchProfile(
+      userPreferences: rawPreferences,
+    );
+
+    if (profile.isEmpty) {
+      return rawPreferences;
+    }
+
+    final copied = Map<String, dynamic>.from(rawPreferences);
+
+    if (copied['preferences'] is Map) {
+      final nested = Map<String, dynamic>.from(copied['preferences'] as Map);
+      nested['baoBaoSearchProfile'] = profile;
+      copied['preferences'] = nested;
+    } else {
+      copied['baoBaoSearchProfile'] = profile;
+    }
+
+    return copied;
+  }
+
+
+  dynamic _jsonSafe(dynamic value) {
+    if (value == null || value is String || value is num || value is bool) {
+      return value;
+    }
+
+    if (value is DateTime) {
+      return value.toIso8601String();
+    }
+
+    // Firestore Timestamp cannot be encoded by jsonEncode directly.
+    // Avoid importing cloud_firestore here just for a type check.
+    if (value.runtimeType.toString() == 'Timestamp') {
+      try {
+        final dynamic timestamp = value;
+        return timestamp.toDate().toIso8601String();
+      } catch (_) {
+        return value.toString();
+      }
+    }
+
+    if (value is List) {
+      return value.map(_jsonSafe).toList();
+    }
+
+    if (value is Map) {
+      return value.map(
+        (key, item) => MapEntry(key.toString(), _jsonSafe(item)),
+      );
+    }
+
+    return value.toString();
+  }
+
+  // ============================================================
+  // INTENT RESOLVER: UNDERSTAND FOLLOW-UP / MEMORY / NEW PLAN
+  // ============================================================
+
+  Future<BaoBaoCourseIntent> understandBaoBaoCourseIntent({
+    required String userMessage,
+    required List<String> lastRecommendationIds,
+    required List<String> plannedCourseIds,
+    Map<String, dynamic>? userPreferences,
+  }) async {
+    // Prompt-first design:
+    // Do not locally parse the user's words into a subject/professor/category.
+    // Bao-Bao asks the model to understand the whole prompt and return a
+    // structured decision. Local fallback is intentionally broad and safe.
+    final promptFirstFallback = BaoBaoCourseIntent(
+      intent: 'new_plan',
+      basePlan: 'none',
+      actions: const [],
+      memoryUpdate: null,
+      needsClarification: false,
+      clarifyingQuestion: null,
+      usePreviousRecommendation: false,
+      searchMode: 'general_plan',
+      query: userMessage.trim(),
+    );
+
+    final content = await _callAiChat(
+      systemPrompt: '''
+You are Bao-Bao's intent resolver for an NTHU course planner app.
+
+Return JSON only. No markdown. Do not recommend courses here.
+
+Treat the student's entire message as a natural prompt, not as a keyword search.
+Your job is to infer the student's real task and decide what the planner should do.
+Do not hardcode particular professors, careers, course names, or examples as special cases.
+
+Valid intents:
+- direct_search
+- new_plan
+- modify_previous_plan
+- memory_update
+- clear_memory
+- small_talk
+- clarification_needed
+
+Decision principles:
+- direct_search = the request can be answered by searching real course metadata without using the previous recommendation.
+- new_plan = the user describes a goal, direction, preference mix, semester style, or asks Bao-Bao to recommend a plan.
+- modify_previous_plan = only when the user clearly wants to edit an existing/current/previous plan.
+- clarification_needed = the user asks to add/change a broad category but Bao-Bao needs more detail before changing the plan safely.
+- memory_update = only when the user clearly wants Bao-Bao to remember something for future requests.
+- clear_memory = only when the user clearly asks to clear/reset/forget Bao-Bao memory.
+
+Context rules:
+- Do not use lastRecommendation just because it exists.
+- Use basePlan = "last_recommendation" only if the user clearly references the previous recommendation.
+- Use basePlan = "current_plan" only if the user asks to add/change something in their current plan/schedule/course list.
+- For broad add/change requests, ask one concise follow-up question instead of guessing several courses.
+- If adding may exceed the user's credit range, ask whether to replace an existing course or allow overflow.
+
+searchMode values:
+- instructor: the user wants courses taught by a person.
+- subject: the user wants a specific course/topic/subject.
+- time: the user asks about class time.
+- course_type: the user asks for core/GE/elective/requirement style.
+- credit_mix: the user asks for a credit target or balance.
+- general_plan: the user gives a broad goal/style/direction.
+- unknown: unclear.
+
+query rules:
+- query is a clean natural search/planning phrase for the planner.
+- Keep query faithful to the user's meaning.
+- Do not insert phrases like "previous plan", "follow-up edit", or internal reasoning into query.
+
+Output schema:
+{
+  "intent": "new_plan",
+  "basePlan": "none",
+  "usePreviousRecommendation": false,
+  "searchMode": "general_plan",
+  "query": "clean phrase from the student's request",
+  "actions": [],
+  "memoryUpdate": {
+    "avoidKeywords": [],
+    "preferredKeywords": []
+  },
+  "needsClarification": false,
+  "clarifyingQuestion": null
+}
+''',
+      userContent: jsonEncode(_jsonSafe({
+        'userMessage': userMessage,
+        'hasLastRecommendation': lastRecommendationIds.isNotEmpty,
+        'lastRecommendationIds': lastRecommendationIds.take(20).toList(),
+        'plannedCourseIds': plannedCourseIds.take(20).toList(),
+        'userPreferences': userPreferences,
+      })),
+      temperature: 0.02,
+      maxTokens: 550,
+    );
+
+    if (content == null || content.trim().isEmpty) {
+      return promptFirstFallback;
+    }
+
+    try {
+      final jsonText = _extractJsonObject(content);
+      final parsed = jsonDecode(jsonText);
+
+      if (parsed is! Map) {
+        return promptFirstFallback;
+      }
+
+      final resolved = BaoBaoCourseIntent.fromJson(
+        Map<String, dynamic>.from(parsed),
+      );
+
+      if (_looksLikeBaoBaoInternalPlanningPrompt(userMessage) &&
+          (resolved.isMemoryUpdate || resolved.isClearMemory)) {
+        return promptFirstFallback;
+      }
+
+      // Trust the model's structured intent. Do not override it with local
+      // keyword/professor/course-name parsing. That was the source of many
+      // "same output / wrong exact search" bugs.
+      return resolved;
+    } catch (error) {
+      print('Bao-Bao intent parse failed: $error');
+      return promptFirstFallback;
+    }
+  }
+
+
+  BaoBaoCourseIntent _normalizeResolvedIntentWithContext({
+    required BaoBaoCourseIntent resolved,
+    required String userMessage,
+    required List<String> plannedCourseIds,
+  }) {
+    final lower = userMessage.toLowerCase().trim();
+
+    // A goal-style prompt should become a planning task, not an exact subject
+    // search. This lets Bao-Bao reason over broad, unique prompts such as
+    // "I want to study CS with a bit of business".
+    if (_looksLikeOpenEndedStudyGoal(userMessage) &&
+        !resolved.isMemoryUpdate &&
+        !resolved.isClearMemory &&
+        !resolved.isClarificationNeeded) {
+      return BaoBaoCourseIntent(
+        intent: 'new_plan',
+        basePlan: 'none',
+        actions: const [],
+        memoryUpdate: null,
+        needsClarification: false,
+        clarifyingQuestion: null,
+        usePreviousRecommendation: false,
+        searchMode: 'general_plan',
+        query: _cleanOpenEndedGoalQuery(userMessage),
+      );
+    }
+
+    // Instructor-style requests must be normalized into a clean instructor
+    // search. This avoids query pollution like "prof X class is easy add to my plan".
+    final professorTokensFromMessage = _extractProfessorNameTokens(userMessage);
+    if (professorTokensFromMessage.isNotEmpty) {
+      final explicitlyCurrent = _explicitlyReferencesCurrentPlan(lower);
+      final query = professorTokensFromMessage.join(' ');
+
+      return BaoBaoCourseIntent(
+        intent: explicitlyCurrent && plannedCourseIds.isNotEmpty
+            ? 'modify_previous_plan'
+            : 'direct_search',
+        basePlan: explicitlyCurrent && plannedCourseIds.isNotEmpty
+            ? 'current_plan'
+            : 'none',
+        actions: explicitlyCurrent && plannedCourseIds.isNotEmpty
+            ? [
+                {
+                  'type': 'add',
+                  'subject': query,
+                  'count': 1,
+                }
+              ]
+            : const [],
+        memoryUpdate: null,
+        needsClarification: false,
+        clarifyingQuestion: null,
+        usePreviousRecommendation: false,
+        searchMode: 'instructor',
+        query: query,
+      );
+    }
+
+    return resolved;
+  }
+
+  bool _looksLikeOpenEndedStudyGoal(String message) {
+    final lower = message.toLowerCase().trim();
+    if (lower.isEmpty) return false;
+
+    if (_looksLikeBaoBaoInternalPlanningPrompt(message)) return false;
+    if (_hasExplicitProfessorSearchIntent(message)) return false;
+
+    final hasGoalVerb = RegExp(
+      r'\b(i\s+want\s+to\s+(study|focus|learn|prepare|build)|help\s+me\s+(plan|study|prepare)|plan\s+(for|around)|build\s+(a\s+)?plan\s+(for|around)|interested\s+in|focus\s+on|career\s+in|become)\b',
+      caseSensitive: false,
+    ).hasMatch(lower);
+
+    final hasMixSignal = RegExp(
+      r'\b(with\s+(a\s+bit\s+of|some)|mix\s+of|combine|combination\s+of|and\s+a\s+bit\s+of)\b',
+      caseSensitive: false,
+    ).hasMatch(lower);
+
+    final asksSingleLookup = RegExp(
+      r'\b(find|search|show|give|add|include|remove|drop|replace|taught\s+by|prof|professor|teacher|instructor)\b',
+      caseSensitive: false,
+    ).hasMatch(lower);
+
+    if (hasGoalVerb) return true;
+    return hasMixSignal && !asksSingleLookup;
+  }
+
+  String _cleanOpenEndedGoalQuery(String message) {
+    var text = message.toLowerCase();
+
+    text = text
+        .replaceAll(RegExp(r'\b(bao|baobao|bao-bao|please|pls|can\s+you|could\s+you|help\s+me|i\s+want\s+to|i\s+wanna|i\s+would\s+like\s+to|study|focus\s+on|learn|prepare\s+for|build\s+a\s+plan\s+for|plan\s+for|plan\s+around|courses?|classes?|a\s+bit\s+of|some)\b'), ' ')
+        .replaceAll(RegExp(r'[^a-zA-Z0-9\u4e00-\u9fff]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    return text.isEmpty ? message.trim() : text;
+  }
+
+  BaoBaoCourseIntent _localBaoBaoIntentFallback({
+    required String userMessage,
+    required List<String> lastRecommendationIds,
+    required List<String> plannedCourseIds,
+  }) {
+    final lower = userMessage.toLowerCase().trim();
+    final hasLast = lastRecommendationIds.isNotEmpty;
+    final hasCurrentPlan = plannedCourseIds.isNotEmpty;
+
+    if (_looksLikeBaoBaoInternalPlanningPrompt(userMessage)) {
+      return const BaoBaoCourseIntent(
+        intent: 'new_plan',
+        basePlan: 'none',
+        actions: [],
+        memoryUpdate: null,
+        needsClarification: false,
+        clarifyingQuestion: null,
+      );
+    }
+
+    if (lower.contains('clear bao-bao memory') ||
+        lower.contains('clear baobao memory') ||
+        lower.contains('reset bao-bao memory') ||
+        lower.contains('reset baobao memory') ||
+        lower.contains('forget bao-bao memory') ||
+        lower.contains('forget baobao memory')) {
+      return const BaoBaoCourseIntent(
+        intent: 'clear_memory',
+        basePlan: 'none',
+        actions: [],
+        memoryUpdate: null,
+        needsClarification: false,
+        clarifyingQuestion: null,
+      );
+    }
+
+    final professorTokens = _extractProfessorNameTokens(userMessage);
+    if (professorTokens.isNotEmpty) {
+      final query = professorTokens.join(' ');
+      final explicitlyCurrent = _explicitlyReferencesCurrentPlan(lower);
+
+      return BaoBaoCourseIntent(
+        intent: explicitlyCurrent && hasCurrentPlan
+            ? 'modify_previous_plan'
+            : 'direct_search',
+        basePlan: explicitlyCurrent && hasCurrentPlan ? 'current_plan' : 'none',
+        actions: explicitlyCurrent && hasCurrentPlan
+            ? [
+                {
+                  'type': 'add',
+                  'subject': query,
+                  'count': 1,
+                }
+              ]
+            : const [],
+        memoryUpdate: null,
+        needsClarification: false,
+        clarifyingQuestion: null,
+        usePreviousRecommendation: false,
+        searchMode: 'instructor',
+        query: query,
+      );
+    }
+
+    final persistentMemory = lower.contains('remember') ||
+        lower.contains('from now on') ||
+        lower.contains('next time') ||
+        lower.contains('again') ||
+        lower.contains('anymore') ||
+        lower.contains('future') ||
+        lower.contains('never recommend');
+
+    if (persistentMemory) {
+      final avoid = _extractIntentKeyword(
+        userMessage,
+        patterns: const [
+          r"(?:do not|don't|dont|never)\s+recommend\s+(.+)",
+          r"(?:avoid|skip)\s+(.+)",
+          r"i\s+(?:do not|don't|dont)\s+like\s+(.+)",
+          r"i\s+(?:hate|dislike)\s+(.+)",
+        ],
+      );
+
+      if (avoid != null) {
+        return BaoBaoCourseIntent(
+          intent: 'memory_update',
+          basePlan: 'none',
+          actions: const [],
+          memoryUpdate: {
+            'avoidKeywords': [avoid],
+            'preferredKeywords': const <String>[],
+          },
+          needsClarification: false,
+          clarifyingQuestion: null,
+        );
+      }
+
+      final prefer = _extractIntentKeyword(
+        userMessage,
+        patterns: const [
+          r"remember\s+(?:that\s+)?i\s+(?:prefer|like|want)\s+(.+)",
+          r"i\s+(?:prefer|like|want)\s+(.+)",
+          r"prefer\s+(.+)",
+        ],
+      );
+
+      if (prefer != null) {
+        return BaoBaoCourseIntent(
+          intent: 'memory_update',
+          basePlan: 'none',
+          actions: const [],
+          memoryUpdate: {
+            'avoidKeywords': const <String>[],
+            'preferredKeywords': [prefer],
+          },
+          needsClarification: false,
+          clarifyingQuestion: null,
+        );
+      }
+    }
+
+    final hasFollowUpWords = lower.contains('before') ||
+        lower.contains('previous') ||
+        lower.contains('same') ||
+        lower.contains('that') ||
+        lower.contains('it') ||
+        lower.contains('recommend before') ||
+        lower.contains('recommended before') ||
+        lower.contains('what u recommend') ||
+        lower.contains('what you recommend') ||
+        lower.contains('i like it') ||
+        lower.contains('liked it');
+
+    final addMatch = RegExp(
+      r'\b(?:add|include|plus|with|need|want)\s+(?:one|1|a|an|some|more)?\s*([a-zA-Z0-9\u4e00-\u9fff &+.-]+)',
+      caseSensitive: false,
+    ).firstMatch(userMessage);
+
+    final removeMatch = RegExp(
+      r'\b(?:remove|drop|delete|without|no)\s+([a-zA-Z0-9\u4e00-\u9fff &+.-]+)',
+      caseSensitive: false,
+    ).firstMatch(userMessage);
+
+    final actions = <Map<String, dynamic>>[];
+
+    if (removeMatch != null) {
+      final subject = _cleanIntentSubject(removeMatch.group(1) ?? '');
+      if (subject.isNotEmpty) {
+        actions.add({
+          'type': 'remove',
+          'subject': _canonicalIntentSubject(subject),
+          'count': null,
+        });
+      }
+    }
+
+    if (addMatch != null) {
+      final subject = _cleanIntentSubject(addMatch.group(1) ?? '');
+      if (subject.isNotEmpty) {
+        actions.add({
+          'type': 'add',
+          'subject': _canonicalIntentSubject(subject),
+          'count': _extractSmallCount(lower) ?? 1,
+        });
+      }
+    } else if (_looksLikeAddOnlyFollowUp(userMessage)) {
+      final subject = _extractBareSubject(lower);
+      if (subject != null) {
+        actions.add({
+          'type': 'add',
+          'subject': _canonicalIntentSubject(subject),
+          'count': _extractSmallCount(lower) ?? 1,
+        });
+      }
+    }
+
+    if (actions.isNotEmpty) {
+      final provisionalIntent = BaoBaoCourseIntent(
+        intent: hasLast || hasCurrentPlan || hasFollowUpWords
+            ? 'modify_previous_plan'
+            : 'direct_search',
+        basePlan: hasLast ? 'last_recommendation' : 'current_plan',
+        actions: actions,
+        memoryUpdate: null,
+        needsClarification: false,
+        clarifyingQuestion: null,
+        usePreviousRecommendation: hasLast,
+        searchMode: _guessSearchModeFromText(lower),
+        query: actions
+            .map((action) => (action['subject'] ?? action['withSubject'] ?? '').toString())
+            .where((item) => item.trim().isNotEmpty)
+            .join(' '),
+      );
+
+      final clarificationIntent = _clarificationForAmbiguousBroadIntent(
+        provisionalIntent,
+        userPreferences: null,
+        userMessage: userMessage,
+      );
+
+      if (clarificationIntent != null) {
+        return clarificationIntent;
+      }
+
+      final explicitlyPrevious = _explicitlyReferencesPreviousPlan(lower);
+      final explicitlyCurrent = _explicitlyReferencesCurrentPlan(lower);
+
+      if (explicitlyPrevious && (hasLast || hasCurrentPlan)) {
+        return BaoBaoCourseIntent(
+          intent: 'modify_previous_plan',
+          basePlan: hasLast ? 'last_recommendation' : 'current_plan',
+          actions: actions,
+          memoryUpdate: null,
+          needsClarification: false,
+          clarifyingQuestion: null,
+          usePreviousRecommendation: hasLast,
+          searchMode: _guessSearchModeFromText(lower),
+          query: actions
+              .map((action) => (action['subject'] ?? action['withSubject'] ?? '').toString())
+              .where((item) => item.trim().isNotEmpty)
+              .join(' '),
+        );
+      }
+
+      if (explicitlyCurrent && hasCurrentPlan) {
+        return BaoBaoCourseIntent(
+          intent: 'modify_previous_plan',
+          basePlan: 'current_plan',
+          actions: actions,
+          memoryUpdate: null,
+          needsClarification: false,
+          clarifyingQuestion: null,
+          usePreviousRecommendation: false,
+          searchMode: _guessSearchModeFromText(lower),
+          query: actions
+              .map((action) => (action['subject'] ?? action['withSubject'] ?? '').toString())
+              .where((item) => item.trim().isNotEmpty)
+              .join(' '),
+        );
+      }
+
+      return BaoBaoCourseIntent(
+        intent: 'direct_search',
+        basePlan: 'none',
+        actions: actions,
+        memoryUpdate: null,
+        needsClarification: false,
+        clarifyingQuestion: null,
+        usePreviousRecommendation: false,
+        searchMode: _guessSearchModeFromText(lower),
+        query: actions
+            .map((action) => (action['subject'] ?? action['withSubject'] ?? '').toString())
+            .where((item) => item.trim().isNotEmpty)
+            .join(' '),
+      );
+    }
+
+    final veryShort = lower.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length <= 2;
+    if (veryShort && (lower == 'do what' || lower == 'what' || lower == 'hmm')) {
+      return const BaoBaoCourseIntent(
+        intent: 'clarification_needed',
+        basePlan: 'none',
+        actions: [],
+        memoryUpdate: null,
+        needsClarification: true,
+        clarifyingQuestion: 'Do you want Bao-Bao to continue the previous recommendation, add something to your current plan, or create a new plan?',
+      );
+    }
+
+    if (lower == 'hi' || lower == 'hello' || lower == 'hey') {
+      return const BaoBaoCourseIntent(
+        intent: 'small_talk',
+        basePlan: 'none',
+        actions: [],
+        memoryUpdate: null,
+        needsClarification: false,
+        clarifyingQuestion: null,
+      );
+    }
+
+    return const BaoBaoCourseIntent(
+      intent: 'new_plan',
+      basePlan: 'none',
+      actions: [],
+      memoryUpdate: null,
+      needsClarification: false,
+      clarifyingQuestion: null,
+    );
+  }
+
+  BaoBaoCourseIntent? _clarificationForAmbiguousBroadIntent(
+    BaoBaoCourseIntent intent, {
+    required Map<String, dynamic>? userPreferences,
+    required String userMessage,
+  }) {
+    if (intent.isClarificationNeeded ||
+        intent.isMemoryUpdate ||
+        intent.isClearMemory) {
+      return null;
+    }
+
+    final ambiguousBroadAdd =
+        _intentAsksToAddBroadCourseCategory(intent) ||
+        _messageLooksLikeBroadAddOrEdit(userMessage, intent);
+
+    if (!ambiguousBroadAdd) {
+      return null;
+    }
+
+    final creditLabel = _creditRangeLabelFromPreferences(userPreferences);
+    final creditSentence = creditLabel == null
+        ? ''
+        : ' Your target is $creditLabel credits, so should Bao-Bao replace an existing course or allow the plan to exceed that range?';
+
+    return BaoBaoCourseIntent(
+      intent: 'clarification_needed',
+      basePlan: 'none',
+      actions: const [],
+      memoryUpdate: null,
+      needsClarification: true,
+      clarifyingQuestion:
+          'Which exact course should Bao-Bao add, and how many? Tell me a subject, professor, language, or course name.$creditSentence',
+      usePreviousRecommendation: false,
+      searchMode: 'unknown',
+      query: '',
+    );
+  }
+
+  bool _messageLooksLikeBroadAddOrEdit(
+    String userMessage,
+    BaoBaoCourseIntent intent,
+  ) {
+    final lower = userMessage.toLowerCase();
+
+    final asksToChangePlan = RegExp(
+      r'\b(add|include|plus|with|another|more|replace|swap|change|insert)\b',
+      caseSensitive: false,
+    ).hasMatch(lower);
+
+    if (!asksToChangePlan) {
+      return false;
+    }
+
+    final candidateText = [
+      userMessage,
+      intent.query,
+      for (final action in intent.actions)
+        (action['subject'] ?? action['withSubject'] ?? '').toString(),
+    ].join(' ');
+
+    return _isBroadCourseCategoryWithoutDetail(candidateText);
+  }
+
+  bool _intentAsksToAddBroadCourseCategory(BaoBaoCourseIntent intent) {
+    final addLikeActions = intent.actions.where((action) {
+      final type = action['type']?.toString().toLowerCase().trim() ?? '';
+      return type == 'add' || type == 'include' || type == 'replace';
+    }).toList();
+
+    if (addLikeActions.isEmpty) {
+      return false;
+    }
+
+    for (final action in addLikeActions) {
+      final subject = (action['subject'] ?? action['withSubject'] ?? intent.query)
+          .toString()
+          .trim();
+
+      if (_isBroadCourseCategoryWithoutDetail(subject)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  bool _isBroadCourseCategoryWithoutDetail(String raw) {
+    var text = raw.toLowerCase();
+
+    text = text
+        .replaceAll(RegExp(r'[.!?。！？,，]+'), ' ')
+        .replaceAll(
+          RegExp(
+            r'\b(add|include|plus|with|give|show|find|search|need|want|please|pls|one|1|a|an|some|more|another|other|extra|additional|new|to|the|my|me|i|we|you|u|can|could|would|bao|baobao|bao-bao|plan|course|courses|class|classes)\b',
+          ),
+          ' ',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (text.isEmpty) {
+      return true;
+    }
+
+    final tokens = text
+        .split(RegExp(r'\s+'))
+        .where((item) => item.isNotEmpty)
+        .toList();
+
+    // These are not special cases like "language" only. They are broad academic
+    // category words. If the remaining request contains only these category
+    // words, Bao-Bao should ask a follow-up instead of guessing many courses.
+    final genericTokens = {
+      'language',
+      'foreign',
+      'ge',
+      'general',
+      'education',
+      'elective',
+      'electives',
+      'free',
+      'required',
+      'requirement',
+      'requirements',
+      'core',
+      'basic',
+      'major',
+      'department',
+      'professional',
+      'lab',
+      'laboratory',
+      'curriculum',
+      'bucket',
+      'any',
+    };
+
+    return tokens.isNotEmpty && tokens.every(genericTokens.contains);
+  }
+
+  String? _creditRangeLabelFromPreferences(Map<String, dynamic>? userPreferences) {
+    final range = _targetCreditRangeFromPreferences(userPreferences);
+
+    if (range.min == null && range.max == null) {
+      return null;
+    }
+
+    if (range.min != null && range.max != null && range.min != range.max) {
+      return '${range.min}–${range.max}';
+    }
+
+    return '${range.min ?? range.max}';
+  }
+
+  bool _looksLikeBaoBaoInternalPlanningPrompt(String message) {
+    final lower = message.toLowerCase();
+
+    return lower.contains('automatically create') ||
+        lower.contains('first check what data') ||
+        lower.contains('if curriculum is available') ||
+        lower.contains('if curriculum is missing') ||
+        lower.contains('avoid completed courses') ||
+        lower.contains('duplicated course sections') ||
+        lower.contains('schedule conflicts') ||
+        lower.contains('too advanced for the student year');
+  }
+
+  bool _looksLikeAddOnlyFollowUp(String message) {
+    final lower = message.toLowerCase().trim();
+
+    return lower.startsWith('add ') ||
+        lower.startsWith('include ') ||
+        lower.startsWith('plus ') ||
+        lower.contains(' add ') ||
+        lower.contains(' include ') ||
+        lower.contains('same but') ||
+        lower.contains('i like it but') ||
+        lower.contains('what u recommend before') ||
+        lower.contains('what you recommend before');
+  }
+
+
+  bool _explicitlyReferencesPreviousPlan(String lower) {
+    return lower.contains('before') ||
+        lower.contains('previous') ||
+        lower.contains('same') ||
+        lower.contains('that plan') ||
+        lower.contains('that one') ||
+        lower.contains('what u recommend') ||
+        lower.contains('what you recommend') ||
+        lower.contains('recommended before') ||
+        lower.contains('i like it') ||
+        lower.contains('liked it') ||
+        lower.contains('keep that');
+  }
+
+  bool _explicitlyReferencesCurrentPlan(String lower) {
+    return lower.contains('my course') ||
+        lower.contains('my courses') ||
+        lower.contains('my plan') ||
+        lower.contains('current plan') ||
+        lower.contains('my schedule') ||
+        lower.contains('to the plan') ||
+        lower.contains('to my course') ||
+        lower.contains('to my plan') ||
+        lower.contains('to my schedule');
+  }
+
+  String _guessSearchModeFromText(String lower) {
+    if (lower.contains('professor') ||
+        lower.contains('teacher') ||
+        lower.contains('instructor') ||
+        lower.contains('taught by') ||
+        RegExp(r'\b(by|from|with)\s+[^\s]+').hasMatch(lower)) {
+      return 'instructor';
+    }
+
+    if (lower.contains('morning') ||
+        lower.contains('afternoon') ||
+        lower.contains('evening') ||
+        lower.contains('night')) {
+      return 'time';
+    }
+
+    if (lower.contains('core') || lower.contains('ge') || lower.contains('elective')) {
+      return 'course_type';
+    }
+
+    if (lower.contains('credit')) {
+      return 'credit_mix';
+    }
+
+    return 'subject';
+  }
+
+  int? _extractSmallCount(String lower) {
+    final numeric = RegExp(r'\b([1-9])\b').firstMatch(lower);
+    if (numeric != null) {
+      return int.tryParse(numeric.group(1) ?? '');
+    }
+
+    if (lower.contains('one ')) return 1;
+    if (lower.contains('two ')) return 2;
+    if (lower.contains('three ')) return 3;
+    if (lower.contains('four ')) return 4;
+    if (lower.contains('five ')) return 5;
+
+    return null;
+  }
+
+  String? _extractBareSubject(String lower) {
+    final normalized = lower
+        .replaceAll(RegExp(r'\b(add|include|plus|one|1|a|an|class|course|courses|please|pls)\b'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (normalized.isEmpty) return null;
+    if (normalized.contains('calc')) return 'calculus';
+    if (normalized.contains('calculus')) return 'calculus';
+    if (normalized.contains('i2p')) return 'i2p';
+    if (normalized.contains('database')) return 'database';
+    if (normalized.contains('linear algebra')) return 'linear algebra';
+
+    return normalized.length <= 50 ? normalized : null;
+  }
+
+  String? _extractIntentKeyword(
+    String message, {
+    required List<String> patterns,
+  }) {
+    for (final pattern in patterns) {
+      final match = RegExp(pattern, caseSensitive: false).firstMatch(message);
+      if (match == null) continue;
+
+      final cleaned = _cleanIntentSubject(match.group(1) ?? '');
+      if (cleaned.isNotEmpty) return cleaned;
+    }
+
+    return null;
+  }
+
+  String _cleanIntentSubject(String raw) {
+    var text = raw
+        .toLowerCase()
+        .replaceAll(RegExp(r'[.!?。！？]+$'), '')
+        .replaceAll(RegExp(r'\b(before|previous|same|recommend|recommended|what|you|u|bao|baobao|bao-bao|it|but|also|please|pls|another|her|his|their|my|to|easy)\b'), ' ')
+        .replaceAll(RegExp(r'\b(course|courses|class|classes|lesson|one|1|a|an|some|more|another|other|extra|additional|new)\b'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (text.length > 80) {
+      text = text.substring(0, 80).trim();
+    }
+
+    return text;
+  }
+
+  String _canonicalIntentSubject(String subject) {
+    final lower = subject.toLowerCase().trim();
+
+    if (lower == 'calc' || lower.contains('calc ')) return 'calculus';
+    if (lower.contains('calculus') || lower.contains('微積分')) return 'calculus';
+    if (lower == 'db' || lower.contains('database')) return 'database';
+    if (lower == 'os' || lower.contains('operating system')) return 'operating systems';
+    if (lower == 'ds' || lower == 'dsa' || lower.contains('data structure')) return 'data structures';
+    if (lower.contains('linear algebra')) return 'linear algebra';
+    if (lower.contains('i2p')) return 'i2p';
+
+    return lower;
+  }
+
   // ============================================================
   // SMART AI COURSE RECOMMENDATION
   // ============================================================
@@ -148,12 +1277,22 @@ Do not make fake course codes.
     required String userMessage,
     required List<Map<String, dynamic>> courseCatalog,
     Map<String, dynamic>? curriculum,
+    Map<String, dynamic>? userPreferences,
+    BaoBaoCourseIntent? intent,
   }) async {
-    final rawPlan = await _makeAiSearchPlan(userMessage);
+    final enrichedUserPreferences =
+        await _withAiGeneratedPreferenceSearchProfile(userPreferences);
+
+    final rawPlan = await _makeAiSearchPlan(
+      userMessage,
+      intent: intent,
+    );
     final plan = _adjustPlanWithUserHints(
       rawPlan,
       userMessage,
       curriculum: curriculum,
+      userPreferences: enrichedUserPreferences,
+      intent: intent,
     );
 
     print('Bao-Bao final search plan: ${plan.toDebugMap()}');
@@ -162,34 +1301,33 @@ Do not make fake course codes.
     final usedIds = <String>{};
     final usedCourseTitles = <String>{};
 
-    final targetCredits = plan.targetCredits;
+    final creditRange = _targetCreditRangeForPlan(
+      plan,
+      enrichedUserPreferences,
+      intent,
+    );
+    final targetCreditMin = creditRange.min;
+    final targetCreditMax = creditRange.max;
     int selectedCredits = 0;
 
     bool reachedTargetCredits() {
-      if (targetCredits == null) return false;
-      return selectedCredits >= targetCredits;
+      if (targetCreditMin == null) return false;
+      return selectedCredits >= targetCreditMin;
     }
 
     bool canAddCourse(Map<String, dynamic> course) {
-      if (targetCredits == null) return true;
+      if (targetCreditMax == null) return true;
 
       final credits = _toInt(course['credits']);
 
       if (credits <= 0) return false;
 
-      if (selectedCredits >= targetCredits) {
+      if (selectedCredits >= targetCreditMax) {
         return false;
       }
 
       final nextTotal = selectedCredits + credits;
-
-      if (nextTotal <= targetCredits) {
-        return true;
-      }
-
-      // Allow small overflow only when the remaining credit is impossible to fill exactly.
-      final remaining = targetCredits - selectedCredits;
-      return remaining <= 1 && nextTotal <= targetCredits + 1;
+      return nextTotal <= targetCreditMax;
     }
 
     bool tryAddCourse(Map<String, dynamic> course) {
@@ -288,12 +1426,227 @@ Do not make fake course codes.
       }
     }
 
+    if (targetCreditMin != null && selectedCredits < targetCreditMin) {
+      void fillFromGroup(_SearchGroup fillerGroup) {
+        final fillerCandidates = _buildCandidatePool(
+          group: fillerGroup,
+          catalog: courseCatalog,
+          usedIds: usedIds,
+          allowSpecialCourses: plan.allowSpecialCourses,
+        );
+
+        final rankedFillers = _localRankCoursesWithDiversity(
+          fillerGroup,
+          fillerCandidates,
+        );
+
+        for (final course in rankedFillers) {
+          if (selectedCredits >= targetCreditMin) break;
+          tryAddCourse(course);
+        }
+      }
+
+      final preferredFiller = _creditFillerSearchGroup(
+        enrichedUserPreferences,
+        language: _languagePreferenceFromPrefs(
+          _preferenceMap(enrichedUserPreferences),
+        ),
+      );
+
+      fillFromGroup(preferredFiller);
+
+      // If strict language metadata or preference filters make the plan too small,
+      // do one safe fallback pass over the same AI-generated profile without a hard
+      // language block. This keeps the plan near the user's credit range without
+      // inventing courses or career-specific rules.
+      if (selectedCredits < targetCreditMin && preferredFiller.language != 'any') {
+        fillFromGroup(
+          _creditFillerSearchGroup(
+            enrichedUserPreferences,
+            language: 'any',
+          ),
+        );
+      }
+    }
+
+    // Emergency safety net for open-ended goal prompts such as
+    // "I want to study CS with a bit of business". These are not exact
+    // course-title searches, so Bao-Bao should never fail just because the
+    // goal wording does not literally match metadata. Use the AI-generated
+    // profile and rank the real catalog broadly.
+    if (selectedIds.isEmpty &&
+        intent != null &&
+        intent.intent == 'new_plan' &&
+        intent.searchMode.toLowerCase().trim() == 'general_plan') {
+      final fallbackGroup = _creditFillerSearchGroup(
+        enrichedUserPreferences,
+        language: 'any',
+      ).copyWith(
+        query: [
+          intent.query,
+          _careerPreferenceQuery(_preferenceMap(enrichedUserPreferences)),
+          _departmentPreferenceQuery(_preferenceMap(enrichedUserPreferences)),
+          _gePreferenceQuery(_preferenceMap(enrichedUserPreferences)),
+          'interdisciplinary academic plan practical foundation elective',
+        ].where((item) => item.trim().isNotEmpty).join(' '),
+        count: 12,
+      );
+
+      final fallbackCandidates = _buildCandidatePool(
+        group: fallbackGroup,
+        catalog: courseCatalog,
+        usedIds: usedIds,
+        allowSpecialCourses: plan.allowSpecialCourses,
+      );
+
+      for (final course in _localRankCoursesWithDiversity(
+        fallbackGroup,
+        fallbackCandidates,
+      )) {
+        if (targetCreditMin != null && selectedCredits >= targetCreditMin) {
+          break;
+        }
+
+        if (selectedIds.length >= 8 && targetCreditMin == null) {
+          break;
+        }
+
+        tryAddCourse(course);
+      }
+    }
+
     print(
       'Bao-Bao selected ${selectedIds.length} courses, '
-      '$selectedCredits/${targetCredits ?? "no target"} credits.',
+      '$selectedCredits/${creditRange.toString()} target.',
     );
 
     return selectedIds;
+  }
+
+  _BaoBaoCreditRange _targetCreditRangeForPlan(
+    _AiSearchPlan plan,
+    Map<String, dynamic>? rawPreferences,
+    BaoBaoCourseIntent? intent,
+  ) {
+    // Direct search and follow-up edits should not be padded to the user's
+    // semester credit target. Example: "course taught by Chen Yi-Shin" should
+    // return that professor's courses only, not random extra courses.
+    if (intent != null &&
+        (intent.isDirectSearch || intent.isModifyPreviousPlan)) {
+      return const _BaoBaoCreditRange(min: null, max: null);
+    }
+
+    if (plan.targetCredits != null && plan.targetCredits! > 0) {
+      return _BaoBaoCreditRange(
+        min: plan.targetCredits,
+        max: plan.targetCredits,
+      );
+    }
+
+    return _targetCreditRangeFromPreferences(rawPreferences);
+  }
+
+  _BaoBaoCreditRange _targetCreditRangeFromPreferences(
+    Map<String, dynamic>? rawPreferences,
+  ) {
+    if (rawPreferences == null) {
+      return const _BaoBaoCreditRange(min: null, max: null);
+    }
+
+    final prefs = rawPreferences['preferences'] is Map
+        ? Map<String, dynamic>.from(rawPreferences['preferences'])
+        : rawPreferences;
+
+    final value = prefs['targetCreditLoad']?.toString() ?? '';
+
+    final numbers = RegExp(r'\d+')
+        .allMatches(value)
+        .map((match) => int.tryParse(match.group(0) ?? ''))
+        .whereType<int>()
+        .toList();
+
+    if (numbers.isEmpty) {
+      return const _BaoBaoCreditRange(min: null, max: null);
+    }
+
+    if (numbers.length == 1) {
+      return _BaoBaoCreditRange(min: numbers.first, max: numbers.first);
+    }
+
+    final first = numbers.first;
+    final second = numbers[1];
+
+    return _BaoBaoCreditRange(
+      min: math.min(first, second),
+      max: math.max(first, second),
+    );
+  }
+
+  _SearchGroup _creditFillerSearchGroup(
+    Map<String, dynamic>? rawPreferences, {
+    required String language,
+  }) {
+    final prefs = _preferenceMap(rawPreferences);
+    final profileText = [
+      _departmentPreferenceQuery(prefs),
+      _careerPreferenceQuery(prefs),
+      _gePreferenceQuery(prefs),
+      _memoryPreferenceQuery(prefs),
+      'real course useful semester plan',
+    ].where((item) => item.trim().isNotEmpty).join(' ');
+
+    return _SearchGroup(
+      query: profileText,
+      subjectQuery: null,
+      subjectPhrases: const [],
+      mustMatchSubject: false,
+      count: 30,
+      credits: null,
+      requiredType: 'any',
+      timePreference: 'any',
+      language: language,
+      // minLimit 0 is used as a harmless broad-search constraint so
+      // Bao-Bao can still rank real courses even when the query words do
+      // not literally appear in course titles.
+      minLimit: 0,
+      maxLimit: null,
+      mustHave: const [],
+      avoid: const [
+        'thesis',
+        'seminar',
+        'research',
+        'lab rotation',
+        'dissertation',
+        '專題',
+        '論文',
+        '研究',
+        '書報',
+      ],
+    );
+  }
+
+  int? _targetCreditsFromPreferences(Map<String, dynamic>? rawPreferences) {
+    if (rawPreferences == null) return null;
+
+    final prefs = rawPreferences['preferences'] is Map
+        ? Map<String, dynamic>.from(rawPreferences['preferences'])
+        : rawPreferences;
+
+    final value = prefs['targetCreditLoad']?.toString() ?? '';
+
+    final numbers = RegExp(r'\d+')
+        .allMatches(value)
+        .map((match) => int.tryParse(match.group(0) ?? ''))
+        .whereType<int>()
+        .toList();
+
+    if (numbers.isEmpty) return null;
+
+    if (numbers.length >= 2) {
+      return numbers[1];
+    }
+
+    return numbers.first;
   }
 
   List<Map<String, dynamic>> _localRankCoursesWithDiversity(
@@ -306,15 +1659,22 @@ Do not make fake course codes.
       return ranked;
     }
 
-    final topRange = ranked.take(math.min(25, ranked.length)).toList();
-    final rest = ranked.skip(topRange.length).toList();
+    // Keep Bao-Bao accurate, but avoid returning the exact same cards every
+    // time the same starter/chill prompt is tested. We only rotate inside the
+    // top ranked window, so the result stays relevant but feels less robotic.
+    final windowSize = math.min(
+      ranked.length,
+      math.max(group.count * 3, group.count + 4),
+    );
 
-    final random = math.Random(DateTime.now().millisecondsSinceEpoch);
+    final topWindow = ranked.take(windowSize).toList();
+    final rest = ranked.skip(windowSize).toList();
 
-    topRange.shuffle(random);
+    final seed = DateTime.now().millisecondsSinceEpoch ~/ (1000 * 60 * 10);
+    topWindow.shuffle(math.Random(seed + group.query.hashCode));
 
     return [
-      ...topRange,
+      ...topWindow,
       ...rest,
     ];
   }
@@ -323,20 +1683,96 @@ Do not make fake course codes.
     _AiSearchPlan plan,
     String userMessage, {
     Map<String, dynamic>? curriculum,
+    Map<String, dynamic>? userPreferences,
+    BaoBaoCourseIntent? intent,
   }) {
     final lower = userMessage.toLowerCase();
+    final hasCurriculum = _hasUsableCurriculum(curriculum);
+
+    final cleanIntentPlan = _cleanPlanFromResolvedIntent(intent);
+    if (cleanIntentPlan != null) {
+      return cleanIntentPlan;
+    }
+
+    if (intent != null &&
+        intent.intent == 'new_plan' &&
+        intent.searchMode.toLowerCase().trim() == 'general_plan') {
+      return _buildPromptFirstGeneralPlan(
+        aiPlan: plan,
+        userMessage: userMessage,
+        intent: intent,
+        userPreferences: userPreferences,
+      );
+    }
+
+    // For real user prompts that already passed through the AI intent resolver,
+    // do not run local keyword/category/time/professor parsers on the raw text.
+    // Use the AI search plan as the plan, then only add user preference context.
+    if (intent != null && !_isAutoStarterRequest(userMessage)) {
+      return _enhancePlanWithUserPreferences(
+        plan,
+        userPreferences,
+      );
+    }
+
+    if (_isAvoidEarlyMorningPlanRequest(userMessage)) {
+      return _buildNoEarlyMorningGeneralPlan(
+        userMessage,
+        userPreferences,
+      );
+    }
+
+    // Auto starter and curriculum-planning prompts are handled before normal credit mix,
+    // because they often contain words like curriculum, core, GE, and credits.
+    if (_isAutoStarterRequest(userMessage)) {
+      if (hasCurriculum) {
+        final curriculumPlan = _buildDynamicCurriculumPlanningPlan(
+          userMessage,
+          curriculum!,
+        );
+
+        if (curriculumPlan.groups.isNotEmpty) {
+          return _enhancePlanWithUserPreferences(
+            curriculumPlan,
+            userPreferences,
+          );
+        }
+      }
+
+      return _buildNoCurriculumPreferenceStarterPlan(
+        userMessage,
+        userPreferences,
+      );
+    }
 
     // Curriculum planning must be checked before credit mix,
     // because curriculum prompts may also contain "20 credits", "core", "GE", etc.
-    if (_isCurriculumPlanningRequest(userMessage) && curriculum != null) {
-      final curriculumPlan = _buildDynamicCurriculumPlanningPlan(
-        userMessage,
-        curriculum,
-      );
+    if (_isCurriculumPlanningRequest(userMessage)) {
+      if (hasCurriculum) {
+        final curriculumPlan = _buildDynamicCurriculumPlanningPlan(
+          userMessage,
+          curriculum!,
+        );
 
-      if (curriculumPlan.groups.isNotEmpty) {
-        return curriculumPlan;
+        if (curriculumPlan.groups.isNotEmpty) {
+          return _enhancePlanWithUserPreferences(
+            curriculumPlan,
+            userPreferences,
+          );
+        }
       }
+
+      return _buildNoCurriculumPreferenceStarterPlan(
+        userMessage,
+        userPreferences,
+      );
+    }
+
+    if (_looksLikeOpenEndedStudyGoal(userMessage)) {
+      return _buildOpenEndedGoalPlan(
+        userMessage,
+        userPreferences,
+      );
     }
 
     if (_isLightEasyRequest(userMessage)) {
@@ -381,6 +1817,837 @@ Do not make fake course codes.
       allowSpecialCourses: plan.allowSpecialCourses,
       groups: adjustedGroups,
     );
+  }
+
+
+
+  bool _isAvoidEarlyMorningPlanRequest(String message) {
+    final lower = message.toLowerCase();
+
+    return (lower.contains('recommend') ||
+            lower.contains('suggest') ||
+            lower.contains('plan') ||
+            lower.contains('course') ||
+            lower.contains('courses') ||
+            lower.contains('class') ||
+            lower.contains('classes')) &&
+        (lower.contains('avoid early morning') ||
+            lower.contains('no early morning') ||
+            lower.contains('avoid morning') ||
+            lower.contains('no morning') ||
+            lower.contains('not morning'));
+  }
+
+  _AiSearchPlan _buildNoEarlyMorningGeneralPlan(
+    String message,
+    Map<String, dynamic>? userPreferences,
+  ) {
+    final prefs = _preferenceMap(userPreferences);
+    final lower = message.toLowerCase();
+    final targetCredits = _extractTargetCreditCount(lower);
+    final query = [
+      _departmentPreferenceQuery(prefs),
+      _careerPreferenceQuery(prefs),
+      _gePreferenceQuery(prefs),
+      _memoryPreferenceQuery(prefs),
+      'useful course plan avoid early morning no morning',
+    ].where((item) => item.trim().isNotEmpty).join(' ');
+
+    return _AiSearchPlan(
+      targetCredits: targetCredits,
+      allowSpecialCourses: false,
+      groups: [
+        _SearchGroup(
+          query: query,
+          subjectQuery: null,
+          subjectPhrases: const [],
+          mustMatchSubject: false,
+          count: 12,
+          credits: null,
+          requiredType: 'any',
+          timePreference: 'no_morning',
+          language: _languagePreferenceFromPrefs(prefs),
+          minLimit: null,
+          maxLimit: null,
+          mustHave: const [],
+          avoid: const [
+            'thesis',
+            'seminar',
+            'research',
+            'lab rotation',
+            'dissertation',
+            '專題',
+            '論文',
+            '研究',
+            '書報',
+          ],
+        ),
+      ],
+    );
+  }
+
+  _AiSearchPlan? _cleanPlanFromResolvedIntent(BaoBaoCourseIntent? intent) {
+    if (intent == null) {
+      return null;
+    }
+
+    final mode = intent.searchMode.toLowerCase().trim();
+    final query = _cleanResolvedIntentQuery(intent);
+
+    if (mode == 'general_plan' || _looksLikeOpenEndedStudyGoal(query)) {
+      return null;
+    }
+
+    if (query.isEmpty) {
+      return null;
+    }
+
+    if (mode == 'instructor') {
+      final instructorQuery = _cleanInstructorQueryFromText(query);
+
+      if (instructorQuery.isEmpty) {
+        return null;
+      }
+
+      return _AiSearchPlan(
+        targetCredits: null,
+        allowSpecialCourses: false,
+        groups: [
+          _SearchGroup(
+            query: '$instructorQuery professor instructor teacher',
+            subjectQuery: null,
+            subjectPhrases: const [],
+            mustMatchSubject: false,
+            count: 12,
+            credits: null,
+            requiredType: 'any',
+            timePreference: 'any',
+            language: 'any',
+            minLimit: null,
+            maxLimit: null,
+            mustHave: [
+              '__BAOBAO_INSTRUCTOR_MATCH__',
+              instructorQuery,
+            ],
+            avoid: const [],
+          ),
+        ],
+      );
+    }
+
+    if (mode == 'subject' ||
+        (intent.isModifyPreviousPlan && intent.actions.isNotEmpty)) {
+      return _AiSearchPlan(
+        targetCredits: null,
+        allowSpecialCourses: false,
+        groups: [
+          _SearchGroup(
+            query: query,
+            subjectQuery: query,
+            subjectPhrases: [query],
+            mustMatchSubject: true,
+            count: _requestedSearchCountFromIntent(intent, fallback: intent.isModifyPreviousPlan ? 1 : 5),
+            credits: null,
+            requiredType: 'any',
+            timePreference: 'any',
+            language: 'any',
+            minLimit: null,
+            maxLimit: null,
+            mustHave: const [],
+            avoid: const [],
+          ),
+        ],
+      );
+    }
+
+    if (mode == 'time') {
+      return _AiSearchPlan(
+        targetCredits: null,
+        allowSpecialCourses: false,
+        groups: [
+          _SearchGroup(
+            query: query,
+            subjectQuery: null,
+            subjectPhrases: const [],
+            mustMatchSubject: false,
+            count: 12,
+            credits: null,
+            requiredType: 'any',
+            timePreference: _normalizeTimePreference(query),
+            language: 'any',
+            minLimit: null,
+            maxLimit: null,
+            mustHave: const [],
+            avoid: const [],
+          ),
+        ],
+      );
+    }
+
+    return null;
+  }
+
+  int _requestedSearchCountFromIntent(
+    BaoBaoCourseIntent intent, {
+    required int fallback,
+  }) {
+    final counts = <int>[];
+
+    for (final action in intent.actions) {
+      final value = action['count'];
+      if (value is int && value > 0) {
+        counts.add(value);
+      } else if (value is num && value > 0) {
+        counts.add(value.round());
+      } else {
+        final parsed = int.tryParse(value?.toString() ?? '');
+        if (parsed != null && parsed > 0) {
+          counts.add(parsed);
+        }
+      }
+    }
+
+    if (counts.isEmpty) {
+      return fallback;
+    }
+
+    return counts.fold<int>(0, (sum, count) => sum + count).clamp(1, 12);
+  }
+
+  String _cleanInstructorQueryFromText(String raw) {
+    var text = _stripDiacritics(raw.toLowerCase());
+
+    text = text
+        .replaceAll(
+          RegExp(
+            r'\b(i|hear|heard|that|the|class|classes|course|courses|is|are|was|were|easy|good|nice|please|pls|add|include|give|show|find|search|her|his|their|my|to|into|plan|schedule|recommend|recommended|prof|professor|teacher|instructor|taught|by|from|with)\b',
+            caseSensitive: false,
+          ),
+          ' ',
+        )
+        .replaceAll(RegExp(r'[^a-zA-Z\u4e00-\u9fff]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    final tokens = _tokens(text)
+        .where((token) => token.length >= 2)
+        .take(4)
+        .toList();
+
+    return tokens.join(' ');
+  }
+
+  String _cleanResolvedIntentQuery(BaoBaoCourseIntent intent) {
+    final directQuery = intent.query.trim();
+    if (directQuery.isNotEmpty) {
+      return directQuery;
+    }
+
+    final parts = <String>[];
+
+    for (final action in intent.actions) {
+      final type = action['type']?.toString() ?? '';
+      if (type != 'add' && type != 'replace') continue;
+
+      final subject = (action['subject'] ?? action['withSubject'] ?? '')
+          .toString()
+          .trim();
+      if (subject.isNotEmpty) {
+        parts.add(subject);
+      }
+    }
+
+    return parts.join(' ').trim();
+  }
+
+  bool _isAutoStarterRequest(String message) {
+    final lower = message.toLowerCase();
+
+    return lower.contains('automatically create a useful first starter recommendation') ||
+        lower.contains('automatically create a smart starter course plan') ||
+        lower.contains('starter recommendation') ||
+        lower.contains('starter course cards');
+  }
+
+  bool _hasUsableCurriculum(Map<String, dynamic>? curriculum) {
+    if (curriculum == null || curriculum.isEmpty) {
+      return false;
+    }
+
+    final groups = curriculum['requirementGroups'];
+    return groups is List && groups.isNotEmpty;
+  }
+
+
+  _AiSearchPlan _buildPromptFirstGeneralPlan({
+    required _AiSearchPlan aiPlan,
+    required String userMessage,
+    required BaoBaoCourseIntent intent,
+    required Map<String, dynamic>? userPreferences,
+  }) {
+    final prefs = _preferenceMap(userPreferences);
+    final intentQuery = intent.query.trim();
+    final promptText = [
+      intentQuery,
+      userMessage,
+    ].where((item) => item.trim().isNotEmpty).join(' ');
+
+    final basePlan = aiPlan.groups.isNotEmpty
+        ? aiPlan
+        : _buildOpenEndedGoalPlan(promptText, userPreferences);
+
+    final avoid = _mergeStringLists(
+      const [
+        'thesis',
+        'seminar',
+        'research',
+        'lab rotation',
+        'dissertation',
+        '專題',
+        '論文',
+        '研究',
+        '書報',
+      ],
+      _memoryAvoidKeywords(prefs),
+    );
+
+    final keepRequestedType = _promptExplicitlyRequestsCourseType(promptText);
+
+    final groups = basePlan.groups.map((group) {
+      final filteredMustHave = group.mustHave
+          .where((item) => item.trim().toUpperCase() != '__BAOBAO_PREF_FIT__')
+          .toList();
+
+      return group.copyWith(
+        query: [
+          group.query,
+          promptText,
+        ].where((item) => item.trim().isNotEmpty).join(' '),
+        clearSubject: true,
+        subjectPhrases: const [],
+        mustMatchSubject: false,
+        // For natural goal prompts, do not force the old curriculum/department
+        // type too early. Let the prompt and AI reranker decide relevance from
+        // the real candidate list. Keep type only when the user explicitly asks
+        // for CORE/GE/ELECTIVE.
+        requiredType: keepRequestedType ? group.requiredType : 'any',
+        language: 'any',
+        mustHave: _mergeStringLists(
+          filteredMustHave,
+          const ['__BAOBAO_PROMPT_FIRST__'],
+        ),
+        avoid: _mergeStringLists(group.avoid, avoid),
+      );
+    }).toList();
+
+    return _AiSearchPlan(
+      targetCredits: aiPlan.targetCredits,
+      allowSpecialCourses: aiPlan.allowSpecialCourses,
+      groups: groups.isNotEmpty
+          ? groups
+          : _buildOpenEndedGoalPlan(promptText, userPreferences).groups,
+    );
+  }
+
+  bool _promptExplicitlyRequestsCourseType(String message) {
+    final lower = message.toLowerCase();
+
+    return RegExp(
+      r'\b(core|ge|general education|elective|requirement|required|lab|language)\b',
+      caseSensitive: false,
+    ).hasMatch(lower) ||
+        lower.contains('通識') ||
+        lower.contains('選修') ||
+        lower.contains('必修') ||
+        lower.contains('實驗');
+  }
+
+  _AiSearchPlan _buildOpenEndedGoalPlan(
+    String message,
+    Map<String, dynamic>? userPreferences,
+  ) {
+    final prefs = _preferenceMap(userPreferences);
+    final cleanGoal = _cleanOpenEndedGoalQuery(message);
+    final targetCredits = _extractTargetCreditCount(message.toLowerCase());
+    final preferenceCreditRange = _targetCreditRangeFromPreferences(userPreferences);
+    final planningTargetCredits = targetCredits ?? preferenceCreditRange.max;
+
+    final memoryText = _memoryPreferenceQuery(prefs);
+    final profileAvoid = _searchProfileText(
+      prefs,
+      const ['avoidKeywords'],
+    );
+    final avoid = _mergeStringLists(
+      const [
+        'thesis',
+        'seminar',
+        'research',
+        'lab rotation',
+        'dissertation',
+        '專題',
+        '論文',
+        '研究',
+        '書報',
+      ],
+      _mergeStringLists(
+        _memoryAvoidKeywords(prefs),
+        _splitSearchWords(profileAvoid),
+      ),
+    );
+
+    final primaryCount = planningTargetCredits == null ? 4 : 5;
+    final supportingCount = planningTargetCredits == null ? 3 : 4;
+    final perspectiveCount = 2;
+
+    final goalText = [
+      cleanGoal,
+      memoryText,
+    ].where((item) => item.trim().isNotEmpty).join(' ');
+
+    return _AiSearchPlan(
+      targetCredits: targetCredits,
+      allowSpecialCourses: false,
+      groups: [
+        _SearchGroup(
+          query: [
+            goalText,
+            'foundation introductory applied academic direction',
+          ].where((item) => item.trim().isNotEmpty).join(' '),
+          subjectQuery: null,
+          subjectPhrases: const [],
+          mustMatchSubject: false,
+          count: primaryCount,
+          credits: null,
+          requiredType: 'any',
+          timePreference: 'any',
+          language: 'any',
+          minLimit: 0,
+          maxLimit: null,
+          mustHave: const ['__BAOBAO_PROMPT_FIRST__'],
+          avoid: avoid,
+        ),
+        _SearchGroup(
+          query: [
+            goalText,
+            'supporting interdisciplinary practical elective',
+          ].where((item) => item.trim().isNotEmpty).join(' '),
+          subjectQuery: null,
+          subjectPhrases: const [],
+          mustMatchSubject: false,
+          count: supportingCount,
+          credits: null,
+          requiredType: 'any',
+          timePreference: 'any',
+          language: 'any',
+          minLimit: 0,
+          maxLimit: null,
+          mustHave: const ['__BAOBAO_PROMPT_FIRST__'],
+          avoid: avoid,
+        ),
+        _SearchGroup(
+          query: [
+            goalText,
+            'context communication management society perspective',
+          ].where((item) => item.trim().isNotEmpty).join(' '),
+          subjectQuery: null,
+          subjectPhrases: const [],
+          mustMatchSubject: false,
+          count: perspectiveCount,
+          credits: null,
+          requiredType: 'any',
+          timePreference: 'any',
+          language: 'any',
+          minLimit: 0,
+          maxLimit: null,
+          mustHave: const ['__BAOBAO_PROMPT_FIRST__'],
+          avoid: avoid,
+        ),
+      ],
+    );
+  }
+
+  _AiSearchPlan _buildNoCurriculumPreferenceStarterPlan(
+    String message,
+    Map<String, dynamic>? userPreferences,
+  ) {
+    final prefs = _preferenceMap(userPreferences);
+    final targetCredits = _extractTargetCreditCount(message.toLowerCase());
+    final preferenceCreditRange = _targetCreditRangeFromPreferences(userPreferences);
+    final planningTargetCredits = targetCredits ?? preferenceCreditRange.max;
+
+    final careerText = _careerPreferenceQuery(prefs);
+    final departmentText = _departmentPreferenceQuery(prefs);
+    final geText = _gePreferenceQuery(prefs);
+    final memoryText = _memoryPreferenceQuery(prefs);
+    final profileAvoid = _searchProfileText(
+      prefs,
+      const ['avoidKeywords'],
+    );
+    final memoryAvoid = _mergeStringLists(
+      _memoryAvoidKeywords(prefs),
+      _splitSearchWords(profileAvoid),
+    );
+
+    final requestedCoreCount = _toInt(prefs['coreCourses']);
+    final coreCount = requestedCoreCount > 0
+        ? requestedCoreCount.clamp(1, 5)
+        : (planningTargetCredits == null ? 2 : 2);
+
+    final hasCareerSignal =
+        _stringListFromAny(prefs['careerPaths']).isNotEmpty ||
+        careerText.trim().isNotEmpty;
+
+    final geCount = hasCareerSignal ? 1 : (planningTargetCredits == null ? 3 : 2);
+    final electiveCount = hasCareerSignal ? 2 : (planningTargetCredits == null ? 4 : 3);
+
+    final coreQuery = [
+      departmentText,
+      careerText,
+      memoryText,
+      'core foundation required major',
+    ].where((item) => item.trim().isNotEmpty).join(' ');
+
+    final electiveQuery = [
+      departmentText,
+      careerText,
+      geText,
+      memoryText,
+      'elective useful practical supporting topic',
+    ].where((item) => item.trim().isNotEmpty).join(' ');
+
+    final geQuery = [
+      geText,
+      memoryText,
+      'general education GE 通識',
+    ].where((item) => item.trim().isNotEmpty).join(' ');
+
+    return _AiSearchPlan(
+      targetCredits: targetCredits,
+      allowSpecialCourses: false,
+      groups: [
+        _SearchGroup(
+          query: coreQuery,
+          subjectQuery: null,
+          subjectPhrases: const [],
+          mustMatchSubject: false,
+          count: coreCount,
+          credits: null,
+          requiredType: 'CORE',
+          timePreference: 'any',
+          language: _languagePreferenceFromPrefs(prefs),
+          minLimit: null,
+          maxLimit: null,
+          mustHave: const ['__BAOBAO_PREF_FIT__'],
+          avoid: _mergeStringLists(
+            const [
+              'thesis',
+              'seminar',
+              'research',
+              'lab rotation',
+              'dissertation',
+              '專題',
+              '論文',
+              '研究',
+              '書報',
+            ],
+            memoryAvoid,
+          ),
+        ),
+        _SearchGroup(
+          query: geQuery,
+          subjectQuery: null,
+          subjectPhrases: const [],
+          mustMatchSubject: false,
+          count: geCount,
+          credits: null,
+          requiredType: 'GE',
+          timePreference: 'any',
+          language: _languagePreferenceFromPrefs(prefs),
+          minLimit: null,
+          maxLimit: null,
+          mustHave: geText.trim().isNotEmpty
+              ? const ['__BAOBAO_PREF_FIT__']
+              : const [],
+          avoid: _mergeStringLists(
+            const [
+              'thesis',
+              'seminar',
+              'research',
+              'lab rotation',
+              'dissertation',
+              '專題',
+              '論文',
+              '研究',
+              '書報',
+            ],
+            memoryAvoid,
+          ),
+        ),
+        _SearchGroup(
+          query: electiveQuery,
+          subjectQuery: null,
+          subjectPhrases: const [],
+          mustMatchSubject: false,
+          count: electiveCount,
+          credits: null,
+          requiredType: 'ELECTIVE',
+          timePreference: 'any',
+          language: _languagePreferenceFromPrefs(prefs),
+          minLimit: null,
+          maxLimit: null,
+          mustHave: const ['__BAOBAO_PREF_FIT__'],
+          avoid: _mergeStringLists(
+            const [
+              'thesis',
+              'seminar',
+              'research',
+              'lab rotation',
+              'dissertation',
+              '專題',
+              '論文',
+              '研究',
+              '書報',
+            ],
+            memoryAvoid,
+          ),
+        ),
+      ],
+    );
+  }
+
+    _AiSearchPlan _enhancePlanWithUserPreferences(
+    _AiSearchPlan plan,
+    Map<String, dynamic>? userPreferences,
+  ) {
+    final prefs = _preferenceMap(userPreferences);
+    final careerText = _careerPreferenceQuery(prefs);
+    final departmentText = _departmentPreferenceQuery(prefs);
+    final geText = _gePreferenceQuery(prefs);
+    final memoryText = _memoryPreferenceQuery(prefs);
+    final profileAvoid = _searchProfileText(
+      prefs,
+      const ['avoidKeywords'],
+    );
+    final memoryAvoid = _mergeStringLists(
+      _memoryAvoidKeywords(prefs),
+      _splitSearchWords(profileAvoid),
+    );
+
+    final enhancedGroups = plan.groups.map((group) {
+      final bucketText = group.mustHave.join(' ').toUpperCase();
+      final isCoreLike = bucketText.contains('DEPT_REQUIRED') ||
+          bucketText.contains('BASIC_CORE') ||
+          bucketText.contains('CORE_COURSE') ||
+          bucketText.contains('PROFESSIONAL') ||
+          bucketText.contains('LAB') ||
+          group.requiredType == 'CORE';
+
+      final isGeLike = bucketText.contains('GE') || group.requiredType == 'GE';
+
+      final extra = <String>[];
+      if (isCoreLike) {
+        extra.addAll([departmentText, careerText, memoryText]);
+      } else if (isGeLike) {
+        extra.addAll([geText, memoryText]);
+      } else {
+        extra.addAll([departmentText, careerText, geText, memoryText]);
+      }
+
+      final extraHasPreference = extra.any((item) => item.trim().isNotEmpty);
+      final controlMustHave = extraHasPreference
+          ? _mergeStringLists(group.mustHave, const ['__BAOBAO_PREF_FIT__'])
+          : group.mustHave;
+
+      return group.copyWith(
+        query: [
+          group.query,
+          ...extra.where((item) => item.trim().isNotEmpty),
+        ].join(' '),
+        language: group.language == 'any'
+            ? _languagePreferenceFromPrefs(prefs)
+            : group.language,
+        mustHave: controlMustHave,
+        avoid: _mergeStringLists(group.avoid, memoryAvoid),
+      );
+    }).toList();
+
+    return _AiSearchPlan(
+      targetCredits: plan.targetCredits,
+      allowSpecialCourses: plan.allowSpecialCourses,
+      groups: enhancedGroups,
+    );
+  }
+
+  Map<String, dynamic> _memoryMap(Map<String, dynamic> prefs) {
+    final rawMemory = prefs['baoBaoMemory'];
+    if (rawMemory is Map) {
+      return Map<String, dynamic>.from(rawMemory);
+    }
+    return {};
+  }
+
+  String _memoryPreferenceQuery(Map<String, dynamic> prefs) {
+    final memory = _memoryMap(prefs);
+    if (memory.isEmpty) return '';
+
+    return [
+      ..._stringListFromAny(memory['preferredKeywords']),
+      ..._stringListFromAny(memory['likedCourseTitles']).take(5),
+    ]
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .join(' ');
+  }
+
+  List<String> _memoryAvoidKeywords(Map<String, dynamic> prefs) {
+    final memory = _memoryMap(prefs);
+    if (memory.isEmpty) return const [];
+
+    return [
+      ..._stringListFromAny(memory['avoidKeywords']),
+      ..._stringListFromAny(memory['dislikedCourseTitles']).take(8),
+    ]
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  Map<String, dynamic> _searchProfileMap(Map<String, dynamic> prefs) {
+    final rawProfile = prefs['baoBaoSearchProfile'];
+
+    if (rawProfile is Map) {
+      return Map<String, dynamic>.from(rawProfile);
+    }
+
+    return {};
+  }
+
+  String _searchProfileText(
+    Map<String, dynamic> prefs,
+    List<String> keys,
+  ) {
+    final profile = _searchProfileMap(prefs);
+
+    if (profile.isEmpty) {
+      return '';
+    }
+
+    final keywords = <String>{};
+
+    for (final key in keys) {
+      keywords.addAll(_stringListFromAny(profile[key]));
+    }
+
+    return keywords
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .join(' ');
+  }
+
+  List<String> _splitSearchWords(String text) {
+    final trimmed = text.trim();
+
+    if (trimmed.isEmpty) {
+      return const [];
+    }
+
+    return trimmed
+        .split(RegExp(r'[,;]+'))
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+
+
+  Map<String, dynamic> _preferenceMap(Map<String, dynamic>? raw) {
+    if (raw == null) return {};
+
+    final nested = raw['preferences'];
+    if (nested is Map) {
+      return Map<String, dynamic>.from(nested);
+    }
+
+    return Map<String, dynamic>.from(raw);
+  }
+
+    String _careerPreferenceQuery(Map<String, dynamic> prefs) {
+    final profileText = _searchProfileText(
+      prefs,
+      const [
+        'careerKeywords',
+        'coreCourseHints',
+        'electiveHints',
+      ],
+    );
+
+    if (profileText.trim().isNotEmpty) {
+      return profileText;
+    }
+
+    // Fallback only: use the literal career text when the AI preference
+    // resolver is unavailable. Do not hardcode career-specific mappings here.
+    return _stringListFromAny(prefs['careerPaths']).join(' ');
+  }
+
+    String _departmentPreferenceQuery(Map<String, dynamic> prefs) {
+    final profileText = _searchProfileText(
+      prefs,
+      const ['departmentKeywords'],
+    );
+
+    final hints = <String>{
+      ..._splitSearchWords(profileText),
+    };
+
+    for (final entry in prefs.entries) {
+      final key = entry.key.toString().toLowerCase();
+      if (key.contains('department') ||
+          key.contains('dept') ||
+          key.contains('major') ||
+          key.contains('program')) {
+        final value = entry.value?.toString().trim() ?? '';
+        if (value.isNotEmpty) hints.add(value);
+      }
+    }
+
+    return hints.join(' ');
+  }
+
+    String _gePreferenceQuery(Map<String, dynamic> prefs) {
+    final profileText = _searchProfileText(
+      prefs,
+      const ['geHints'],
+    );
+
+    return [
+      profileText,
+      _stringListFromAny(prefs['geInterests']).join(' '),
+    ].where((item) => item.trim().isNotEmpty).join(' ');
+  }
+
+  String _languagePreferenceFromPrefs(Map<String, dynamic> prefs) {
+    final language = (prefs['languagePreference'] ?? '').toString().toLowerCase();
+
+    if (language.contains('english')) return 'english';
+    if (language.contains('chinese')) return 'chinese';
+
+    return 'any';
+  }
+
+  List<String> _stringListFromAny(dynamic value) {
+    if (value == null) return [];
+    if (value is List) {
+      return value
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+    }
+
+    final text = value.toString().trim();
+    return text.isEmpty ? [] : [text];
   }
 
   _AiSearchPlan _buildLightEasyPlan(String message) {
@@ -990,8 +3257,14 @@ int? _smallNumberToInt(String value) {
   // STEP 1: AI CREATES SEARCH PLAN
   // ============================================================
 
-  Future<_AiSearchPlan> _makeAiSearchPlan(String userMessage) async {
-    final fallback = _AiSearchPlan.local(userMessage);
+  Future<_AiSearchPlan> _makeAiSearchPlan(
+    String userMessage, {
+    BaoBaoCourseIntent? intent,
+  }) async {
+    // Prompt-first fallback: if the model cannot return a search plan, do not
+    // convert the raw prompt into a strict keyword/subject search. Use the
+    // prompt as a broad planning query instead.
+    final fallback = _AiSearchPlan.promptFirst(userMessage);
 
     final content = await _callAiChat(
       systemPrompt: '''
@@ -1024,6 +3297,15 @@ Schema:
 }
 
 Core idea:
+- You may receive JSON containing userMessage and resolvedIntent.
+- Use resolvedIntent if present.
+- If resolvedIntent.intent is direct_search, build a clean direct search plan from resolvedIntent.query and resolvedIntent.searchMode.
+- If resolvedIntent.searchMode is general_plan, build broad planning groups from the student's goal; do not use mustMatchSubject, and do not treat the full sentence as an exact course title.
+- For general_plan, use a mix of CORE/foundation courses, useful ELECTIVE/supporting courses, and possibly GE/context courses according to the user's wording and preferences.
+- If resolvedIntent.searchMode is instructor, search by instructor/professor only; do not add GE/core/curriculum/previous-plan wording.
+- If resolvedIntent.searchMode is subject, search by the subject only.
+- If resolvedIntent.intent is modify_previous_plan, search only for the action subject; the app will merge it with the previous plan later.
+- Never put sentences like "follow-up edit", "previous Bao-Bao plan", or "user preference" inside the course query.
 - subjectQuery is the actual course/topic the user wants.
 - subjectPhrases are possible title variants for that course/topic.
 - mustMatchSubject is true when the user asks for a specific subject/course/topic.
@@ -1047,6 +3329,7 @@ Light/easy/chill rule:
 - Avoid thesis, seminar, research, lab rotation, and 0-credit courses unless directly requested.
 
 Subject extraction rules:
+- If the user describes a broad study direction, career direction, or mixed interest such as "study X with a bit of Y", this is not a specific subject lookup. Set mustMatchSubject false and create useful planning groups.
 - If the user asks for a specific subject/topic/course name, set mustMatchSubject true.
 - subjectPhrases should include English variants, abbreviation variants, number variants, roman numeral variants, and possible Chinese variants if known.
 - Do not hardcode only common classes. Infer variants from the user's words.
@@ -1078,6 +3361,8 @@ Language of instruction rules:
 - "English course" is a subject request.
 - "course conducted in English" is an instruction-language filter.
 - If user asks for a specific subject AND language of instruction, the result must match both.
+- Instruction language must be checked from course language/instruction metadata, not from the title.
+- A course does not need the word English/Chinese in its title to count as English-taught or Chinese-taught.
 
 Capacity / limit rules:
 - "large limit", "big limit", or "high limit" means minLimit 80.
@@ -1099,6 +3384,7 @@ Other rules:
 - credits means each course must have that credit number.
 - Avoid thesis, seminar, colloquium, research, MOOC, lab rotation unless user directly asks.
 - If user asks for thesis/research/seminar, set allowSpecialCourses true.
+- If the request says recommend/suggest courses but avoid early morning, no early morning, or no morning, this is a broad planning/filter request: set mustMatchSubject false, subjectQuery null, and timePreference no_morning.
 - If user asks for "calculus II", "calculus 2", or "calc ii", subjectPhrases must include "calculus ii", "calculus 2", and "微積分二". Do not use only "calculus".
 - "English for Specific Academic Purposes: Calculus" is an English course, not a Calculus II course.
 - This also applies for any course that has more than 1 level of course like physics 1, physics 2, I2P 1, I2P 2, and others.
@@ -1273,7 +3559,10 @@ Return:
   ]
 }
 ''',
-      userContent: userMessage,
+      userContent: jsonEncode(_jsonSafe({
+        'userMessage': userMessage,
+        'resolvedIntent': intent?.toJson(),
+      })),
       temperature: 0.05,
       maxTokens: 1200,
     );
@@ -1347,8 +3636,17 @@ Return:
 
     final mustTokens = group.mustHave
       .where((item) => !_isCurriculumBucketName(item))
+      .where((item) => !_isPlannerControlToken(item))
       .expand(_tokens)
       .toList();
+    final requiresInstructorMatch = group.mustHave.any(
+      (item) => item.trim().toUpperCase() == '__BAOBAO_INSTRUCTOR_MATCH__',
+    );
+    final instructorTokens = group.mustHave
+        .where((item) => !_isCurriculumBucketName(item))
+        .where((item) => !_isPlannerControlToken(item))
+        .expand(_tokens)
+        .toList();
     final avoidTokens = group.avoid.expand(_tokens).toList();
     final subjectPhrases = _effectiveSubjectPhrases(group);
     final scored = <_ScoredCourse>[];
@@ -1429,6 +3727,11 @@ Return:
       final text = _searchText(course);
       final textTokens = _tokens(text);
 
+      if (requiresInstructorMatch &&
+          !_courseMatchesInstructorTokens(course, instructorTokens)) {
+        continue;
+      }
+
       if (mustTokens.isNotEmpty &&
           !_containsAllLooseTokens(text, mustTokens)) {
         continue;
@@ -1447,6 +3750,11 @@ Return:
         group: group,
         subjectPhrases: subjectPhrases,
       );
+
+      if (_requiresPreferenceFit(group) &&
+          _toInt(course['preferenceFitScore']) <= 0) {
+        continue;
+      }
 
       final hasStrongConstraint =
           group.requiredType != 'any' ||
@@ -1480,8 +3788,22 @@ Return:
         return b.score.compareTo(a.score);
       }
 
+      final aPreference = _toInt(a.course['preferenceFitScore']);
+      final bPreference = _toInt(b.course['preferenceFitScore']);
+
+      if (aPreference != bPreference) {
+        return bPreference.compareTo(aPreference);
+      }
+
       final aLimit = _toInt(a.course['limit']);
       final bLimit = _toInt(b.course['limit']);
+
+      final aHasSeats = aLimit > 0;
+      final bHasSeats = bLimit > 0;
+
+      if (aHasSeats != bHasSeats) {
+        return aHasSeats ? -1 : 1;
+      }
 
       if (group.minLimit != null && aLimit != bLimit) {
         return bLimit.compareTo(aLimit);
@@ -1489,6 +3811,10 @@ Return:
 
       if (group.maxLimit != null && aLimit != bLimit) {
         return aLimit.compareTo(bLimit);
+      }
+
+      if (aLimit != bLimit) {
+        return bLimit.compareTo(aLimit);
       }
 
       final aCode = a.course['code']?.toString() ?? '';
@@ -1517,8 +3843,23 @@ Return:
     }.contains(upper);
   }
 
+  bool _isPlannerControlToken(String value) {
+    return value.trim().toUpperCase().startsWith('__BAOBAO_');
+  }
+
+  bool _requiresPreferenceFit(_SearchGroup group) {
+    return group.mustHave.any(
+      (item) => item.trim().toUpperCase() == '__BAOBAO_PREF_FIT__',
+    );
+  }
+
+
   String? _requiredCurriculumBucket(_SearchGroup group) {
     for (final item in group.mustHave) {
+      if (_isPlannerControlToken(item)) {
+        continue;
+      }
+
       final upper = item.trim().toUpperCase();
 
       if (_isCurriculumBucketName(upper)) {
@@ -1532,7 +3873,8 @@ Return:
   List<String> _effectiveSubjectPhrases(_SearchGroup group) {
     final phrases = <String>[];
 
-    if (group.subjectQuery != null && group.subjectQuery!.trim().isNotEmpty) {
+    if (group.subjectQuery != null &&
+        group.subjectQuery!.trim().isNotEmpty) {
       phrases.add(group.subjectQuery!.trim());
     }
 
@@ -1553,61 +3895,63 @@ Return:
       return true;
     }
 
-    final courseText = _normalizedCourseIdentityText(course);
-    final originalTitle = [
+    final courseText = _subjectSearchKey([
       course['title'],
       course['titleZh'],
       course['titleEn'],
-    ].whereType<Object>().join(' ').toLowerCase();
-
-    final combinedSubject = subjectPhrases.join(' ').toLowerCase();
-
-    final asksLanguageSubject =
-        combinedSubject.contains('english') ||
-        combinedSubject.contains('japanese') ||
-        combinedSubject.contains('chinese') ||
-        combinedSubject.contains('mandarin') ||
-        combinedSubject.contains('language') ||
-        combinedSubject.contains('英文') ||
-        combinedSubject.contains('日文') ||
-        combinedSubject.contains('中文') ||
-        combinedSubject.contains('華語');
-
-    final looksLikeEnglishSupportCourse =
-        originalTitle.contains('english for specific academic purposes') ||
-        originalTitle.contains('esap') ||
-        originalTitle.startsWith('english for ');
-
-    if (!asksLanguageSubject && looksLikeEnglishSupportCourse) {
-      return false;
-    }
-
-    final asksLevelTwo =
-        RegExp(r'\bii\b').hasMatch(combinedSubject) ||
-        RegExp(r'\b2\b').hasMatch(combinedSubject) ||
-        combinedSubject.contains('two') ||
-        combinedSubject.contains('二');
-
-    if (asksLevelTwo) {
-      final courseHasLevelTwo =
-          RegExp(r'\bii\b').hasMatch(originalTitle) ||
-          RegExp(r'\b2\b').hasMatch(originalTitle) ||
-          originalTitle.contains('(ii)') ||
-          originalTitle.contains('（ii）') ||
-          originalTitle.contains('二');
-
-      if (!courseHasLevelTwo) {
-        return false;
-      }
-    }
+      course['code'],
+      course['id'],
+    ].whereType<Object>().join(' '));
 
     for (final phrase in subjectPhrases) {
-      if (_phraseMatchesCourseText(phrase, courseText)) {
+      final phraseText = _subjectSearchKey(phrase);
+
+      if (phraseText.isEmpty) continue;
+
+      if (courseText.contains(phraseText) || phraseText.contains(courseText)) {
+        return true;
+      }
+
+      final phraseTokens = phraseText
+          .split(' ')
+          .where((item) => item.trim().isNotEmpty)
+          .toList();
+
+      if (phraseTokens.length >= 2 &&
+          phraseTokens.every((token) => courseText.contains(token))) {
         return true;
       }
     }
 
     return false;
+  }
+
+  String _subjectSearchKey(String value) {
+    var text = value.toLowerCase();
+
+    text = text
+        .replaceAll('（', '(')
+        .replaceAll('）', ')')
+        .replaceAll('&', ' and ')
+        .replaceAll(RegExp(r'[\(\)\[\]\-_/,:;]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    // Roman numerals -> numbers
+    text = text
+        .replaceAll(RegExp(r'\biv\b'), '4')
+        .replaceAll(RegExp(r'\biii\b'), '3')
+        .replaceAll(RegExp(r'\bii\b'), '2')
+        .replaceAll(RegExp(r'\bi\b'), '1');
+
+    // Chinese course numbers -> numbers
+    text = text
+        .replaceAll('四', '4')
+        .replaceAll('三', '3')
+        .replaceAll('二', '2')
+        .replaceAll('一', '1');
+
+    return text.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   bool _phraseMatchesCourseText(String phrase, String courseText) {
@@ -1750,6 +4094,7 @@ Return:
     required List<String> subjectPhrases,
   }) {
     int score = 0;
+    final promptFirstGoal = _isPromptFirstGoalGroup(group);
 
     final title = _looseText((course['title'] ?? '').toString());
     final code = _looseText((course['code'] ?? '').toString());
@@ -1779,12 +4124,12 @@ Return:
 
       if (looseToken.isEmpty) continue;
 
-      if (professor.contains(looseToken)) score += 170;
-      if (title.contains(looseToken)) score += 90;
-      if (code.contains(looseToken)) score += 80;
-      if (department.contains(looseToken)) score += 60;
-      if (type.contains(looseToken)) score += 50;
-      if (looseText.contains(looseToken)) score += 30;
+      if (professor.contains(looseToken)) score += promptFirstGoal ? 80 : 170;
+      if (title.contains(looseToken)) score += promptFirstGoal ? 260 : 90;
+      if (code.contains(looseToken)) score += promptFirstGoal ? 120 : 80;
+      if (department.contains(looseToken)) score += promptFirstGoal ? 90 : 60;
+      if (type.contains(looseToken)) score += promptFirstGoal ? 40 : 50;
+      if (looseText.contains(looseToken)) score += promptFirstGoal ? 80 : 30;
 
       if (looseToken.length >= 4) {
         for (final textToken in textTokens) {
@@ -1794,7 +4139,7 @@ Return:
           if (looseTextToken[0] != looseToken[0]) continue;
 
           if (_similarity(looseToken, looseTextToken) >= 0.84) {
-            score += 12;
+            score += promptFirstGoal ? 35 : 12;
           }
         }
       }
@@ -1819,6 +4164,8 @@ Return:
     score += (rating * 5).round();
 
     score += _toInt(course['yearFitScore']);
+    final preferenceScore = _toInt(course['preferenceFitScore']);
+    score += promptFirstGoal ? math.min(preferenceScore, 120) : preferenceScore;
 
     return score;
   }
@@ -1853,6 +4200,8 @@ Return:
         'studentYear': course['studentYear'],
         'courseYearLevel': course['courseYearLevel'],
         'yearFitScore': course['yearFitScore'],
+        'preferenceFitScore': course['preferenceFitScore'],
+        'preferenceReasons': course['preferenceReasons'],
         'department': course['department'],
         'time': course['slotCode'] ?? course['timeSlot'],
         'location': _short(course['location'], 40),
@@ -1886,6 +4235,8 @@ Return:
   Never invent IDs.
   Choose the courses that best match the user's request.
   Respect count, subjectQuery, subjectPhrases, mustMatchSubject, requiredType, credits, professor names, timePreference, language of instruction, minLimit, maxLimit, and the search query.
+  If the group asks for an instructor/professor, every selected course must have that instructor name in the professor/instructor metadata.
+  If several candidate courses satisfy the request, return as many matching IDs as allowed by group.count instead of only one.
 
   Curriculum rule:
   - If userCurriculum is provided, use it as the student's curriculum reference.
@@ -1914,11 +4265,20 @@ Return:
   - If the user asks for GE, prefer GE.
   - If the user asks for lab, prefer LAB.
 
+  User preference rule:
+  - Candidates include preferenceFitScore and preferenceReasons calculated by Bao-Bao.
+  - Prefer higher preferenceFitScore when courses otherwise satisfy the request.
+  - CORE / DEPT_REQUIRED / BASIC_CORE / CORE_COURSE / PROFESSIONAL / LAB candidates should fit the student's career path or department when possible.
+  - GE interests may be satisfied by GE courses first, but relevant ELECTIVE courses are also acceptable.
+  - Do not match Arts & Aesthetics using isolated technical words. For example, Computer Architecture is NOT Arts & Aesthetics just because it contains the word architecture. Only treat architecture as Arts & Aesthetics when the course is about building design, urban design, art history, visual design, or aesthetics.
+  - If the student has no uploaded curriculum, do not claim exact curriculum-bucket planning. Use career path, department, graduation data, GE interests, and the real course list.
+
   Important:
   - If mustMatchSubject is true, only choose courses matching the requested subject/topic.
   - If the user asks for a specific subject AND language of instruction, choose courses matching both.
   - Do not replace a specific subject request with a random language course.
   - If the user asks for English/Chinese instruction, prioritize matching language.
+  - Use the course language/instruction metadata for English/Chinese taught filtering, not the title text.
   - If the user asks for morning/night/afternoon/evening classes, prioritize matching time.
   - If the user asks for large limit/capacity, prioritize higher limit.
   - Avoid thesis, seminar, colloquium, research, MOOC, lab rotation, and 0-credit courses unless directly requested.
@@ -2112,6 +4472,12 @@ Return:
   }
 
 
+  bool _isPromptFirstGoalGroup(_SearchGroup group) {
+    return group.mustHave.any(
+      (item) => item.trim().toUpperCase() == '__BAOBAO_PROMPT_FIRST__',
+    );
+  }
+
   int _curriculumBucketScoreForGroup(String bucket, _SearchGroup group) {
     final normalizedBucket = bucket.toUpperCase();
     final requestedBuckets = group.mustHave
@@ -2122,6 +4488,25 @@ Return:
     final query = '${group.query} ${group.subjectQuery ?? ''}'.toLowerCase();
 
     int score = 0;
+
+    if (_isPromptFirstGoalGroup(group)) {
+      switch (normalizedBucket) {
+        case 'DEPT_REQUIRED':
+        case 'BASIC_CORE':
+        case 'CORE_COURSE':
+        case 'PROFESSIONAL':
+        case 'LAB':
+          return 120;
+        case 'GE':
+        case 'LANGUAGE':
+          return 80;
+        case 'FREE_ELECTIVE':
+        case 'SCHOOL_COMPULSORY':
+          return 40;
+        default:
+          return 0;
+      }
+    }
 
     // If this group specifically asks for this bucket, make it very strong.
     if (requestedBuckets.contains(normalizedBucket)) {
@@ -2292,7 +4677,7 @@ Return:
       name = name
           .replaceAll(
             RegExp(
-              r'\b(class|classes|course|courses|next|semester|sem|this|conducted|conduct|taught|english|chinese|morning|night|afternoon|evening|please|pls)\b',
+              r'\b(i|hear|heard|that|class|classes|course|courses|next|semester|sem|this|conducted|conduct|taught|english|chinese|morning|night|afternoon|evening|please|pls|is|are|easy|good|nice|add|include|her|his|their|my|to|plan|schedule)\b',
               caseSensitive: false,
             ),
             ' ',
@@ -2333,6 +4718,18 @@ Return:
         'sections',
         'same',
         'different',
+        'easy',
+        'good',
+        'nice',
+        'add',
+        'include',
+        'her',
+        'his',
+        'their',
+        'my',
+        'to',
+        'plan',
+        'schedule',
       };
 
       final tokens = _tokens(name)
@@ -2439,6 +4836,29 @@ Return:
     });
   }
 
+  bool _courseMatchesInstructorTokens(
+    Map<String, dynamic> course,
+    List<String> tokens,
+  ) {
+    if (tokens.isEmpty) return false;
+
+    final professorText = _looseText(
+      [
+        course['professor'],
+        course['instructor'],
+        course['teacher'],
+      ].whereType<Object>().join(' '),
+    );
+
+    if (professorText.isEmpty) return false;
+
+    return tokens.every((token) {
+      final normalizedToken = _looseText(token);
+      return normalizedToken.isNotEmpty &&
+          professorText.contains(normalizedToken);
+    });
+  }
+
   bool _containsAnyLooseToken(String text, List<String> tokens) {
     final loose = _looseText(text);
 
@@ -2463,6 +4883,9 @@ Return:
 
     final credits = _toInt(course['credits']);
     if (credits <= 0) return false;
+
+    final limit = _toInt(course['limit']);
+    if (limit <= 0) return false;
 
     final text = _searchText(course);
 
@@ -2662,37 +5085,78 @@ Return:
       return true;
     }
 
-    final languageText = [
-      course['language'],
-      course['instructionLanguage'],
-      course['languageOfInstruction'],
-      course['languageOfInstructionDescription'],
-    ].whereType<Object>().join(' ').toLowerCase();
+    final languageText = _courseInstructionLanguageText(course);
 
-    if (languageText.trim().isEmpty) {
+    if (languageText.isEmpty) {
       return false;
     }
 
     if (language == 'english') {
-      return languageText.contains('english') ||
-          languageText.contains('eng') ||
-          languageText.contains('en') ||
-          languageText.contains('英') ||
-          languageText.contains('英文') ||
-          languageText.contains('英語');
+      return _hasEnglishInstructionText(languageText);
     }
 
     if (language == 'chinese') {
-      return languageText.contains('chinese') ||
-          languageText.contains('mandarin') ||
-          languageText.contains('zh') ||
-          languageText.contains('cn') ||
-          languageText.contains('中') ||
-          languageText.contains('中文') ||
-          languageText.contains('華語');
+      return _hasChineseInstructionText(languageText);
     }
 
     return true;
+  }
+
+  String _courseInstructionLanguageText(Map<String, dynamic> course) {
+    // Important: language filtering should use instruction-language metadata,
+    // not the course title. Example: a course can be taught in English even
+    // when the title itself does not contain the word English.
+    return [
+      course['language'],
+      course['instructionLanguage'],
+      course['languageOfInstruction'],
+      course['languageOfInstructionDescription'],
+      course['teachingLanguage'],
+      course['courseLanguage'],
+      course['mediumOfInstruction'],
+      course['conductLanguage'],
+      course['taughtIn'],
+      course['remarks'],
+      course['note'],
+    ]
+        .whereType<Object>()
+        .map((item) => item.toString())
+        .join(' ')
+        .toLowerCase()
+        .trim();
+  }
+
+  bool _hasEnglishInstructionText(String text) {
+    final normalized = text.toLowerCase();
+
+    return normalized.contains('english') ||
+        normalized.contains('english-taught') ||
+        normalized.contains('taught in english') ||
+        normalized.contains('conducted in english') ||
+        RegExp(r'(^|[^a-z])(eng|en|e)([^a-z]|$)').hasMatch(normalized) ||
+        normalized.contains('英文') ||
+        normalized.contains('英語') ||
+        normalized.contains('英授') ||
+        RegExp(r'(^|[^\u4e00-\u9fff])英([^\u4e00-\u9fff]|$)')
+            .hasMatch(normalized);
+  }
+
+  bool _hasChineseInstructionText(String text) {
+    final normalized = text.toLowerCase();
+
+    return normalized.contains('chinese') ||
+        normalized.contains('mandarin') ||
+        normalized.contains('taught in chinese') ||
+        normalized.contains('conducted in chinese') ||
+        RegExp(r'(^|[^a-z])(zh|zht|zhs|cn|ch|c)([^a-z]|$)')
+            .hasMatch(normalized) ||
+        normalized.contains('中文') ||
+        normalized.contains('華語') ||
+        normalized.contains('國語') ||
+        normalized.contains('漢語') ||
+        normalized.contains('中授') ||
+        RegExp(r'(^|[^\u4e00-\u9fff])中([^\u4e00-\u9fff]|$)')
+            .hasMatch(normalized);
   }
 
   // ============================================================
@@ -2719,6 +5183,8 @@ Return:
       course['language'],
       course['instructionLanguage'],
       course['languageOfInstruction'],
+      course['preferenceFitScore'],
+      course['preferenceReasons'],
     ].whereType<Object>().join(' ').toLowerCase();
   }
 
@@ -2972,8 +5438,33 @@ class _AiSearchPlan {
     required this.groups,
   });
 
+  factory _AiSearchPlan.promptFirst(String message) {
+    return _AiSearchPlan(
+      targetCredits: null,
+      allowSpecialCourses: false,
+      groups: [
+        _SearchGroup(
+          query: message,
+          subjectQuery: null,
+          subjectPhrases: const [],
+          mustMatchSubject: false,
+          count: 8,
+          credits: null,
+          requiredType: 'any',
+          timePreference: 'any',
+          language: 'any',
+          minLimit: null,
+          maxLimit: null,
+          mustHave: const [],
+          avoid: const [],
+        ),
+      ],
+    );
+  }
+
   factory _AiSearchPlan.local(String message) {
-    final subjectQuery = _extractLocalSubjectQuery(message);
+    final isBroadFilterOrPlan = _isBroadFilterOrPlanningMessage(message);
+    final subjectQuery = isBroadFilterOrPlan ? null : _extractLocalSubjectQuery(message);
     final hasSubject = subjectQuery != null && subjectQuery.trim().isNotEmpty;
 
     return _AiSearchPlan(
@@ -3033,6 +5524,44 @@ class _AiSearchPlan {
     if (match == null) return 5;
 
     return _wordToNumber(match.group(1) ?? '') ?? 5;
+  }
+
+  static bool _isBroadFilterOrPlanningMessage(String message) {
+    final lower = message.toLowerCase();
+
+    final hasPlanningWord = lower.contains('recommend') ||
+        lower.contains('suggest') ||
+        lower.contains('plan') ||
+        lower.contains('course') ||
+        lower.contains('courses') ||
+        lower.contains('class') ||
+        lower.contains('classes');
+
+    final hasOnlyFilter = lower.contains('morning') ||
+        lower.contains('afternoon') ||
+        lower.contains('evening') ||
+        lower.contains('night') ||
+        lower.contains('credit') ||
+        lower.contains('limit') ||
+        lower.contains('capacity') ||
+        lower.contains('conducted in') ||
+        lower.contains('taught in') ||
+        lower.contains('in english') ||
+        lower.contains('in chinese') ||
+        lower.contains('easy') ||
+        lower.contains('chill') ||
+        lower.contains('light');
+
+    final hasSpecificLookup = lower.contains('linear algebra') ||
+        lower.contains('calculus') ||
+        lower.contains('i2p') ||
+        lower.contains('database') ||
+        lower.contains('operating system') ||
+        lower.contains('data structure') ||
+        lower.contains('professor') ||
+        lower.contains('taught by');
+
+    return hasPlanningWord && hasOnlyFilter && !hasSpecificLookup;
   }
 
   static String _extractTimePreference(String message) {
@@ -3152,6 +5681,18 @@ class _AiSearchPlan {
       r'\bprofessor\b',
       r'\bteacher\b',
       r'\binstructor\b',
+      r'\brecommend\b',
+      r'\bsuggest\b',
+      r'\bavoid\b',
+      r'\bearly\b',
+      r'\blate\b',
+      r'\bbut\b',
+      r'\band\b',
+      r'\bor\b',
+      r'\bnot\b',
+      r'\bno\b',
+      r'\bpreference\b',
+      r'\bpreferences\b',
     ];
 
     for (final pattern in removePatterns) {
@@ -3161,6 +5702,27 @@ class _AiSearchPlan {
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
 
     if (text.length < 2) {
+      return null;
+    }
+
+    final tokens = text.split(RegExp(r'\s+')).where((item) => item.isNotEmpty).toList();
+    const genericTokens = {
+      'recommend',
+      'suggest',
+      'avoid',
+      'early',
+      'late',
+      'but',
+      'and',
+      'or',
+      'not',
+      'no',
+      'preference',
+      'preferences',
+      'filter',
+    };
+
+    if (tokens.isNotEmpty && tokens.every(genericTokens.contains)) {
       return null;
     }
 
@@ -3288,7 +5850,9 @@ class _SearchGroup {
       'language': language,
       'minLimit': minLimit,
       'maxLimit': maxLimit,
-      'mustHave': mustHave,
+      'mustHave': mustHave
+          .where((item) => !item.trim().toUpperCase().startsWith('__BAOBAO_'))
+          .toList(),
       'avoid': avoid,
     };
   }
