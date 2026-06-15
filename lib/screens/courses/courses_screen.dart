@@ -1,516 +1,409 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-import '../../models/courses_model.dart';
-import './utilities/course_schedule_mapper.dart';
-import './widgets/timetable_grid.dart';
-import './widgets/menu_square_button.dart';
-import './widgets/menu_wide_button.dart';
-import './courses_material_screen.dart';
-import './graduation_verification_screen.dart';
-import './courses_planner_screen.dart';
+import 'package:enthusiast/models/courses_model.dart';
+import 'package:enthusiast/providers/ccxp_data_provider.dart';
+import 'package:enthusiast/screens/courses/courses_material_screen.dart';
+import 'package:enthusiast/screens/courses/courses_planner_screen.dart';
+import 'package:enthusiast/screens/courses/graduation_verification_screen.dart';
+import 'package:enthusiast/screens/courses/utilities/course_schedule_mapper.dart';
+import 'package:enthusiast/screens/courses/widgets/menu_square_button.dart';
+import 'package:enthusiast/screens/courses/widgets/menu_wide_button.dart';
+import 'package:enthusiast/screens/courses/widgets/timetable_grid.dart';
 
-class CoursesScreen extends StatelessWidget {
+class CoursesScreen extends StatefulWidget {
   const CoursesScreen({super.key});
 
-  FirebaseFirestore get _db => FirebaseFirestore.instance;
-
-  Future<_CurrentScheduleResult> _fetchCurrentSchedule() async {
-    final User? user = FirebaseAuth.instance.currentUser;
-
-    if (user == null) {
-      return const _CurrentScheduleResult(
-        semesterLabel: 'Current Semester',
-        courses: [],
-        message: 'Please log in to view your schedule.',
-      );
-    }
-
-    final DocumentSnapshot<Map<String, dynamic>>? ccxpDoc =
-        await _findCcxpUserDocument(user.uid);
-
-    if (ccxpDoc == null || !ccxpDoc.exists) {
-      return const _CurrentScheduleResult(
-        semesterLabel: 'Current Semester',
-        courses: [],
-        message: 'No CCXP course data found for this account.',
-      );
-    }
-
-    final Map<String, dynamic> userData = ccxpDoc.data() ?? {};
-    final Map<String, String> courseTypeOverrides =
-        _buildCourseTypeOverrides(userData);
-
-    final List<dynamic> rawSchedule =
-        (userData['scheduleData'] as List<dynamic>?) ?? [];
-
-    if (rawSchedule.isEmpty) {
-      return const _CurrentScheduleResult(
-        semesterLabel: 'Current Semester',
-        courses: [],
-        message: 'No current semester courses found.',
-      );
-    }
-
-    final List<_ScheduleCourseRef> courseRefs = rawSchedule
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .map((item) {
-          final String code = _clean(item['code']) ?? '';
-          final String title = _clean(item['title']) ?? 'Untitled Course';
-          final String yearTerm = _yearTermFromCourseCode(code);
-
-          return _ScheduleCourseRef(
-            code: code,
-            title: title,
-            yearTerm: yearTerm,
-            courseTypeOverride: courseTypeOverrides[_typeKey(title, yearTerm)],
-          );
-        })
-        .where((item) => item.code.isNotEmpty)
-        .toList();
-
-    if (courseRefs.isEmpty) {
-      return const _CurrentScheduleResult(
-        semesterLabel: 'Current Semester',
-        courses: [],
-        message: 'No valid course codes found.',
-      );
-    }
-
-    final String semester = _semesterFromCourseCode(courseRefs.first.code);
-    final List<CourseItem> courses = [];
-
-    for (int i = 0; i < courseRefs.length; i++) {
-      final _ScheduleCourseRef courseRef = courseRefs[i];
-      final Map<String, dynamic>? catalogData =
-          await _findCourseCatalogData(courseRef.code);
-
-      if (catalogData == null) {
-        continue;
-      }
-
-      final String? catalogTitleEn = _clean(catalogData['titleEn']);
-      final String? catalogTitleZh = _clean(catalogData['titleZh']);
-
-      final String? catalogTypeOverride =
-          courseTypeOverrides[_typeKey(catalogTitleEn ?? '', courseRef.yearTerm)] ??
-              courseTypeOverrides[_typeKey(catalogTitleZh ?? '', courseRef.yearTerm)];
-
-      courses.addAll(
-        CourseScheduleMapper.fromCourseCatalog(
-          courseData: catalogData,
-          fallbackCode: courseRef.code,
-          fallbackTitle: courseRef.title,
-          colorIndex: i,
-          overrideCourseType:
-              courseRef.courseTypeOverride ?? catalogTypeOverride,
-        ),
-      );
-    }
-
-    return _CurrentScheduleResult(
-      semesterLabel: semester,
-      courses: courses,
-      message: courses.isEmpty
-          ? 'Your courses were found, but no valid timetable slots were available.'
-          : null,
-    );
-  }
-
-  Future<DocumentSnapshot<Map<String, dynamic>>?> _findCcxpUserDocument(
-    String uid,
-  ) async {
-    final DocumentSnapshot<Map<String, dynamic>> byUid =
-        await _db.collection('ccxpUsers').doc(uid).get();
-
-    if (byUid.exists) {
-      return byUid;
-    }
-
-    final QuerySnapshot<Map<String, dynamic>> byAuthUid = await _db
-        .collection('ccxpUsers')
-        .where('authUid', isEqualTo: uid)
-        .limit(1)
-        .get();
-
-    if (byAuthUid.docs.isNotEmpty) {
-      return byAuthUid.docs.first;
-    }
-
-    return null;
-  }
-
-  Future<Map<String, dynamic>?> _findCourseCatalogData(String rawCode) async {
-    final String semester = _semesterFromCourseCode(rawCode);
-    final CollectionReference<Map<String, dynamic>> coursesRef = _db
-        .collection('courseCatalogs')
-        .doc(semester)
-        .collection('courses');
-
-    for (final String docId in _candidateDocIds(rawCode)) {
-      final DocumentSnapshot<Map<String, dynamic>> doc =
-          await coursesRef.doc(docId).get();
-
-      if (doc.exists) {
-        return doc.data();
-      }
-    }
-
-    final QuerySnapshot<Map<String, dynamic>> byCourseNo = await coursesRef
-        .where('courseNo', isEqualTo: rawCode.trim())
-        .limit(1)
-        .get();
-
-    if (byCourseNo.docs.isNotEmpty) {
-      return byCourseNo.docs.first.data();
-    }
-
-    final String normalizedCode = _normalizeCourseCode(rawCode);
-
-    final QuerySnapshot<Map<String, dynamic>> byNormalized = await coursesRef
-        .where('normalizedCourseNo', isEqualTo: normalizedCode)
-        .limit(1)
-        .get();
-
-    if (byNormalized.docs.isNotEmpty) {
-      return byNormalized.docs.first.data();
-    }
-
-    return null;
-  }
-
-  Map<String, String> _buildCourseTypeOverrides(Map<String, dynamic> userData) {
-    final Map<String, String> result = {};
-
-    final dynamic graduationData = userData['graduationData'];
-    if (graduationData is! Map) return result;
-
-    final dynamic rawCategories = graduationData['categories'];
-    if (rawCategories is! List) return result;
-
-    for (final dynamic rawCategory in rawCategories) {
-      if (rawCategory is! Map) continue;
-
-      final Map<String, dynamic> category =
-          Map<String, dynamic>.from(rawCategory);
-
-      final String categoryTitle = _clean(category['title']) ?? '';
-      final String? courseType = _courseTypeFromCategoryTitle(categoryTitle);
-
-      if (courseType == null) continue;
-
-      final dynamic rawRecords = category['records'];
-      if (rawRecords is! List) continue;
-
-      for (final dynamic rawRecord in rawRecords) {
-        if (rawRecord is! Map) continue;
-
-        final Map<String, dynamic> record =
-            Map<String, dynamic>.from(rawRecord);
-
-        final String title = _clean(record['title']) ?? '';
-        final String year = _clean(record['year']) ?? '';
-
-        if (title.isEmpty || year.isEmpty) continue;
-
-        result[_typeKey(title, year)] = courseType;
-      }
-    }
-
-    return result;
-  }
-
-  String? _courseTypeFromCategoryTitle(String title) {
-    final String lower = title.toLowerCase();
-
-    if (lower.contains('compulsory') ||
-        lower.contains('required') ||
-        title.contains('??')) {
-      return 'CORE';
-    }
-
-    if (lower.contains('general education') ||
-        lower.contains('ge') ||
-        title.contains('??')) {
-      return 'GE';
-    }
-
-    if (lower.contains('pe') ||
-        lower.contains('service') ||
-        title.contains('??') ||
-        title.contains('??')) {
-      return 'PE';
-    }
-
-    if (lower.contains('elective') || title.contains('??')) {
-      return 'ELECTIVE';
-    }
-
-    return null;
-  }
-
-  String _typeKey(String title, String yearTerm) {
-    return '${_normalizeText(title)}|${yearTerm.trim()}';
-  }
-
-  String _normalizeText(String text) {
-    return text
-        .toLowerCase()
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-  }
-
-  List<String> _candidateDocIds(String rawCode) {
-    final String trimmed = rawCode.trim();
-    final String noSpaces = trimmed.replaceAll(RegExp(r'\s+'), '');
-    final String underscore = trimmed.replaceAll(RegExp(r'\s+'), '_');
-
-    return <String>{
-      trimmed,
-      underscore,
-      noSpaces,
-    }.where((value) => value.isNotEmpty).toList();
-  }
-
-  String _normalizeCourseCode(String rawCode) {
-    return rawCode.replaceAll(RegExp(r'\s+'), '').toUpperCase();
-  }
-
-  String _yearTermFromCourseCode(String rawCode) {
-    final RegExp pattern = RegExp(r'^(\d{5})');
-    final Match? match = pattern.firstMatch(rawCode.trim());
-
-    if (match == null) {
-      return '';
-    }
-
-    return match.group(1)!;
-  }
-
-  String _semesterFromCourseCode(String rawCode) {
-    final RegExp pattern = RegExp(r'^(\d{3})(\d)0');
-    final Match? match = pattern.firstMatch(rawCode.trim());
-
-    if (match == null) {
-      return '114-2';
-    }
-
-    final String year = match.group(1)!;
-    final String term = match.group(2)!;
-
-    return '$year-$term';
-  }
-
-  String? _clean(dynamic value) {
-    if (value == null) return null;
-    final String text = value.toString().trim();
-    return text.isEmpty ? null : text;
-  }
+  @override
+  State<CoursesScreen> createState() => _CoursesScreenState();
+}
+
+class _CoursesScreenState extends State<CoursesScreen> {
+  static const String _testStudentId = String.fromEnvironment('COURSE_TEST_STUDENT_ID');
+
+  final List<String> _semesters = CourseScheduleMapper.semesterOrder;
+  int _semesterIndex = CourseScheduleMapper.semesterOrder.length - 1;
+
+  Future<List<CourseItem>>? _scheduleFuture;
+  dynamic _lastScheduleData;
+  String? _lastSemester;
 
   @override
   Widget build(BuildContext context) {
+    final scheduleData = context.watch<CcxpDataProvider>().scheduleData;
+    final selectedSemester = _semesters[_semesterIndex];
+
+    if (!identical(_lastScheduleData, scheduleData) || _lastSemester != selectedSemester) {
+      _lastScheduleData = scheduleData;
+      _lastSemester = selectedSemester;
+      _scheduleFuture = CourseScheduleMapper.buildSemesterSchedule(
+        semester: selectedSemester,
+        fallbackScheduleData: scheduleData,
+        studentIdOverride: _testStudentId,
+      );
+    }
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFB),
+      backgroundColor: const Color(0xFFF8F7FB),
       body: SafeArea(
-        child: FutureBuilder<_CurrentScheduleResult>(
-          future: _fetchCurrentSchedule(),
-          builder: (context, snapshot) {
-            final String semesterLabel =
-                snapshot.data?.semesterLabel ?? 'Current Semester';
-
-            return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Column(
-                      children: [
-                        Text(
-                          semesterLabel,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 29,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF111827),
-                            letterSpacing: -0.6,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        const Text(
-                          'My current semester timetable',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF64748B),
-                          ),
-                        ),
-                      ],
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(14, 18, 14, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SemesterHeader(
+                title: selectedSemester,
+                canGoPrevious: _semesterIndex > 0,
+                canGoNext: _semesterIndex < _semesters.length - 1,
+                onPrevious: _semesterIndex > 0
+                    ? () => setState(() => _semesterIndex -= 1)
+                    : null,
+                onNext: _semesterIndex < _semesters.length - 1
+                    ? () => setState(() => _semesterIndex += 1)
+                    : null,
+              ),
+              if (_testStudentId.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                _DemoStudentBanner(studentId: _testStudentId),
+              ],
+              const SizedBox(height: 16),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: const Color(0xFFEAEAF2)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.045),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
                     ),
-                  ),
-
-                  const SizedBox(height: 8),
-                  const Divider(height: 1, color: Color(0xFFE5E7EB)),
-                  const SizedBox(height: 12),
-
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: const Color(0xFFF3F4F6)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    padding: const EdgeInsets.all(12),
-                    child: _buildTimetableState(snapshot),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: MenuSquareButton(
-                          title: 'Course\nMaterials',
-                          icon: Icons.menu_book_rounded,
-                          activeColor: const Color(0xFF7E22CE),
-                          inactiveBgColor: const Color(0xFFF3E8FF),
-                          inactiveIconColor: const Color(0xFF9333EA),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const CourseMaterialsScreen(),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-
-                      const SizedBox(width: 14),
-
-                      Expanded(
-                        child: MenuSquareButton(
-                          title: 'Course\nPlanner',
-                          icon: Icons.search_rounded,
-                          activeColor: const Color(0xFF3B82F6),
-                          inactiveBgColor: const Color(0xFFEFF6FF),
-                          inactiveIconColor: const Color(0xFF2563EB),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const CoursePlannerScreen(),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  MenuWideButton(
-                    title: 'Graduation Verification',
-                    subtitle: 'CHECK YOUR DEGREE PROGRESS',
-                    icon: Icons.school_outlined,
-                    activeColor: const Color(0xFFF97316),
-                    inactiveBgColor: const Color(0xFFFFF7ED),
-                    inactiveIconColor: const Color(0xFFF97316),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const GraduationVerificationScreen(),
+                  ],
+                ),
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+                child: FutureBuilder<List<CourseItem>>(
+                  future: _scheduleFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const SizedBox(
+                        height: 420,
+                        child: Center(
+                          child: CircularProgressIndicator(color: Color(0xFF7B2CBF)),
                         ),
                       );
-                    },
+                    }
+
+                    if (snapshot.hasError) {
+                      return _ScheduleStateMessage(
+                        icon: Icons.error_outline_rounded,
+                        title: 'Could not load timetable',
+                        subtitle: snapshot.error.toString(),
+                      );
+                    }
+
+                    final schedule = snapshot.data ?? const <CourseItem>[];
+
+                    if (schedule.isEmpty) {
+                      return _ScheduleStateMessage(
+                        icon: Icons.calendar_month_outlined,
+                        title: 'No timetable data for $selectedSemester',
+                        subtitle: 'This semester may not have synced course time data yet.',
+                      );
+                    }
+
+                    return TimetableGrid(schedule: schedule);
+                  },
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: MenuSquareButton(
+                      title: 'Course\nMaterials',
+                      icon: Icons.menu_book_rounded,
+                      activeColor: const Color(0xFF7B2CBF),
+                      inactiveBgColor: const Color(0xFFE9D5FF),
+                      inactiveIconColor: const Color(0xFF7B2CBF),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const CourseMaterialsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: MenuSquareButton(
+                      title: 'Course\nPlanner',
+                      icon: Icons.search_rounded,
+                      activeColor: const Color(0xFF2563EB),
+                      inactiveBgColor: const Color(0xFFEFF6FF),
+                      inactiveIconColor: const Color(0xFF2563EB),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const CoursePlannerScreen(),
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),
-            );
-          },
+              const SizedBox(height: 16),
+              MenuWideButton(
+                title: 'Graduation Verification',
+                subtitle: 'CHECK YOUR DEGREE PROGRESS',
+                icon: Icons.school_outlined,
+                activeColor: const Color(0xFFF97316),
+                inactiveBgColor: const Color(0xFFFFF7ED),
+                inactiveIconColor: const Color(0xFFF97316),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const GraduationVerificationScreen(),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildTimetableState(
-    AsyncSnapshot<_CurrentScheduleResult> snapshot,
-  ) {
-    if (snapshot.connectionState == ConnectionState.waiting) {
-      return const SizedBox(
-        height: 400,
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
+class _SemesterHeader extends StatelessWidget {
+  const _SemesterHeader({
+    required this.title,
+    required this.canGoPrevious,
+    required this.canGoNext,
+    required this.onPrevious,
+    required this.onNext,
+  });
 
-    if (snapshot.hasError) {
-      return SizedBox(
-        height: 400,
-        child: Center(
-          child: Text(
-            'Error: ${snapshot.error}',
-            textAlign: TextAlign.center,
+  final String title;
+  final bool canGoPrevious;
+  final bool canGoNext;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          'Semester History',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: const Color(0xFF7B2CBF).withValues(alpha: 0.82),
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.4,
           ),
         ),
-      );
-    }
-
-    final _CurrentScheduleResult? result = snapshot.data;
-
-    if (result == null || result.courses.isEmpty) {
-      return SizedBox(
-        height: 400,
-        child: Center(
-          child: Text(
-            result?.message ?? 'No courses found.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF6B7280),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _ArrowButton(
+              icon: Icons.chevron_left_rounded,
+              enabled: canGoPrevious,
+              onTap: onPrevious,
             ),
+            Container(
+              constraints: const BoxConstraints(minWidth: 132),
+              margin: const EdgeInsets.symmetric(horizontal: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: const Color(0xFFE9D5FF)),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF7B2CBF).withValues(alpha: 0.08),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF111827),
+                  fontSize: 26,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.8,
+                ),
+              ),
+            ),
+            _ArrowButton(
+              icon: Icons.chevron_right_rounded,
+              enabled: canGoNext,
+              onTap: onNext,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Swipe through previous semesters and view your synced timetable.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Color(0xFF6B7280),
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
           ),
         ),
-      );
-    }
-
-    return TimetableGrid(schedule: result.courses);
+      ],
+    );
   }
 }
 
-class _CurrentScheduleResult {
-  final String semesterLabel;
-  final List<CourseItem> courses;
-  final String? message;
-
-  const _CurrentScheduleResult({
-    required this.semesterLabel,
-    required this.courses,
-    this.message,
+class _ArrowButton extends StatelessWidget {
+  const _ArrowButton({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
   });
+
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(18),
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 160),
+          opacity: enabled ? 1 : 0.34,
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: enabled ? const Color(0xFFEDE9FE) : const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: enabled ? const Color(0xFFC4B5FD) : const Color(0xFFE5E7EB),
+              ),
+            ),
+            child: Icon(
+              icon,
+              color: enabled ? const Color(0xFF6D28D9) : const Color(0xFF9CA3AF),
+              size: 30,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-class _ScheduleCourseRef {
-  final String code;
-  final String title;
-  final String yearTerm;
-  final String? courseTypeOverride;
+class _DemoStudentBanner extends StatelessWidget {
+  const _DemoStudentBanner({required this.studentId});
 
-  const _ScheduleCourseRef({
-    required this.code,
+  final String studentId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFDE68A)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.science_outlined, size: 16, color: Color(0xFF92400E)),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              'Previewing test student $studentId',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF92400E),
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScheduleStateMessage extends StatelessWidget {
+  const _ScheduleStateMessage({
+    required this.icon,
     required this.title,
-    required this.yearTerm,
-    this.courseTypeOverride,
+    required this.subtitle,
   });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 420,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 58,
+                height: 58,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE9D5FF),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Icon(icon, color: const Color(0xFF7B2CBF), size: 28),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF111827),
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF6B7280),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

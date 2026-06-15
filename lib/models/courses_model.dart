@@ -1,33 +1,34 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 class CourseItem {
-  final int day;
-  final int startSlot;
-  final int duration;
+  final int day; // 1 = Mon ... 5 = Fri
+  final int startSlot; // 0-based index into timetable periods
+  final int duration; // number of slots spanned
 
   final String title;
   final String code;
 
-  final String? titleZh;
-  final String? titleEn;
-  final String? location;
-  final String? teacher;
-  final String? slotCode;
-  final String? timeText;
-  final String? dayLabel;
-
-  final int? credits;
-  final int? capacity;
-
-  final String? departmentCode;
-  final String? departmentFullName;
-  final String? language;
-  final String? requiredElectiveNote;
-  final String? courseType;
-
   final Color bg;
   final Color border;
   final Color text;
+
+  final String room;
+  final String timeRange;
+  final String teacher;
+  final String slotCode;
+  final String courseNo;
+  final int credits;
+
+  // Compatibility fields used by timetable/detail widgets.
+  final String? location;
+  final String? timeText;
+  final String? dayLabel;
+  final String? courseType;
+  final String? departmentFullName;
+  final String? departmentCode;
+  final String? requiredElectiveNote;
+  final int? capacity;
+  final String? language;
 
   const CourseItem({
     required this.day,
@@ -35,22 +36,24 @@ class CourseItem {
     required this.duration,
     required this.title,
     required this.code,
-    this.titleZh,
-    this.titleEn,
-    this.location,
-    this.teacher,
-    this.slotCode,
-    this.timeText,
-    this.dayLabel,
-    this.credits,
-    this.capacity,
-    this.departmentCode,
-    this.departmentFullName,
-    this.language,
-    this.requiredElectiveNote,
-    this.courseType,
     required this.bg,
     required this.border,
     required this.text,
-  });
+    this.room = '',
+    this.timeRange = '',
+    this.teacher = '',
+    this.slotCode = '',
+    this.courseNo = '',
+    this.credits = 0,
+    String? location,
+    String? timeText,
+    this.dayLabel,
+    this.courseType,
+    this.departmentFullName,
+    this.departmentCode,
+    this.requiredElectiveNote,
+    this.capacity,
+    this.language,
+  })  : location = location ?? room,
+        timeText = timeText ?? timeRange;
 }
