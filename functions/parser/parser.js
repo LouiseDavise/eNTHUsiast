@@ -1,4 +1,4 @@
-import * as cheerio from 'cheerio';
+﻿import * as cheerio from 'cheerio';
 import * as fs from 'fs';
 import * as path from 'path';
 import { json } from 'stream/consumers';
@@ -114,11 +114,11 @@ export function parseGraduationData(htmlContent) {
         const year =  $(tds[0]).text().trim() + $(tds[1]).text().trim();
         
         let status = "passed";
-        if (grade.includes("Grade Not Submitted") || grade.includes("成績未到")) {
+        if (grade.includes("Grade Not Submitted") || grade.includes("æˆç¸¾æœªåˆ°")) {
             status = "inProgress";
         } else if (["E", "X", "F"].includes(grade)) {
             status = "failed";
-        } else if (grade.includes("Withdrawn") || grade.includes("停修")) {
+        } else if (grade.includes("Withdrawn") || grade.includes("åœä¿®")) {
             return; // Skip item completely
         }
 

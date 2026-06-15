@@ -64,7 +64,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
               ),
               if (_testStudentId.isNotEmpty) ...[
                 const SizedBox(height: 10),
-                _DemoStudentBanner(studentId: _testStudentId),
+                const _DemoStudentBanner(studentId: _testStudentId),
               ],
               const SizedBox(height: 16),
               Container(
@@ -199,14 +199,15 @@ class _SemesterHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(
+        const Text(
           'Semester History',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: const Color(0xFF7B2CBF).withValues(alpha: 0.82),
-            fontSize: 12,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.4,
+            color: Color(0xFF4C1D95),
+            fontSize: 34,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.2,
+            height: 1.05,
           ),
         ),
         const SizedBox(height: 8),
@@ -218,30 +219,17 @@ class _SemesterHeader extends StatelessWidget {
               enabled: canGoPrevious,
               onTap: onPrevious,
             ),
-            Container(
-              constraints: const BoxConstraints(minWidth: 132),
-              margin: const EdgeInsets.symmetric(horizontal: 10),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: const Color(0xFFE9D5FF)),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF7B2CBF).withValues(alpha: 0.08),
-                    blurRadius: 14,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 22),
               child: Text(
                 title,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Color(0xFF111827),
-                  fontSize: 26,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.8,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.4,
+                  height: 1,
                 ),
               ),
             ),
@@ -252,14 +240,16 @@ class _SemesterHeader extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 14),
         const Text(
-          'Swipe through previous semesters and view your synced timetable.',
+          'Browse your previous semesters and review your course timetable.',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: Color(0xFF6B7280),
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.1,
+            height: 1.35,
           ),
         ),
       ],
@@ -280,36 +270,25 @@ class _ArrowButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(18),
-        child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 160),
-          opacity: enabled ? 1 : 0.34,
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: enabled ? const Color(0xFFEDE9FE) : const Color(0xFFF3F4F6),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: enabled ? const Color(0xFFC4B5FD) : const Color(0xFFE5E7EB),
-              ),
-            ),
-            child: Icon(
-              icon,
-              color: enabled ? const Color(0xFF6D28D9) : const Color(0xFF9CA3AF),
-              size: 30,
-            ),
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(18),
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 160),
+        opacity: enabled ? 1 : 0.24,
+        child: SizedBox(
+          width: 38,
+          height: 38,
+          child: Icon(
+            icon,
+            color: const Color(0xFF8B5CF6),
+            size: 32,
           ),
         ),
       ),
     );
   }
 }
-
 class _DemoStudentBanner extends StatelessWidget {
   const _DemoStudentBanner({required this.studentId});
 
@@ -407,3 +386,5 @@ class _ScheduleStateMessage extends StatelessWidget {
     );
   }
 }
+
+
