@@ -46,9 +46,9 @@ _CourseTypeStyle getCourseTypeStyle(String type) {
   switch (upper) {
     case 'CORE':
       return const _CourseTypeStyle(
-        mainColor: Color(0xFFFF2D55),
-        softColor: Color(0xFFFFEEF3),
-        borderColor: Color(0xFFFFC2D1),
+        mainColor: Color(0xFFB91C1C),
+        softColor: Color(0xFFFFF1F2),
+        borderColor: Color(0xFFFECACA),
         icon: Icons.local_fire_department_rounded,
       );
 
@@ -310,11 +310,11 @@ class PlannerDetailSheet extends StatelessWidget {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(
-                    color: typeStyle.borderColor.withValues(alpha: 0.8),
+                    color: const Color(0xFFE2E8F0),
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: typeStyle.mainColor.withValues(alpha: 0.06),
+                      color: Colors.black.withValues(alpha: 0.035),
                       blurRadius: 12,
                       offset: const Offset(0, 6),
                     ),
@@ -395,7 +395,7 @@ class _SectionTitle extends StatelessWidget {
         Icon(
           icon,
           size: 16,
-          color: typeStyle.mainColor,
+          color: const Color(0xFF94A3B8),
         ),
         const SizedBox(width: 8),
         Text(
@@ -438,11 +438,11 @@ class _SmallStatCard extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: typeStyle.borderColor.withValues(alpha: 0.75),
+          color: const Color(0xFFE2E8F0),
         ),
         boxShadow: [
           BoxShadow(
-            color: typeStyle.mainColor.withValues(alpha: 0.045),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -453,7 +453,7 @@ class _SmallStatCard extends StatelessWidget {
           Icon(
             icon,
             size: 20,
-            color: typeStyle.mainColor,
+            color: const Color(0xFF94A3B8),
           ),
           const SizedBox(height: 8),
           Text(
@@ -507,11 +507,11 @@ class _DetailInfoRow extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: typeStyle.borderColor.withValues(alpha: 0.55),
+          color: const Color(0xFFE2E8F0),
         ),
         boxShadow: [
           BoxShadow(
-            color: typeStyle.mainColor.withValues(alpha: 0.035),
+            color: Colors.black.withValues(alpha: 0.025),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -522,7 +522,7 @@ class _DetailInfoRow extends StatelessWidget {
           Icon(
             icon,
             size: 18,
-            color: typeStyle.mainColor,
+            color: const Color(0xFF94A3B8),
           ),
           const SizedBox(width: 10),
           Text(
