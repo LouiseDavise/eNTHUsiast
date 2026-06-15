@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../providers/language_provider.dart'; // Added import
 
 class ProgressSummaryCard extends StatelessWidget {
   final int earnedCredits;
@@ -16,7 +17,9 @@ class ProgressSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progress = earnedCredits / totalCredits;
+    final language = LanguageScope.watch(context);
+    final isChinese = language.isChinese;
+    final progress = totalCredits > 0 ? earnedCredits / totalCredits : 0.0;
 
     return Container(
       width: double.infinity,
@@ -37,13 +40,13 @@ class ProgressSummaryCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'TOTAL PROGRESS',
-                  style: TextStyle(
-                    fontSize: 12, // Increased from 10
-                    fontWeight: FontWeight.w700, // Reduced from w900
-                    letterSpacing: 1.0, // Reduced from 2.0
+                  isChinese ? '總體進度' : 'TOTAL PROGRESS',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.0,
                     color: Color(0xFFE9D5FF),
                   ),
                 ),
@@ -55,17 +58,11 @@ class ProgressSummaryCard extends StatelessWidget {
                   color: Colors.white.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(15),
                 ),
-                child: const Icon(
-                  Icons.school_outlined,
-                  color: Colors.white,
-                  size: 25,
-                ),
+                child: const Icon(Icons.school_outlined, color: Colors.white, size: 25),
               ),
             ],
           ),
-
           const SizedBox(height: 8),
-
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -73,28 +70,26 @@ class ProgressSummaryCard extends StatelessWidget {
                 '$earnedCredits',
                 style: const TextStyle(
                   fontSize: 42,
-                  height: 1.0, // Adjusted from 0.9 for upright text
-                  fontWeight: FontWeight.w800, // Reduced from w900, removed italic
+                  height: 1.0,
+                  fontWeight: FontWeight.w800,
                   color: Colors.white,
                 ),
               ),
               const SizedBox(width: 6),
               Padding(
-                padding: const EdgeInsets.only(bottom: 6), // Adjusted to align baseline
+                padding: const EdgeInsets.only(bottom: 6),
                 child: Text(
-                  '/ $totalCredits cr',
+                  isChinese ? '/ $totalCredits 學分' : '/ $totalCredits cr',
                   style: const TextStyle(
-                    fontSize: 14, // Increased from 12
-                    fontWeight: FontWeight.w600, // Reduced from w900
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                     color: Color(0xFFD8B4FE),
                   ),
                 ),
               ),
             ],
           ),
-
           const SizedBox(height: 22),
-
           ClipRRect(
             borderRadius: BorderRadius.circular(99),
             child: LinearProgressIndicator(
@@ -104,29 +99,29 @@ class ProgressSummaryCard extends StatelessWidget {
               valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
             ),
           ),
-
           const SizedBox(height: 18),
-
           Row(
             children: [
               _SmallInfo(
-                label: 'SEMESTER',
+                label: isChinese ? '本學期' : 'SEMESTER',
                 value: semesterCredits,
-                suffix: ' COURSE',
+                suffix: isChinese ? ' 門課' : ' COURSE',
               ),
               const SizedBox(width: 32),
               _SmallInfo(
-                label: 'CUM. GPA',
+                label: isChinese ? '累計 GPA' : 'CUM. GPA',
                 value: cumulativeGpa,
                 suffix: '',
               ),
               const Spacer(),
               Text(
-                '${(progress * 100).toStringAsFixed(1)}% COMPLETED',
+                isChinese 
+                    ? '${(progress * 100).toStringAsFixed(1)}% 已完成' 
+                    : '${(progress * 100).toStringAsFixed(1)}% COMPLETED',
                 style: const TextStyle(
-                  fontSize: 11, // Increased from 9
-                  fontWeight: FontWeight.w700, // Reduced from w900
-                  letterSpacing: 0.5, // Reduced from 0.6
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
                   color: Colors.white,
                 ),
               ),
@@ -157,9 +152,9 @@ class _SmallInfo extends StatelessWidget {
         Text(
           label,
           style: const TextStyle(
-            fontSize: 10, // Increased from 8
-            fontWeight: FontWeight.w600, // Reduced from w900
-            letterSpacing: 0.5, // Reduced from 1.0
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.5,
             color: Color(0xFFD8B4FE),
           ),
         ),
@@ -170,16 +165,16 @@ class _SmallInfo extends StatelessWidget {
               TextSpan(
                 text: value,
                 style: const TextStyle(
-                  fontSize: 18, // Increased from 16
-                  fontWeight: FontWeight.w700, // Reduced from w900, removed italic
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
                   color: Colors.white,
                 ),
               ),
               TextSpan(
                 text: suffix,
                 style: const TextStyle(
-                  fontSize: 12, // Increased from 9
-                  fontWeight: FontWeight.w600, // Reduced from w900
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                   color: Colors.white,
                 ),
               ),

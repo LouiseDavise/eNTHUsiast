@@ -207,7 +207,7 @@ async function checkAndParseEmails() {
                 const isBulletin = subject.includes("<NTHU Bulletin Board>") || cleanText.includes("<NTHU Bulletin Board>");
 
                 if (isBulletin) {
-                    console.log(`→ Identified as BULLETIN for ${studentId}`);
+                    console.log(`â†’ Identified as BULLETIN for ${studentId}`);
                     await clearCollection(db.collection('bulletins'));
 
                     let parts = cleanText.split("English Version");
@@ -226,10 +226,10 @@ async function checkAndParseEmails() {
                         timestamp: admin.firestore.FieldValue.serverTimestamp()
                     });
 
-                    console.log(`✓ Bulletin saved to Firestore.`);
+                    console.log(`âœ“ Bulletin saved to Firestore.`);
 
                 } else {
-                    console.log(`→ Identified as UPCOMING TASK for ${studentId}, sending to OpenRouter...`);
+                    console.log(`â†’ Identified as UPCOMING TASK for ${studentId}, sending to OpenRouter...`);
 
                     const prompt = `You are an assistant for a university app. Read the following email
 and extract the task details into a strict JSON format.
@@ -274,7 +274,7 @@ ${cleanText}`;
                             timestamp: admin.firestore.FieldValue.serverTimestamp()
                         });
 
-                        console.log(`✓ Upcoming task "${aiData.title}" saved for ${studentId}.`);
+                        console.log(`âœ“ Upcoming task "${aiData.title}" saved for ${studentId}.`);
 
                     } catch (e) {
                         console.error(`OpenRouter Parsing Error for message ${msg.id}:`, e);
@@ -559,6 +559,289 @@ ${pdfText.slice(0, 45000)}
         }
     }
 );
+function compactSemesterCode(value) {
+    return (value || "").toString().toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function normalizeSemesterTitle(value) {
+    return (value || "").toString().trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function yearToSemesterDocId(yearValue) {
+    const year = (yearValue || "").toString().trim();
+
+    if (/^\d{3}-[12]$/.test(year)) return year;
+
+    if (/^\d{5}$/.test(year)) {
+        const academicYear = year.substring(0, 3);
+        const termDigit = year.substring(3, 4);
+        return `${academicYear}-${termDigit === "1" ? "1" : "2"}`;
+    }
+
+    return "";
+}
+
+function recordCodeCandidates(record) {
+    const year = (record.year || "").toString().trim();
+    const rawCode = (record.code || record.courseNo || record["ç§‘è™Ÿ"] || "").toString().trim();
+    const rawCompact = compactSemesterCode(rawCode);
+    const candidates = new Set();
+
+    if (rawCompact) candidates.add(rawCompact);
+
+    if (year && rawCompact && !rawCompact.startsWith(year)) {
+        candidates.add(compactSemesterCode(`${year}${rawCode}`));
+    }
+
+    return Array.from(candidates).filter(Boolean);
+}
+
+function fullRecordCode(record) {
+    const year = (record.year || "").toString().trim();
+    const candidates = recordCodeCandidates(record);
+    const withYear = candidates.find((code) => year && code.startsWith(year));
+    return withYear || candidates[0] || "";
+}
+
+function catalogCodeCandidates(course) {
+    if (!course) return [];
+
+    const values = [
+        course.courseNo,
+        course.code,
+        course["ç§‘è™Ÿ"],
+        course.normalizedCourseNo,
+        course.id,
+    ].filter(Boolean);
+
+    const candidates = new Set();
+
+    for (const value of values) {
+        const compact = compactSemesterCode(value);
+        if (!compact) continue;
+
+        candidates.add(compact);
+
+        const noYear = compact.replace(/^\d{5}/, "");
+        if (noYear) candidates.add(noYear);
+    }
+
+    return Array.from(candidates).filter(Boolean);
+}
+
+function catalogCourseNo(course) {
+    if (!course) return "";
+    return (
+        course.courseNo ||
+        course.code ||
+        course["ç§‘è™Ÿ"] ||
+        course.id ||
+        ""
+    ).toString();
+}
+
+function catalogTitles(course) {
+    if (!course) return [];
+
+    return [
+        course.title,
+        course.titleEn,
+        course.titleZh,
+        course.courseName,
+        course.courseTitle,
+        course["è‹±æ–‡èª²å"],
+        course["ä¸­æ–‡èª²å"],
+        course["èª²ç¨‹è‹±æ–‡åç¨±"],
+        course["èª²ç¨‹ä¸­æ–‡åç¨±"],
+    ]
+        .map(normalizeSemesterTitle)
+        .filter(Boolean);
+}
+
+function matchCatalogCourseForRecord(record, catalogCourses) {
+    const recordCodes = recordCodeCandidates(record);
+    const recordTitle = normalizeSemesterTitle(record.title);
+    const recordCredits = Number(record.credits || 0);
+
+    if (recordCodes.length > 0) {
+        const codeMatches = catalogCourses.filter((course) => {
+            const courseCodes = catalogCodeCandidates(course);
+            return courseCodes.some((code) => recordCodes.includes(code));
+        });
+
+        if (codeMatches.length > 0) return codeMatches[0];
+    }
+
+    let titleMatches = catalogCourses.filter((course) => {
+        return catalogTitles(course).includes(recordTitle);
+    });
+
+    if (titleMatches.length > 1 && recordCredits > 0) {
+        const creditMatches = titleMatches.filter((course) => {
+            return Number(course.credits || course["å­¸åˆ†æ•¸"] || course["å­¸åˆ†"] || 0) === recordCredits;
+        });
+
+        if (creditMatches.length > 0) titleMatches = creditMatches;
+    }
+
+    return titleMatches[0] || null;
+}
+
+function buildCategoryLookup(graduationData) {
+    const lookup = new Map();
+    const categories = graduationData.categories || [];
+
+    for (const category of categories) {
+        const title = category.title || "";
+        const records = category.records || [];
+
+        for (const record of records) {
+            const key = `${record.year || ""}|${normalizeSemesterTitle(record.title)}`;
+            lookup.set(key, title);
+        }
+    }
+
+    return lookup;
+}
+
+exports.syncSemesterHistoryForUser = onCall(
+    {
+        region: "us-central1",
+        memory: "512MiB",
+        timeoutSeconds: 180,
+    },
+    async (request) => {
+        if (!request.auth) {
+            throw new HttpsError(
+                "unauthenticated",
+                "You must be logged in before syncing semester history."
+            );
+        }
+
+        const uid = request.auth.uid;
+        const userRef = db.collection("ccxpUsers").doc(uid);
+        const userSnap = await userRef.get();
+
+        if (!userSnap.exists) {
+            throw new HttpsError("not-found", "ccxpUsers profile not found.");
+        }
+
+        const userData = userSnap.data() || {};
+        const graduationData = userData.graduationData || {};
+        const allRecords = graduationData.allRecords || [];
+
+        if (!Array.isArray(allRecords) || allRecords.length === 0) {
+            throw new HttpsError(
+                "failed-precondition",
+                "No graduationData.allRecords found for this user."
+            );
+        }
+
+        const categoryLookup = buildCategoryLookup(graduationData);
+        const grouped = {};
+
+        for (const record of allRecords) {
+            const semester = yearToSemesterDocId(record.year);
+            if (!semester) continue;
+
+            if (!grouped[semester]) grouped[semester] = [];
+            grouped[semester].push(record);
+        }
+
+        const result = {};
+
+        for (const [semester, records] of Object.entries(grouped)) {
+            const catalogSnap = await db
+                .collection("courseCatalogs")
+                .doc(semester)
+                .collection("courses")
+                .get();
+
+            const catalogCourses = catalogSnap.docs.map((doc) => ({
+                id: doc.id,
+                ...doc.data(),
+            }));
+
+            const courses = records.map((record) => {
+                const catalogCourse = matchCatalogCourseForRecord(record, catalogCourses);
+                const categoryKey = `${record.year || ""}|${normalizeSemesterTitle(record.title)}`;
+                const categoryTitle = categoryLookup.get(categoryKey) || "";
+
+                const time =
+                    catalogCourse?.slotCode ||
+                    catalogCourse?.["ä¸Šèª²æ™‚é–“"] ||
+                    catalogCourse?.rawTimeLocation ||
+                    "";
+
+                const room =
+                    catalogCourse?.location ||
+                    catalogCourse?.room ||
+                    catalogCourse?.["æ•™å®¤"] ||
+                    "";
+
+                const teacher =
+                    catalogCourse?.teacher ||
+                    catalogCourse?.["æ•™å¸«"] ||
+                    catalogCourse?.["æŽˆèª²æ•™å¸«"] ||
+                    "";
+
+                return {
+                    year: record.year || "",
+                    semester,
+                    title:
+                        record.title ||
+                        catalogCourse?.title ||
+                        catalogCourse?.titleEn ||
+                        catalogCourse?.["è‹±æ–‡èª²å"] ||
+                        "",
+                    code: catalogCourseNo(catalogCourse) || fullRecordCode(record),
+                    credits: Number(record.credits || 0),
+                    grade: record.grade || "",
+                    status: record.status || "",
+                    courseType: categoryTitle.toUpperCase().includes("COMPULSORY")
+                        ? "CORE"
+                        : categoryTitle.toUpperCase().includes("GENERAL")
+                            ? "GE"
+                            : categoryTitle.toUpperCase().includes("PE")
+                                ? "PE"
+                                : "ELECTIVE",
+                    categoryTitle,
+                    teacher,
+                    room,
+                    time,
+                    platform: "",
+                    url: "",
+                    catalogDocId: catalogCourse?.id || "",
+                    matchedCatalog: Boolean(catalogCourse),
+                    hasTimetableData: Boolean(time),
+                };
+            });
+
+            await userRef.collection("semesterCourses").doc(semester).set(
+                {
+                    semester,
+                    courses,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                },
+                { merge: true }
+            );
+
+            result[semester] = {
+                courses: courses.length,
+                withTime: courses.filter((course) => course.time).length,
+            };
+        }
+
+        return {
+            ok: true,
+            uid,
+            result,
+        };
+    }
+);
+
+
+
 
 
 //
