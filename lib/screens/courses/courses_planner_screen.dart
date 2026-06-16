@@ -15,6 +15,7 @@ import 'widgets/course_planner_card.dart';
 import 'widgets/course_planner_detail_sheet.dart' as detail;
 import 'widgets/course_planner_filter_sheet.dart';
 import 'widgets/course_planner_schedule_grid.dart';
+import 'package:enthusiast/providers/language_provider.dart';
 
 class CoursePlannerScreen extends StatefulWidget {
   const CoursePlannerScreen({super.key});
@@ -949,44 +950,58 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isChinese = LanguageScope.watch(context).isChinese;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 18, 24, 0),
       child: Row(
         children: [
-          InkWell(
-            borderRadius: BorderRadius.circular(100),
-            onTap: () => Navigator.pop(context),
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.chevron_left_rounded,
-                color: Color(0xFF64748B),
-                size: 26,
+          Tooltip(
+            message: isChinese ? '返回' : 'Back',
+            child: Semantics(
+              button: true,
+              label: isChinese ? '返回' : 'Back',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(100),
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  // 44x44 keeps the tap target at the recommended minimum
+                  // size while the visible circle stays the same as before.
+                  width: 44,
+                  height: 44,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.chevron_left_rounded,
+                    color: Color(0xFF64748B),
+                    size: 26,
+                  ),
+                ),
               ),
             ),
           ),
           const SizedBox(width: 14),
-          const Expanded(
+          Expanded(
             child: Text(
-              'Course Planner',
-              style: TextStyle(
+              isChinese ? '課程規劃' : 'Course Planner',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w800,
                 color: Color(0xFF0F172A),
               ),
             ),
           ),
+          const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Text(
-                'TOTAL CREDITS',
-                style: TextStyle(
+              Text(
+                isChinese ? '總學分' : 'TOTAL CREDITS',
+                style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.0,
@@ -1023,6 +1038,8 @@ class _Tabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isChinese = LanguageScope.watch(context).isChinese;
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 28),
       padding: const EdgeInsets.all(4),
@@ -1033,12 +1050,12 @@ class _Tabs extends StatelessWidget {
       child: Row(
         children: [
           _TabButton(
-            title: 'DISCOVER',
+            title: isChinese ? '探索' : 'DISCOVER',
             active: selectedTab == 0,
             onTap: () => onChanged(0),
           ),
           _TabButton(
-            title: 'MY PLAN',
+            title: isChinese ? '我的計畫' : 'MY PLAN',
             active: selectedTab == 1,
             badge: planCount,
             onTap: () => onChanged(1),
@@ -1179,6 +1196,8 @@ class _PinnedDiscoverSearchBarState extends State<_PinnedDiscoverSearchBar> {
 
   @override
   Widget build(BuildContext context) {
+    final isChinese = LanguageScope.watch(context).isChinese;
+
     final hasFilter = widget.selectedType != 'ALL' ||
         widget.selectedCredits != null ||
         widget.selectedDepartment != 'All';
@@ -1232,14 +1251,16 @@ class _PinnedDiscoverSearchBarState extends State<_PinnedDiscoverSearchBar> {
                   controller: searchController,
                   onChanged: widget.onSearchChanged,
                   cursorColor: const Color(0xFF9333EA),
-                  decoration: const InputDecoration(
-                    hintText: 'Search code, name, teacher...',
+                  decoration: InputDecoration(
+                    hintText: isChinese
+                        ? '搜尋課號、課名、教師...'
+                        : 'Search code, name, teacher...',
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
                     isDense: true,
                     contentPadding: EdgeInsets.zero,
-                    hintStyle: TextStyle(
+                    hintStyle: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
                       color: Color(0xFFCBD5E1),
@@ -1253,39 +1274,52 @@ class _PinnedDiscoverSearchBarState extends State<_PinnedDiscoverSearchBar> {
                 ),
               ),
             ),
-            const SizedBox(width: 10),
-            InkWell(
-              borderRadius: BorderRadius.circular(99),
-              onTap: widget.onFilterTap,
-              child: Stack(
-                alignment: Alignment.center,
-                clipBehavior: Clip.none,
-                children: [
-                  Icon(
-                    Icons.filter_alt_outlined,
-                    color: hasFilter
-                        ? const Color(0xFF7E3291)
-                        : const Color(0xFF94A3B8),
-                    size: 24,
-                  ),
-                  if (hasFilter)
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF7E3291),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white,
-                            width: 1.5,
-                          ),
+            const SizedBox(width: 6),
+            Tooltip(
+              message: isChinese ? '篩選' : 'Filters',
+              child: Semantics(
+                button: true,
+                label: isChinese ? '篩選' : 'Filters',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(99),
+                  onTap: widget.onFilterTap,
+                  child: SizedBox(
+                    // 44x44 keeps the tap target at the recommended minimum
+                    // size; the icon itself stays the same as before.
+                    width: 44,
+                    height: 44,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      clipBehavior: Clip.none,
+                      children: [
+                        Icon(
+                          Icons.filter_alt_outlined,
+                          color: hasFilter
+                              ? const Color(0xFF7E3291)
+                              : const Color(0xFF94A3B8),
+                          size: 24,
                         ),
-                      ),
+                        if (hasFilter)
+                          Positioned(
+                            right: 10,
+                            top: 10,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF7E3291),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 1.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                ],
+                  ),
+                ),
               ),
             ),
           ],
@@ -1839,6 +1873,8 @@ class _MyPlanView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isChinese = LanguageScope.watch(context).isChinese;
+
     if (plannedCourses.isEmpty) {
       return ListView(
         padding: const EdgeInsets.fromLTRB(28, 20, 28, 100),
@@ -1868,19 +1904,21 @@ class _MyPlanView extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 18),
-                const Text(
-                  'Your plan is empty',
-                  style: TextStyle(
+                Text(
+                  isChinese ? '你的學期計畫是空的' : 'Your plan is empty',
+                  style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
                     color: Color(0xFF0F172A),
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Browse courses and add them to build your semester plan.',
+                Text(
+                  isChinese
+                      ? '瀏覽課程並加入，建立你的學期計畫。'
+                      : 'Browse courses and add them to build your semester plan.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 13,
                     height: 1.4,
                     fontWeight: FontWeight.w600,
@@ -1902,9 +1940,9 @@ class _MyPlanView extends StatelessWidget {
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  child: const Text(
-                    'BROWSE COURSES',
-                    style: TextStyle(
+                  child: Text(
+                    isChinese ? '瀏覽課程' : 'BROWSE COURSES',
+                    style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 0.7,
@@ -1948,7 +1986,11 @@ class _MyPlanView extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  '${plannedCourses.length} courses selected',
+                  isChinese
+                      ? '已選 ${plannedCourses.length} 門課'
+                      : '${plannedCourses.length} courses selected',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w900,
@@ -1956,23 +1998,29 @@ class _MyPlanView extends StatelessWidget {
                   ),
                 ),
               ),
-              Text(
-                '$totalCredits credits',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF7E3291),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  isChinese ? '$totalCredits 學分' : '$totalCredits credits',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF7E3291),
+                  ),
                 ),
               ),
             ],
           ),
         ),
         const SizedBox(height: 18),
-        const Padding(
-          padding: EdgeInsets.only(left: 4, bottom: 10),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 10),
           child: Text(
-            'WEEKLY SCHEDULE',
-            style: TextStyle(
+            isChinese ? '每週課表' : 'WEEKLY SCHEDULE',
+            style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w900,
               letterSpacing: 0.8,
@@ -1985,11 +2033,11 @@ class _MyPlanView extends StatelessWidget {
           onRemove: onRemove,
         ),
         const SizedBox(height: 18),
-        const Padding(
-          padding: EdgeInsets.only(left: 4, bottom: 10),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 10),
           child: Text(
-            'SELECTED COURSES',
-            style: TextStyle(
+            isChinese ? '已選課程' : 'SELECTED COURSES',
+            style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w900,
               letterSpacing: 0.8,

@@ -9,6 +9,7 @@ class AppEvent {
   final Color color;
   final String location;
   int progress;
+  int priorityScore;
   final DateTime dueDate;
   final List<Subtask> subtasks;
   final String? summary;
@@ -22,6 +23,7 @@ class AppEvent {
     required this.color,
     this.location = 'Online',
     this.progress = 0,
+    this.priorityScore = 0,
     required this.dueDate,
     this.subtasks = const [],
     this.summary,

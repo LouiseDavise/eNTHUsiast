@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:enthusiast/providers/language_provider.dart';
 
 class PlannerFilterSheet extends StatefulWidget {
   final String initialType;
@@ -71,11 +72,39 @@ class _PlannerFilterSheetState extends State<PlannerFilterSheet> {
     });
   }
 
+  // Display labels for the internal type sentinels. The underlying values
+  // ('ALL', 'CORE', 'ELECTIVE', 'GE') stay unchanged since they're compared
+  // elsewhere (e.g. _PinnedDiscoverSearchBar's hasFilter check) — only what
+  // the user sees on the chip changes.
+  String _typeLabel(String type, bool isChinese) {
+    switch (type) {
+      case 'ALL':
+        return isChinese ? '全部' : 'All';
+      case 'CORE':
+        return isChinese ? '必修' : 'Core';
+      case 'ELECTIVE':
+        return isChinese ? '選修' : 'Elective';
+      case 'GE':
+        return isChinese ? '通識' : 'GE';
+      default:
+        return type;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final departments = widget.departmentOptions.isEmpty
-        ? ['All']
-        : widget.departmentOptions;
+    final isChinese = LanguageScope.watch(context).isChinese;
+
+    // Guarantee an 'All' entry always exists in the dropdown's items list.
+    // Previously, if widget.departmentOptions was non-empty but didn't
+    // contain 'All', both initState's and this method's fallback to
+    // selectedDepartment = 'All' pointed at a value with no matching
+    // DropdownMenuItem, which throws a runtime assertion. Prepending it
+    // here (and de-duping) makes 'All' always a valid, selectable value.
+    final departments = <String>[
+      'All',
+      ...widget.departmentOptions.where((d) => d != 'All'),
+    ];
 
     return Container(
       decoration: const BoxDecoration(
@@ -100,13 +129,12 @@ class _PlannerFilterSheetState extends State<PlannerFilterSheet> {
                 ),
               ),
               const SizedBox(height: 22),
-
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Filter Courses',
-                      style: TextStyle(
+                      isChinese ? '篩選課程' : 'Filter Courses',
+                      style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w900,
                         color: Color(0xFF0F172A),
@@ -115,9 +143,9 @@ class _PlannerFilterSheetState extends State<PlannerFilterSheet> {
                   ),
                   TextButton(
                     onPressed: resetFilter,
-                    child: const Text(
-                      'RESET',
-                      style: TextStyle(
+                    child: Text(
+                      isChinese ? '重設' : 'RESET',
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w900,
                         color: Color(0xFF7E3291),
@@ -126,18 +154,15 @@ class _PlannerFilterSheetState extends State<PlannerFilterSheet> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 20),
-
-              _SectionLabel(title: 'COURSE TYPE'),
+              _SectionLabel(title: isChinese ? '課程類別' : 'COURSE TYPE'),
               const SizedBox(height: 10),
-
               Wrap(
                 spacing: 10,
                 runSpacing: 10,
                 children: typeOptions.map((type) {
                   return _FilterChipButton(
-                    label: type,
+                    label: _typeLabel(type, isChinese),
                     selected: selectedType == type,
                     onTap: () {
                       setState(() {
@@ -147,17 +172,15 @@ class _PlannerFilterSheetState extends State<PlannerFilterSheet> {
                   );
                 }).toList(),
               ),
-
               const SizedBox(height: 22),
-
-              _SectionLabel(title: 'CREDITS'),
+              _SectionLabel(title: isChinese ? '學分數' : 'CREDITS'),
               const SizedBox(height: 10),
-
               Wrap(
                 spacing: 10,
                 runSpacing: 10,
                 children: creditOptions.map((credit) {
-                  final label = credit == null ? 'ALL' : '$credit';
+                  final label =
+                      credit == null ? (isChinese ? '全部' : 'All') : '$credit';
 
                   return _FilterChipButton(
                     label: label,
@@ -170,12 +193,9 @@ class _PlannerFilterSheetState extends State<PlannerFilterSheet> {
                   );
                 }).toList(),
               ),
-
               const SizedBox(height: 22),
-
-              _SectionLabel(title: 'DEPARTMENT'),
+              _SectionLabel(title: isChinese ? '開課系所' : 'DEPARTMENT'),
               const SizedBox(height: 10),
-
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
@@ -196,10 +216,14 @@ class _PlannerFilterSheetState extends State<PlannerFilterSheet> {
                       color: Color(0xFF7E3291),
                     ),
                     items: departments.map((department) {
+                      final label = department == 'All'
+                          ? (isChinese ? '全部系所' : 'All')
+                          : department;
+
                       return DropdownMenuItem<String>(
                         value: department,
                         child: Text(
-                          department,
+                          label,
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
@@ -218,9 +242,7 @@ class _PlannerFilterSheetState extends State<PlannerFilterSheet> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 28),
-
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -234,9 +256,9 @@ class _PlannerFilterSheetState extends State<PlannerFilterSheet> {
                       borderRadius: BorderRadius.circular(18),
                     ),
                   ),
-                  child: const Text(
-                    'APPLY FILTER',
-                    style: TextStyle(
+                  child: Text(
+                    isChinese ? '套用篩選' : 'APPLY FILTER',
+                    style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 0.8,
@@ -309,9 +331,7 @@ class _FilterChipButton extends StatelessWidget {
           color: selected ? const Color(0xFF7E3291) : Colors.white,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: selected
-                ? const Color(0xFF7E3291)
-                : const Color(0xFFE5E7EB),
+            color: selected ? const Color(0xFF7E3291) : const Color(0xFFE5E7EB),
           ),
         ),
         child: Text(

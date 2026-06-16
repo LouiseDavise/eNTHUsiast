@@ -380,12 +380,12 @@ ${cleanText}`;
     }
 }
 
-exports.nthuEmailParser = onSchedule({
-    schedule: "every 30 minutes",
-    secrets: [openRouterApiKey, gmailCredentials]
-}, async (event) => {
-    await checkAndParseEmails();
-});
+// exports.nthuEmailParser = onSchedule({
+//     schedule: "every 30 minutes",
+//     secrets: [openRouterApiKey, gmailCredentials]
+// }, async (event) => {
+//     await checkAndParseEmails();
+// });
 
 exports.linkGmailAccount = onCall({
     secrets: [gmailCredentials],
