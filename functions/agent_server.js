@@ -18,7 +18,7 @@ wss.on('connection', function connection(ws) {
         try {
             const rawData   = data.toString();
             let userMessage = rawData;
-            let sessionUid  = null;
+            let sessionUid  = null
 
             try {
                 const payload = JSON.parse(rawData);
