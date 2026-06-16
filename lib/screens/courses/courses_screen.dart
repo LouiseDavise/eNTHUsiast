@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'package:enthusiast/models/courses_model.dart';
 import 'package:enthusiast/providers/ccxp_data_provider.dart';
+import 'package:enthusiast/providers/language_provider.dart';
 import 'package:enthusiast/screens/courses/courses_material_screen.dart';
 import 'package:enthusiast/screens/courses/courses_planner_screen.dart';
 import 'package:enthusiast/screens/courses/graduation_verification_screen.dart';
@@ -19,7 +20,8 @@ class CoursesScreen extends StatefulWidget {
 }
 
 class _CoursesScreenState extends State<CoursesScreen> {
-  static const String _testStudentId = String.fromEnvironment('COURSE_TEST_STUDENT_ID');
+  static const String _testStudentId =
+      String.fromEnvironment('COURSE_TEST_STUDENT_ID');
 
   final List<String> _semesters = CourseScheduleMapper.semesterOrder;
   int _semesterIndex = CourseScheduleMapper.semesterOrder.length - 1;
@@ -30,10 +32,14 @@ class _CoursesScreenState extends State<CoursesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final language = LanguageScope.watch(context);
+    final isChinese = language.isChinese;
+
     final scheduleData = context.watch<CcxpDataProvider>().scheduleData;
     final selectedSemester = _semesters[_semesterIndex];
 
-    if (!identical(_lastScheduleData, scheduleData) || _lastSemester != selectedSemester) {
+    if (!identical(_lastScheduleData, scheduleData) ||
+        _lastSemester != selectedSemester) {
       _lastScheduleData = scheduleData;
       _lastSemester = selectedSemester;
       _scheduleFuture = CourseScheduleMapper.buildSemesterSchedule(
@@ -53,6 +59,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
             children: [
               _SemesterHeader(
                 title: selectedSemester,
+                isChinese: isChinese,
                 canGoPrevious: _semesterIndex > 0,
                 canGoNext: _semesterIndex < _semesters.length - 1,
                 onPrevious: _semesterIndex > 0
@@ -64,7 +71,10 @@ class _CoursesScreenState extends State<CoursesScreen> {
               ),
               if (_testStudentId.isNotEmpty) ...[
                 const SizedBox(height: 10),
-                const _DemoStudentBanner(studentId: _testStudentId),
+                _DemoStudentBanner(
+                  studentId: _testStudentId,
+                  isChinese: isChinese,
+                ),
               ],
               const SizedBox(height: 16),
               Container(
@@ -88,7 +98,8 @@ class _CoursesScreenState extends State<CoursesScreen> {
                       return const SizedBox(
                         height: 420,
                         child: Center(
-                          child: CircularProgressIndicator(color: Color(0xFF7B2CBF)),
+                          child: CircularProgressIndicator(
+                              color: Color(0xFF7B2CBF)),
                         ),
                       );
                     }
@@ -96,7 +107,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                     if (snapshot.hasError) {
                       return _ScheduleStateMessage(
                         icon: Icons.error_outline_rounded,
-                        title: 'Could not load timetable',
+                        title: isChinese ? '無法載入課表' : 'Could not load timetable',
                         subtitle: snapshot.error.toString(),
                       );
                     }
@@ -106,8 +117,12 @@ class _CoursesScreenState extends State<CoursesScreen> {
                     if (schedule.isEmpty) {
                       return _ScheduleStateMessage(
                         icon: Icons.calendar_month_outlined,
-                        title: 'No timetable data for $selectedSemester',
-                        subtitle: 'This semester may not have synced course time data yet.',
+                        title: isChinese
+                            ? '$selectedSemester 沒有課表資料'
+                            : 'No timetable data for $selectedSemester',
+                        subtitle: isChinese
+                            ? '此學期的課程時間資料可能尚未同步。'
+                            : 'This semester may not have synced course time data yet.',
                       );
                     }
 
@@ -120,7 +135,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                 children: [
                   Expanded(
                     child: MenuSquareButton(
-                      title: 'Course\nMaterials',
+                      title: isChinese ? '課程\n教材' : 'Course\nMaterials',
                       icon: Icons.menu_book_rounded,
                       activeColor: const Color(0xFF7B2CBF),
                       inactiveBgColor: const Color(0xFFE9D5FF),
@@ -138,7 +153,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                   const SizedBox(width: 14),
                   Expanded(
                     child: MenuSquareButton(
-                      title: 'Course\nPlanner',
+                      title: isChinese ? '課程\n規劃' : 'Course\nPlanner',
                       icon: Icons.search_rounded,
                       activeColor: const Color(0xFF2563EB),
                       inactiveBgColor: const Color(0xFFEFF6FF),
@@ -157,8 +172,9 @@ class _CoursesScreenState extends State<CoursesScreen> {
               ),
               const SizedBox(height: 16),
               MenuWideButton(
-                title: 'Graduation Verification',
-                subtitle: 'CHECK YOUR DEGREE PROGRESS',
+                title: isChinese ? '畢業資格審查' : 'Graduation Verification',
+                subtitle:
+                    isChinese ? '查看你的學位進度' : 'CHECK YOUR DEGREE PROGRESS',
                 icon: Icons.school_outlined,
                 activeColor: const Color(0xFFF97316),
                 inactiveBgColor: const Color(0xFFFFF7ED),
@@ -172,6 +188,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                   );
                 },
               ),
+              const SizedBox(height: 90),
             ],
           ),
         ),
@@ -183,6 +200,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
 class _SemesterHeader extends StatelessWidget {
   const _SemesterHeader({
     required this.title,
+    required this.isChinese,
     required this.canGoPrevious,
     required this.canGoNext,
     required this.onPrevious,
@@ -190,6 +208,7 @@ class _SemesterHeader extends StatelessWidget {
   });
 
   final String title;
+  final bool isChinese;
   final bool canGoPrevious;
   final bool canGoNext;
   final VoidCallback? onPrevious;
@@ -199,10 +218,12 @@ class _SemesterHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const Text(
-          'Semester History',
+        Text(
+          isChinese ? '學期紀錄' : 'Semester History',
           textAlign: TextAlign.center,
-          style: TextStyle(
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
             color: Color(0xFF4C1D95),
             fontSize: 34,
             fontWeight: FontWeight.w700,
@@ -218,18 +239,24 @@ class _SemesterHeader extends StatelessWidget {
               icon: Icons.chevron_left_rounded,
               enabled: canGoPrevious,
               onTap: onPrevious,
+              semanticLabel: isChinese ? '上一個學期' : 'Previous semester',
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 22),
-              child: Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0xFF111827),
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.4,
-                  height: 1,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 220),
+                child: Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF111827),
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.4,
+                    height: 1,
+                  ),
                 ),
               ),
             ),
@@ -237,14 +264,17 @@ class _SemesterHeader extends StatelessWidget {
               icon: Icons.chevron_right_rounded,
               enabled: canGoNext,
               onTap: onNext,
+              semanticLabel: isChinese ? '下一個學期' : 'Next semester',
             ),
           ],
         ),
         const SizedBox(height: 14),
-        const Text(
-          'Browse your previous semesters and review your course timetable.',
+        Text(
+          isChinese
+              ? '瀏覽過去的學期，查看你的課程時間表。'
+              : 'Browse your previous semesters and review your course timetable.',
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: const TextStyle(
             color: Color(0xFF6B7280),
             fontSize: 13,
             fontWeight: FontWeight.w600,
@@ -262,37 +292,54 @@ class _ArrowButton extends StatelessWidget {
     required this.icon,
     required this.enabled,
     required this.onTap,
+    required this.semanticLabel,
   });
 
   final IconData icon;
   final bool enabled;
   final VoidCallback? onTap;
+  final String semanticLabel;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(18),
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 160),
-        opacity: enabled ? 1 : 0.24,
-        child: SizedBox(
-          width: 38,
-          height: 38,
-          child: Icon(
-            icon,
-            color: const Color(0xFF8B5CF6),
-            size: 32,
+    return Tooltip(
+      message: semanticLabel,
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: semanticLabel,
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(22),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 160),
+            opacity: enabled ? 1 : 0.24,
+            // 44x44 keeps the tap target at the recommended minimum size
+            // while the visible icon stays the same as before.
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Icon(
+                icon,
+                color: const Color(0xFF8B5CF6),
+                size: 32,
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 }
+
 class _DemoStudentBanner extends StatelessWidget {
-  const _DemoStudentBanner({required this.studentId});
+  const _DemoStudentBanner({
+    required this.studentId,
+    required this.isChinese,
+  });
 
   final String studentId;
+  final bool isChinese;
 
   @override
   Widget build(BuildContext context) {
@@ -307,11 +354,12 @@ class _DemoStudentBanner extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.science_outlined, size: 16, color: Color(0xFF92400E)),
+          const Icon(Icons.science_outlined,
+              size: 16, color: Color(0xFF92400E)),
           const SizedBox(width: 8),
           Flexible(
             child: Text(
-              'Previewing test student $studentId',
+              isChinese ? '正在預覽測試學生 $studentId' : 'Previewing test student $studentId',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Color(0xFF92400E),
@@ -386,5 +434,3 @@ class _ScheduleStateMessage extends StatelessWidget {
     );
   }
 }
-
-
