@@ -24,12 +24,23 @@ const {scrapEeclass} = require("./scrapper/eeclass_scrapper.js");
 const { parseGraduationData, parseSchedule } = require("./parser/parser.js");
 
 
+const {
+  buildSemesterCourses,
+  importCatalogFile,
+  semesterFiles,
+} = require('./sync_semester_history');
+const functions = require('firebase-functions');
+
+admin.initializeApp();
+const db = admin.firestore();
+
+
 
 // admin.initializeApp();
-admin.initializeApp({
-    // credential: admin.credential.cert(serviceAccount)
-});
-const db = admin.firestore();
+// admin.initializeApp({
+//     // credential: admin.credential.cert(serviceAccount)
+// });
+// const db = admin.firestore();
 
 const ALLOWED_SENDERS = [
     'louizkwok2@gmail.com',
@@ -981,3 +992,26 @@ exports.api = onRequest({
     timeoutSeconds: 300,
     secrets: [openaiApiKey],
 }, app);
+
+
+
+exports.syncSemesterHistoryForUser = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be logged in');
+  }
+
+  const db = admin.firestore();
+  const userDoc = await db.collection('ccxpUsers').doc(context.auth.uid).get();
+  const studentId = userDoc.data()?.graduationData?.studentInfo?.studentId;
+
+  if (!studentId) {
+    throw new functions.https.HttpsError('not-found', 'Student ID not found');
+  }
+
+  for (const item of semesterFiles) {
+    await importCatalogFile(item);
+  }
+
+  await buildSemesterCourses(studentId);
+  return { success: true };
+});

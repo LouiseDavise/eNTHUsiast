@@ -12,7 +12,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'dart:ui';
 
-const bool prod = false;
+const bool prod = true;
 
 class CcxpLoginScreen extends StatefulWidget {
   const CcxpLoginScreen({super.key});
@@ -144,6 +144,8 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
+    await user.getIdToken(true);
+
     try {
       final result = await FirebaseFunctions.instanceFor(region: 'us-central1')
           .httpsCallable('syncSemesterHistoryForUser')
@@ -154,6 +156,7 @@ class _CcxpLoginScreenState extends State<CcxpLoginScreen> {
       debugPrint('Semester history sync failed: $e');
     }
   }
+
   // Updated login UI mechanism triggered by your button
   void _handleLogin() async {
     if (_studentIdController.text.isEmpty || _passwordController.text.isEmpty) {
@@ -888,5 +891,3 @@ class _GradientLoginButton extends StatelessWidget {
     );
   }
 }
-
-

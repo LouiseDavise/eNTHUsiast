@@ -19,7 +19,8 @@ class CoursesScreen extends StatefulWidget {
 }
 
 class _CoursesScreenState extends State<CoursesScreen> {
-  static const String _testStudentId = String.fromEnvironment('COURSE_TEST_STUDENT_ID');
+  static const String _testStudentId =
+      String.fromEnvironment('COURSE_TEST_STUDENT_ID');
 
   final List<String> _semesters = CourseScheduleMapper.semesterOrder;
   int _semesterIndex = CourseScheduleMapper.semesterOrder.length - 1;
@@ -33,7 +34,8 @@ class _CoursesScreenState extends State<CoursesScreen> {
     final scheduleData = context.watch<CcxpDataProvider>().scheduleData;
     final selectedSemester = _semesters[_semesterIndex];
 
-    if (!identical(_lastScheduleData, scheduleData) || _lastSemester != selectedSemester) {
+    if (!identical(_lastScheduleData, scheduleData) ||
+        _lastSemester != selectedSemester) {
       _lastScheduleData = scheduleData;
       _lastSemester = selectedSemester;
       _scheduleFuture = CourseScheduleMapper.buildSemesterSchedule(
@@ -88,7 +90,8 @@ class _CoursesScreenState extends State<CoursesScreen> {
                       return const SizedBox(
                         height: 420,
                         child: Center(
-                          child: CircularProgressIndicator(color: Color(0xFF7B2CBF)),
+                          child: CircularProgressIndicator(
+                              color: Color(0xFF7B2CBF)),
                         ),
                       );
                     }
@@ -107,7 +110,8 @@ class _CoursesScreenState extends State<CoursesScreen> {
                       return _ScheduleStateMessage(
                         icon: Icons.calendar_month_outlined,
                         title: 'No timetable data for $selectedSemester',
-                        subtitle: 'This semester may not have synced course time data yet.',
+                        subtitle:
+                            'This semester may not have synced course time data yet.',
                       );
                     }
 
@@ -172,6 +176,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                   );
                 },
               ),
+              const SizedBox(height: 100)
             ],
           ),
         ),
@@ -289,6 +294,7 @@ class _ArrowButton extends StatelessWidget {
     );
   }
 }
+
 class _DemoStudentBanner extends StatelessWidget {
   const _DemoStudentBanner({required this.studentId});
 
@@ -307,7 +313,8 @@ class _DemoStudentBanner extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.science_outlined, size: 16, color: Color(0xFF92400E)),
+          const Icon(Icons.science_outlined,
+              size: 16, color: Color(0xFF92400E)),
           const SizedBox(width: 8),
           Flexible(
             child: Text(
@@ -386,5 +393,3 @@ class _ScheduleStateMessage extends StatelessWidget {
     );
   }
 }
-
-
