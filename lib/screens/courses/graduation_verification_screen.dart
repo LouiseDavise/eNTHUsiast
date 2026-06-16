@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/graduation_verification_model.dart';
 import '../../providers/ccxp_data_provider.dart';
+import '../../providers/language_provider.dart';
 import 'widgets/graduation_category_card.dart';
 import 'widgets/progress_summary_card.dart';
 
@@ -43,15 +44,18 @@ class GraduationVerificationScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final graduationData = context.watch<CcxpDataProvider>().graduationData;
+    final isChinese = LanguageScope.watch(context).isChinese;
 
     if (graduationData == null) {
       return Scaffold(
         backgroundColor: const Color(0xFFF8FAFC),
-        body: const Center(
+        body: Center(
           child: Text(
-            'Graduation data is not available. Please login first.',
+            isChinese
+                ? '畢業資料無法取得，請先登入。'
+                : 'Graduation data is not available. Please login first.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16),
+            style: const TextStyle(fontSize: 16),
           ),
         ),
       );
@@ -73,7 +77,7 @@ class GraduationVerificationScreen extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            _Header(),
+            _Header(isChinese: isChinese),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
@@ -102,8 +106,16 @@ class GraduationVerificationScreen extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
+  const _Header({required this.isChinese});
+
+  final bool isChinese;
+
   @override
   Widget build(BuildContext context) {
+    final graduationData = context.watch<CcxpDataProvider>().graduationData;
+    final year = graduationData?['studentInfo']['studentDepartment'];
+    RegExp delimiters = RegExp(r'[一二三四五六七八九十]');
+    final department = year.split(delimiters).first;
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
       decoration: const BoxDecoration(
@@ -130,21 +142,21 @@ class _Header extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 14),
-          const Column(
+          Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'EECS-GS',
+                department,
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
                   color: Color(0xFF0F172A),
                 ),
               ),
-              SizedBox(height: 4),
+              const SizedBox(height: 4),
               Text(
-                'GRADUATION VERIFICATION',
-                style: TextStyle(
+                isChinese ? '畢業資格審查' : 'GRADUATION VERIFICATION',
+                style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.0,

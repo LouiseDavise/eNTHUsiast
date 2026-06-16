@@ -1,7 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../../../models/courses_model.dart';
-import 'course_timetable_detail_sheet.dart';
 import 'grid_painter.dart';
 
 class _Period {
@@ -194,107 +193,246 @@ class TimetableGrid extends StatelessWidget {
 }
 
 class _TimetableCourseCard extends StatelessWidget {
+  const _TimetableCourseCard({required this.course});
+
   final CourseItem course;
 
-  const _TimetableCourseCard({
-    required this.course,
-  });
-
-  void _openDetail(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) {
-        return CourseTimetableDetailSheet(course: course);
-      },
-    );
+  Color _textColorFromBorder(Color border) {
+    final hsl = HSLColor.fromColor(border);
+    return hsl
+        .withSaturation((hsl.saturation + 0.12).clamp(0.35, 0.72).toDouble())
+        .withLightness(0.30)
+        .toColor();
   }
 
   @override
   Widget build(BuildContext context) {
-    final String timeText = course.timeText?.trim().isNotEmpty == true
-        ? course.timeText!.trim()
-        : 'Time N/A';
+    final background = Color.alphaBlend(
+      course.bg.withValues(alpha: 0.08),
+      Colors.white,
+    );
+    final borderColor = course.border.withValues(alpha: 0.82);
+    final primaryTextColor = _textColorFromBorder(course.border);
+    final secondaryTextColor = primaryTextColor.withValues(alpha: 0.76);
 
-    final String locationText = course.location?.trim().isNotEmpty == true
-        ? course.location!.trim()
-        : '';
-
-    final bool showLocation = course.duration >= 2 && locationText.isNotEmpty;
-
-    return GestureDetector(
-      onTap: () => _openDetail(context),
-      child: Container(
-        decoration: BoxDecoration(
-          color: course.bg,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: course.border,
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: course.text.withValues(alpha: 0.07),
-              blurRadius: 6,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.symmetric(
-          horizontal: 5,
-          vertical: 5,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Flexible(
-              child: Text(
-                course.title,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 8.8,
-                  fontWeight: FontWeight.w900,
-                  color: course.text,
-                  height: 1.12,
-                ),
-                maxLines: course.duration >= 2 ? 2 : 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-
-            const SizedBox(height: 3),
-
-            Text(
-              timeText,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 7.8,
-                fontWeight: FontWeight.w800,
-                color: course.text.withValues(alpha: 0.78),
-                height: 1.05,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-
-            if (showLocation) ...[
-              const SizedBox(height: 2),
-              Text(
-                locationText,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 7.3,
-                  fontWeight: FontWeight.w700,
-                  color: course.text.withValues(alpha: 0.66),
-                  height: 1.05,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _showCourseDetails(context),
+        child: Container(
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: borderColor, width: 1.05),
+            boxShadow: [
+              BoxShadow(
+                color: borderColor.withValues(alpha: 0.035),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
               ),
             ],
-          ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isTiny = constraints.maxHeight < 48;
+                final isShort = constraints.maxHeight < 66;
+
+                return Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: isTiny ? 3 : 6,
+                  ),
+                  child: Center(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.center,
+                      child: SizedBox(
+                        width: (constraints.maxWidth - 14).clamp(40, 220),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              course.title,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: isTiny
+                                    ? 9.0
+                                    : isShort
+                                        ? 9.8
+                                        : 11.0,
+                                fontWeight: FontWeight.w800,
+                                color: primaryTextColor,
+                                height: 1.12,
+                                letterSpacing: -0.08,
+                              ),
+                              maxLines: isTiny
+                                  ? 1
+                                  : isShort
+                                      ? 1
+                                      : 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (!isTiny && course.timeRange.isNotEmpty) ...[
+                              const SizedBox(height: 3),
+                              Text(
+                                course.timeRange,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: isShort ? 8.2 : 8.8,
+                                  fontWeight: FontWeight.w600,
+                                  color: secondaryTextColor,
+                                  height: 1.05,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                            if (!isShort && course.room.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                course.room,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 7.8,
+                                  fontWeight: FontWeight.w600,
+                                  color: secondaryTextColor.withValues(alpha: 0.86),
+                                  height: 1.05,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
         ),
+      ),
+    );
+  }
+
+  void _showCourseDetails(BuildContext context) {
+    final borderColor = course.border.withValues(alpha: 0.82);
+    final primaryTextColor = _textColorFromBorder(course.border);
+    final background = Color.alphaBlend(
+      course.bg.withValues(alpha: 0.14),
+      Colors.white,
+    );
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 28,
+                offset: const Offset(0, 16),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: background,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: borderColor),
+                      ),
+                      child: Icon(Icons.menu_book_rounded, color: primaryTextColor),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        course.title,
+                        style: const TextStyle(
+                          color: Color(0xFF111827),
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                          height: 1.15,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                _DetailRow(label: 'Course No', value: course.courseNo.isEmpty ? course.code : course.courseNo),
+                _DetailRow(label: 'Time', value: course.timeRange),
+                _DetailRow(label: 'Slot', value: course.slotCode),
+                _DetailRow(label: 'Room', value: course.room),
+                _DetailRow(label: 'Teacher', value: course.teacher),
+                if (course.credits > 0)
+                  _DetailRow(label: 'Credits', value: course.credits.toString()),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    if (value.trim().isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 82,
+            child: Text(
+              label.toUpperCase(),
+              style: const TextStyle(
+                color: Color(0xFF9CA3AF),
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Color(0xFF374151),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -18,6 +18,7 @@ import 'package:enthusiast/main.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../providers/ccxp_data_provider.dart';
 import '../../providers/language_provider.dart';
+import 'package:enthusiast/screens/account/account_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hover-aware settings row tile — matches home_screen hover-pop aesthetic
@@ -228,8 +229,8 @@ class _AccountScreenState extends State<AccountScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            isChinese 
-                ? '錯誤：找不到學號。請先登入 CCXP 系統。' 
+            isChinese
+                ? '錯誤：找不到學號。請先登入 CCXP 系統。'
                 : 'Error: Could not find Student ID. Please log in to CCXP first.',
           ),
           backgroundColor: Colors.red,
@@ -240,16 +241,16 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   // Panggil Cloud Function linkGmailAccount dengan payload yang diberikan
-  Future<void> _callLinkFunction(Map<String, dynamic> payload, bool isChinese) async {
+  Future<void> _callLinkFunction(
+      Map<String, dynamic> payload, bool isChinese) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-                isChinese 
-                    ? '錯誤：未登入 Firebase。請先登入 CCXP 系統。' 
-                    : 'Error: Not logged in to Firebase. Please log in to CCXP first.'),
+            content: Text(isChinese
+                ? '錯誤：未登入 Firebase。請先登入 CCXP 系統。'
+                : 'Error: Not logged in to Firebase. Please log in to CCXP first.'),
             backgroundColor: Colors.red,
           ),
         );
@@ -270,13 +271,17 @@ class _AccountScreenState extends State<AccountScreen> {
       if (result.data['success'] == true) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(isChinese ? '帳號連動與保護成功！' : 'Account successfully linked and secured!'),
+            content: Text(isChinese
+                ? '帳號連動與保護成功！'
+                : 'Account successfully linked and secured!'),
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(isChinese ? '警告：連動已完成，但請檢查主控台訊息。' : 'Warning: Linking completed but check the console.'),
+            content: Text(isChinese
+                ? '警告：連動已完成，但請檢查主控台訊息。'
+                : 'Warning: Linking completed but check the console.'),
           ),
         );
       }
@@ -284,7 +289,9 @@ class _AccountScreenState extends State<AccountScreen> {
       print("Cloud Function Error: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(isChinese ? '連線至伺服器失敗。' : 'Failed to connect to server.')),
+          SnackBar(
+              content: Text(
+                  isChinese ? '連線至伺服器失敗。' : 'Failed to connect to server.')),
         );
       }
     }
@@ -307,10 +314,9 @@ class _AccountScreenState extends State<AccountScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                  isChinese 
-                      ? '無法取得伺服器驗證碼。請檢查伺服器用戶端識別碼設定。' 
-                      : 'Failed to get server auth code. Check serverClientId configuration.'),
+              content: Text(isChinese
+                  ? '無法取得伺服器驗證碼。請檢查伺服器用戶端識別碼設定。'
+                  : 'Failed to get server auth code. Check serverClientId configuration.'),
               backgroundColor: Colors.red,
             ),
           );
@@ -321,7 +327,9 @@ class _AccountScreenState extends State<AccountScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(isChinese ? 'Gmail 授權成功！正在連動...' : 'Successfully authorized Gmail! Linking...'),
+            content: Text(isChinese
+                ? 'Gmail 授權成功！正在連動...'
+                : 'Successfully authorized Gmail! Linking...'),
           ),
         );
       }
@@ -340,7 +348,9 @@ class _AccountScreenState extends State<AccountScreen> {
       print("Google Sign In Error (mobile): $error");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(isChinese ? '登入失敗：$error' : 'Login failed: $error')),
+          SnackBar(
+              content:
+                  Text(isChinese ? '登入失敗：$error' : 'Login failed: $error')),
         );
       }
     }
@@ -359,7 +369,8 @@ class _AccountScreenState extends State<AccountScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(isChinese ? '未授予 Gmail 存取權限。' : 'Gmail scope not granted.'),
+              content: Text(
+                  isChinese ? '未授予 Gmail 存取權限。' : 'Gmail scope not granted.'),
               backgroundColor: Colors.red,
             ),
           );
@@ -376,7 +387,8 @@ class _AccountScreenState extends State<AccountScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(isChinese ? '無法取得存取權杖。' : 'Failed to get access token.'),
+              content:
+                  Text(isChinese ? '無法取得存取權杖。' : 'Failed to get access token.'),
               backgroundColor: Colors.red,
             ),
           );
@@ -387,7 +399,9 @@ class _AccountScreenState extends State<AccountScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(isChinese ? 'Gmail 授權成功！正在連動...' : 'Successfully authorized Gmail! Linking...'),
+            content: Text(isChinese
+                ? 'Gmail 授權成功！正在連動...'
+                : 'Successfully authorized Gmail! Linking...'),
           ),
         );
       }
@@ -406,7 +420,9 @@ class _AccountScreenState extends State<AccountScreen> {
       print("Web Google Sign In Error: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(isChinese ? '授權失敗：$e' : 'Authorization failed: $e')),
+          SnackBar(
+              content:
+                  Text(isChinese ? '授權失敗：$e' : 'Authorization failed: $e')),
         );
       }
     }
@@ -445,7 +461,9 @@ class _AccountScreenState extends State<AccountScreen> {
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(isChinese ? '在上傳課程表前，請重新登入。' : 'Please login again before uploading curriculum.'),
+          content: Text(isChinese
+              ? '在上傳課程表前，請重新登入。'
+              : 'Please login again before uploading curriculum.'),
         ),
       );
       return;
@@ -543,7 +561,8 @@ class _AccountScreenState extends State<AccountScreen> {
                 Expanded(
                   child: FilledButton(
                     onPressed: () async {
-                      deleteCcxpAccount();
+                      FirebaseAuth.instance.signOut();
+                      // deleteCcxpAccount();
                       if (context.mounted) {
                         Navigator.pushAndRemoveUntil(
                           context,
@@ -563,6 +582,113 @@ class _AccountScreenState extends State<AccountScreen> {
                     ),
                     child: Text(
                       isChinese ? '登出' : 'Log Out',
+                      style: GoogleFonts.dmSans(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _onDelete(bool isChinese) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        contentPadding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 60,
+              height: 60,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFEE2E2),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.delete_forever_rounded,
+                color: AppTheme.critical,
+                size: 28,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              isChinese ? '刪除' : 'Delete',
+              style: GoogleFonts.dmSans(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF1A1A2E),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              isChinese
+                  ? '您確定要刪除此帳號嗎？此操作無法復原'
+                  : 'Do you want to delete your firebase account?',
+              style: GoogleFonts.dmSans(
+                fontSize: 13,
+                color: const Color(0xFF6B7280),
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 28),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFE5E7EB)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: Text(
+                      isChinese ? '取消' : 'Cancel',
+                      style: GoogleFonts.dmSans(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: const Color(0xFF374151),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () async {
+                      await deleteCcxpAccount();
+                      // deleteCcxpAccount();
+                      if (context.mounted) {
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const GatekeeperScreen(),
+                          ),
+                          (route) => false,
+                        );
+                      }
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.critical,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: Text(
+                      isChinese ? '刪除' : 'Delete',
                       style: GoogleFonts.dmSans(
                         fontWeight: FontWeight.w700,
                         fontSize: 14,
@@ -710,6 +836,18 @@ class _AccountScreenState extends State<AccountScreen> {
           subtitle: isChinese ? '登出您的清華大學帳號' : 'Sign out of your NTHU account',
           isDanger: true,
           onTap: () => _onLogout(isChinese),
+        ),
+        const SizedBox(height: 10),
+        _SettingsTile(
+          icon: Icons.delete_forever_rounded,
+          iconColor: const Color(0xFFDC2626),
+          iconBg: const Color(0xFFFEE2E2),
+          title: isChinese ? '刪除' : 'Delete Data',
+          subtitle: isChinese
+              ? '永久刪除您在 Firebase 中的帳號與資料'
+              : 'Permanently remove your account and data from Firebase',
+          isDanger: true,
+          onTap: () => _onDelete(isChinese),
         ),
         const SizedBox(height: 70),
       ],

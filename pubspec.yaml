@@ -11,7 +11,7 @@ dependencies:
     sdk: flutter
   web_socket_channel: ^3.0.1
   cupertino_icons: ^1.0.8
-  google_fonts: 6.3.3
+  google_fonts: ^8.1.0
   lucide_icons: 0.257.0
   firebase_core: ^3.6.0
   cloud_firestore: ^5.4.4
@@ -27,6 +27,7 @@ dependencies:
   file_picker: 8.3.7
   image_picker: ^1.0.7
   crypto: ^3.0.3
+  url_launcher: ^6.2.0
 
 dev_dependencies:
   flutter_test:

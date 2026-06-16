@@ -1,56 +1,74 @@
-import { chromium } from "playwright";
-import * as cheerio from 'cheerio';
-import * as fs from 'fs';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
+const { chromium: playwright } = require('playwright-core');
+const chromium = require('@sparticuz/chromium');
+const cheerio = require('cheerio');
+const fs = require('fs');
+const path = require('path');
 
 const eeclassPage = "https://www.ccxp.nthu.edu.tw/ccxp/INQUIRE/SSO_LINK/oauth_eeclass.php?ACIXSTORE=";
-const __dirname = import.meta.dirname;
-const outputDest = path.join(__dirname, 'captcha/page.png');
 
-export async function scrapEeclass(sessKey, currCourses) {
+async function scrapEeclass(sessKey, currCourses) {
     const url = eeclassPage + sessKey;
-    const browser = await chromium.launch({ headless: false });
+
+    const isCloudFunction = !!process.env.K_SERVICE || !!process.env.FUNCTION_NAME;
+    const isLocal = !process.env.FUNCTIONS_EMULATOR && !isCloudFunction;
+
+    const browser = await playwright.launch({
+        args: isLocal ? [] : chromium.args,
+        executablePath: isLocal ? undefined : await chromium.executablePath(),
+        headless: true 
+    });
     const context = await browser.newContext();
     const page = await context.newPage();
-
-    try{
+    try {
         await page.goto(url);
         await page.waitForSelector('a');
-        
-        // const html = await page.content();
-        // const $ = cheerio.load(html);
-        
-        const coursesLink = [];
-        // fs-p
-        // fs-list
-        
-        for(const course of currCourses) {
-            const courseTitle = course['title'];
-            console.log(courseTitle);
-            const link = await page.getByText(courseTitle).click();
+
+        const courses = [];
+
+        for (let i = 0; i < currCourses.length; i++) {
+            let html = await page.content();
+            let $ = cheerio.load(html);
+
+            const courseTitle = currCourses[i]['title'].replace(/,/g, '#');
+            await page.getByText(courseTitle).click();
             await page.waitForSelector('.fs-p');
             const url = page.url();
-
-            const html = await page.content();
-            const $ = cheerio.load(html);
+            html = await page.content();
+            $ = cheerio.load(html);
             const courseAnnouncement = $('.fs-list').length;
-            if(courseAnnouncement) {
-                coursesLink.push({title : courseTitle, url: url})
+
+            await page.getByText('Course materials').click();
+            await page.waitForSelector('.fs-table');
+            html = await page.content();
+            $ = cheerio.load(html);
+            const links = $('a[href^="/media/doc/"]');
+            const materials = [];
+            links.each((i, el) => {
+                const href = $(el).attr('href');
+                const text = $(el).text().trim();
+                materials.push({ title: text, url: "https://eeclass.nthu.edu.tw" + href });
+            });
+            materials.reverse();
+
+            if (courseAnnouncement) {
+                currCourses[i]['platform'] = 'EECLASS';
+                currCourses[i]['url'] = url;
+                currCourses[i]['materials'] = materials;
+            } else {
+                currCourses[i]['platform'] = 'ELEARN';
+                currCourses[i]['url'] = 'https://elearn.nthu.edu.tw/my/';
             }
 
-            
             await page.goBack();
-    
+            await page.goBack();
             await page.waitForLoadState('domcontentloaded');
         }
-        return coursesLink;
-
-    }
-    catch (e) {
+        return currCourses;
+    } catch (e) {
         console.log(e);
-    }
-    finally {
+    } finally {
         await browser.close();
     }
 }
+
+module.exports = { scrapEeclass };

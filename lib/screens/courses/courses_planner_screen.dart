@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:enthusiast/providers/language_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -14,6 +15,7 @@ import 'widgets/course_planner_card.dart';
 import 'widgets/course_planner_detail_sheet.dart' as detail;
 import 'widgets/course_planner_filter_sheet.dart';
 import 'widgets/course_planner_schedule_grid.dart';
+import 'package:enthusiast/providers/language_provider.dart';
 
 class CoursePlannerScreen extends StatefulWidget {
   const CoursePlannerScreen({super.key});
@@ -24,18 +26,18 @@ class CoursePlannerScreen extends StatefulWidget {
 
 class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
   static const String _baoBaoStarterPrompt =
-     'Bao-Bao, automatically create a useful first starter recommendation. '
-    'First check what data is available. '
-    'If curriculum is available, prioritize exact missing curriculum requirements. '
-    'If curriculum is missing, do not pretend this is a complete graduation plan. '
-    'Instead, create a practical starter plan using graduation data, user preferences, student year, and real available courses. '
-    'Choose fewer but higher-quality courses. '
-    'Prefer courses that match the user career goal, target credit load, language preference, GE interests, and year level. '
-    'Avoid completed courses, in-progress courses, duplicated course sections, schedule conflicts, and courses too advanced for the student year. '
-    'Build a balanced starter set: career-related courses first, then useful core/basic courses if safe, then GE/language/filler courses only if needed. '
-    'If curriculum is missing, clearly mention that uploading curriculum will make the plan more accurate.'
-    'If my preferences say English Taught, only recommend English-taught courses unless there are no matching courses. '; 
-  
+      'Bao-Bao, automatically create a useful first starter recommendation. '
+      'First check what data is available. '
+      'If curriculum is available, prioritize exact missing curriculum requirements. '
+      'If curriculum is missing, do not pretend this is a complete graduation plan. '
+      'Instead, create a practical starter plan using graduation data, user preferences, student year, and real available courses. '
+      'Choose fewer but higher-quality courses. '
+      'Prefer courses that match the user career goal, target credit load, language preference, GE interests, and year level. '
+      'Avoid completed courses, in-progress courses, duplicated course sections, schedule conflicts, and courses too advanced for the student year. '
+      'Build a balanced starter set: career-related courses first, then useful core/basic courses if safe, then GE/language/filler courses only if needed. '
+      'If curriculum is missing, clearly mention that uploading curriculum will make the plan more accurate.'
+      'If my preferences say English Taught, only recommend English-taught courses unless there are no matching courses. ';
+
   int selectedTab = 0;
 
   String searchQuery = '';
@@ -100,8 +102,6 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
       });
     }
   }
-
-
 
   DocumentReference<Map<String, dynamic>>? get _coursePlannerDocRef {
     final user = FirebaseAuth.instance.currentUser;
@@ -187,9 +187,9 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
     }
 
     await plannedCoursesRef.doc(_planDocId(course)).set(
-      _plannedCourseToMap(course),
-      SetOptions(merge: true),
-    );
+          _plannedCourseToMap(course),
+          SetOptions(merge: true),
+        );
 
     await coursePlannerDocRef.set(
       {
@@ -399,9 +399,8 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
         return;
       }
 
-      final ccxpUserRef = FirebaseFirestore.instance
-          .collection('ccxpUsers')
-          .doc(user.uid);
+      final ccxpUserRef =
+          FirebaseFirestore.instance.collection('ccxpUsers').doc(user.uid);
 
       final snapshot = await ccxpUserRef.get();
       final data = snapshot.data();
@@ -433,7 +432,9 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
 
       if (shouldContinue == true && mounted) {
         await Future<void>.delayed(const Duration(milliseconds: 180));
-        await openBaoBaoChat(initialPrompt: _baoBaoStarterPrompt,);
+        await openBaoBaoChat(
+          initialPrompt: _baoBaoStarterPrompt,
+        );
       }
     } catch (error) {
       debugPrint('Bao-Bao intro check failed: $error');
@@ -575,9 +576,9 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
     if (baoBaoRecommendedCourseIds.contains(course.id)) {
       _baoBaoMemoryService
           .rememberAcceptedCourse(
-            course,
-            reasons: baoBaoCourseReasons[course.id] ?? const <String>[],
-          )
+        course,
+        reasons: baoBaoCourseReasons[course.id] ?? const <String>[],
+      )
           .catchError((error) {
         debugPrint('Failed to save Bao-Bao accepted-course memory: $error');
       });
@@ -629,9 +630,9 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
     if (wasBaoBaoRecommended) {
       _baoBaoMemoryService
           .rememberRejectedCourse(
-            course,
-            reason: 'User removed a Bao-Bao recommended course from My Plan.',
-          )
+        course,
+        reason: 'User removed a Bao-Bao recommended course from My Plan.',
+      )
           .catchError((error) {
         debugPrint('Failed to save Bao-Bao rejected-course memory: $error');
       });
@@ -773,11 +774,12 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
 
     _baoBaoMemoryService
         .rememberRecommendationSession(
-          courseIds: recommendedIds.toList(),
-          message: recommendationMessage,
-        )
+      courseIds: recommendedIds.toList(),
+      message: recommendationMessage,
+    )
         .catchError((error) {
-      debugPrint('Failed to save Bao-Bao recommendation-session memory: $error');
+      debugPrint(
+          'Failed to save Bao-Bao recommendation-session memory: $error');
     });
 
     setState(() {
@@ -899,8 +901,7 @@ class _CoursePlannerScreenState extends State<CoursePlannerScreen> {
                               selectedType: selectedType,
                               selectedCredits: selectedCredits,
                               selectedDepartment: selectedDepartment,
-                              recommendedCourseIds:
-                                  baoBaoRecommendedCourseIds,
+                              recommendedCourseIds: baoBaoRecommendedCourseIds,
                               showBaoBaoRecommendationsOnly:
                                   showBaoBaoRecommendationsOnly,
                               baoBaoRecommendationMessage:
@@ -949,44 +950,58 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isChinese = LanguageScope.watch(context).isChinese;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 18, 24, 0),
       child: Row(
         children: [
-          InkWell(
-            borderRadius: BorderRadius.circular(100),
-            onTap: () => Navigator.pop(context),
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.chevron_left_rounded,
-                color: Color(0xFF64748B),
-                size: 26,
+          Tooltip(
+            message: isChinese ? '返回' : 'Back',
+            child: Semantics(
+              button: true,
+              label: isChinese ? '返回' : 'Back',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(100),
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  // 44x44 keeps the tap target at the recommended minimum
+                  // size while the visible circle stays the same as before.
+                  width: 44,
+                  height: 44,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.chevron_left_rounded,
+                    color: Color(0xFF64748B),
+                    size: 26,
+                  ),
+                ),
               ),
             ),
           ),
           const SizedBox(width: 14),
-          const Expanded(
+          Expanded(
             child: Text(
-              'Course Planner',
-              style: TextStyle(
+              isChinese ? '課程規劃' : 'Course Planner',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w800,
                 color: Color(0xFF0F172A),
               ),
             ),
           ),
+          const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Text(
-                'TOTAL CREDITS',
-                style: TextStyle(
+              Text(
+                isChinese ? '總學分' : 'TOTAL CREDITS',
+                style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.0,
@@ -1023,6 +1038,8 @@ class _Tabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isChinese = LanguageScope.watch(context).isChinese;
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 28),
       padding: const EdgeInsets.all(4),
@@ -1033,12 +1050,12 @@ class _Tabs extends StatelessWidget {
       child: Row(
         children: [
           _TabButton(
-            title: 'DISCOVER',
+            title: isChinese ? '探索' : 'DISCOVER',
             active: selectedTab == 0,
             onTap: () => onChanged(0),
           ),
           _TabButton(
-            title: 'MY PLAN',
+            title: isChinese ? '我的計畫' : 'MY PLAN',
             active: selectedTab == 1,
             badge: planCount,
             onTap: () => onChanged(1),
@@ -1127,7 +1144,6 @@ class _TabButton extends StatelessWidget {
   }
 }
 
-
 class _PinnedDiscoverSearchBar extends StatefulWidget {
   final String searchQuery;
   final String selectedType;
@@ -1180,6 +1196,8 @@ class _PinnedDiscoverSearchBarState extends State<_PinnedDiscoverSearchBar> {
 
   @override
   Widget build(BuildContext context) {
+    final isChinese = LanguageScope.watch(context).isChinese;
+
     final hasFilter = widget.selectedType != 'ALL' ||
         widget.selectedCredits != null ||
         widget.selectedDepartment != 'All';
@@ -1233,14 +1251,16 @@ class _PinnedDiscoverSearchBarState extends State<_PinnedDiscoverSearchBar> {
                   controller: searchController,
                   onChanged: widget.onSearchChanged,
                   cursorColor: const Color(0xFF9333EA),
-                  decoration: const InputDecoration(
-                    hintText: 'Search code, name, teacher...',
+                  decoration: InputDecoration(
+                    hintText: isChinese
+                        ? '搜尋課號、課名、教師...'
+                        : 'Search code, name, teacher...',
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
                     isDense: true,
                     contentPadding: EdgeInsets.zero,
-                    hintStyle: TextStyle(
+                    hintStyle: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
                       color: Color(0xFFCBD5E1),
@@ -1254,39 +1274,52 @@ class _PinnedDiscoverSearchBarState extends State<_PinnedDiscoverSearchBar> {
                 ),
               ),
             ),
-            const SizedBox(width: 10),
-            InkWell(
-              borderRadius: BorderRadius.circular(99),
-              onTap: widget.onFilterTap,
-              child: Stack(
-                alignment: Alignment.center,
-                clipBehavior: Clip.none,
-                children: [
-                  Icon(
-                    Icons.filter_alt_outlined,
-                    color: hasFilter
-                        ? const Color(0xFF7E3291)
-                        : const Color(0xFF94A3B8),
-                    size: 24,
-                  ),
-                  if (hasFilter)
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF7E3291),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white,
-                            width: 1.5,
-                          ),
+            const SizedBox(width: 6),
+            Tooltip(
+              message: isChinese ? '篩選' : 'Filters',
+              child: Semantics(
+                button: true,
+                label: isChinese ? '篩選' : 'Filters',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(99),
+                  onTap: widget.onFilterTap,
+                  child: SizedBox(
+                    // 44x44 keeps the tap target at the recommended minimum
+                    // size; the icon itself stays the same as before.
+                    width: 44,
+                    height: 44,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      clipBehavior: Clip.none,
+                      children: [
+                        Icon(
+                          Icons.filter_alt_outlined,
+                          color: hasFilter
+                              ? const Color(0xFF7E3291)
+                              : const Color(0xFF94A3B8),
+                          size: 24,
                         ),
-                      ),
+                        if (hasFilter)
+                          Positioned(
+                            right: 10,
+                            top: 10,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF7E3291),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 1.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                ],
+                  ),
+                ),
               ),
             ),
           ],
@@ -1840,6 +1873,8 @@ class _MyPlanView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isChinese = LanguageScope.watch(context).isChinese;
+
     if (plannedCourses.isEmpty) {
       return ListView(
         padding: const EdgeInsets.fromLTRB(28, 20, 28, 100),
@@ -1869,19 +1904,21 @@ class _MyPlanView extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 18),
-                const Text(
-                  'Your plan is empty',
-                  style: TextStyle(
+                Text(
+                  isChinese ? '你的學期計畫是空的' : 'Your plan is empty',
+                  style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
                     color: Color(0xFF0F172A),
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Browse courses and add them to build your semester plan.',
+                Text(
+                  isChinese
+                      ? '瀏覽課程並加入，建立你的學期計畫。'
+                      : 'Browse courses and add them to build your semester plan.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 13,
                     height: 1.4,
                     fontWeight: FontWeight.w600,
@@ -1903,9 +1940,9 @@ class _MyPlanView extends StatelessWidget {
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  child: const Text(
-                    'BROWSE COURSES',
-                    style: TextStyle(
+                  child: Text(
+                    isChinese ? '瀏覽課程' : 'BROWSE COURSES',
+                    style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 0.7,
@@ -1949,7 +1986,11 @@ class _MyPlanView extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  '${plannedCourses.length} courses selected',
+                  isChinese
+                      ? '已選 ${plannedCourses.length} 門課'
+                      : '${plannedCourses.length} courses selected',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w900,
@@ -1957,23 +1998,29 @@ class _MyPlanView extends StatelessWidget {
                   ),
                 ),
               ),
-              Text(
-                '$totalCredits credits',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF7E3291),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  isChinese ? '$totalCredits 學分' : '$totalCredits credits',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF7E3291),
+                  ),
                 ),
               ),
             ],
           ),
         ),
         const SizedBox(height: 18),
-        const Padding(
-          padding: EdgeInsets.only(left: 4, bottom: 10),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 10),
           child: Text(
-            'WEEKLY SCHEDULE',
-            style: TextStyle(
+            isChinese ? '每週課表' : 'WEEKLY SCHEDULE',
+            style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w900,
               letterSpacing: 0.8,
@@ -1986,11 +2033,11 @@ class _MyPlanView extends StatelessWidget {
           onRemove: onRemove,
         ),
         const SizedBox(height: 18),
-        const Padding(
-          padding: EdgeInsets.only(left: 4, bottom: 10),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 10),
           child: Text(
-            'SELECTED COURSES',
-            style: TextStyle(
+            isChinese ? '已選課程' : 'SELECTED COURSES',
+            style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w900,
               letterSpacing: 0.8,
@@ -2201,7 +2248,6 @@ class _CourseLoadErrorView extends StatelessWidget {
   }
 }
 
-
 class _BaoBaoIntroDialog extends StatefulWidget {
   const _BaoBaoIntroDialog();
 
@@ -2266,8 +2312,37 @@ class _BaoBaoIntroDialogState extends State<_BaoBaoIntroDialog>
     });
   }
 
+  // Method to get messages based on language
+  List<String> _getIntroMessages(bool isChinese) {
+    if (isChinese) {
+      return [
+        '嗨，我是寶寶 🐼\n\n我是你在 eNTHUsiast 裡的課程規劃熊貓助手。',
+        '首先，我會讀取你上傳的課程大綱 📚\n\n我會檢查系所必修、基本核心、核心課程、專業課程、實驗課、通識及語言要求。',
+        '接著我會查看你的畢業資料 ✅\n\n我會刪除你已經修過或正在修的課程，這樣我就不會再推薦同樣的課。',
+        '我也會考量你的偏好 ✨\n\n職涯目標、通識興趣、語言偏好、目標學分數和時間區間，幫助我為你篩選更適合的課程。',
+        '最後，我會搜尋真實的課程列表 🔎\n\n告訴我你需要什麼，我就會推薦你可以加入課表的真實課程卡片。',
+      ];
+    }
+    return [
+      'Hi, I’m Bao-Bao 🐼\n\nI’m your agentic course-planning panda inside eNTHUsiast.',
+      'First, I read your uploaded curriculum 📚\n\nI check department required, basic core, core courses, professional courses, lab courses, GE, and language requirements.',
+      'Then I check your graduation data ✅\n\nI remove courses you already completed or are taking, so I don’t recommend the same class again.',
+      'I also look at your preferences ✨\n\nCareer goal, GE interest, language preference, target credits, and time window help me rank better courses for you.',
+      'Finally, I search the real course list 🔎\n\nTell me what you need, then I’ll recommend real course cards you can add to your plan.',
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
+    // 1. Get current language state
+    final language = LanguageScope.watch(context);
+    final isChinese = language.isChinese;
+    final messages = _getIntroMessages(isChinese);
+
+    // Ensure _introStep stays within bounds if language changes
+    final currentIntroStep = _introStep.clamp(0, messages.length - 1);
+    final bool isLastStep = currentIntroStep >= messages.length - 1;
+
     return Material(
       color: Colors.transparent,
       child: GestureDetector(
@@ -2419,10 +2494,14 @@ class _BaoBaoIntroDialogState extends State<_BaoBaoIntroDialog>
                             const SizedBox(height: 18),
                             _TapToContinuePill(
                               onTap: _handleTap,
-                              label: _isLastStep
-                                  ? 'Start chatting with Bao-Bao'
-                                  : 'Tap anywhere to continue',
-                              icon: _isLastStep ? '✨' : '☝️',
+                              label: isLastStep
+                                  ? (isChinese
+                                      ? '開始與寶寶對話'
+                                      : 'Start chatting with Bao-Bao')
+                                  : (isChinese
+                                      ? '點擊任意處繼續'
+                                      : 'Tap anywhere to continue'),
+                              icon: isLastStep ? '✨' : '☝️',
                             ),
                           ],
                         ),

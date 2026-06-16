@@ -31,9 +31,11 @@ class CourseUnit {
 class MaterialItem {
   final String week;
   final String title;
+  final String? url;
 
   const MaterialItem({
     required this.week,
     required this.title,
+    this.url,
   });
 }
