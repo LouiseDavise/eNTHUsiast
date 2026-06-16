@@ -211,7 +211,7 @@ class _AccountScreenState extends State<AccountScreen> {
         : '2500792168-i7vvalt33atk3v1c513felvoe2p6dstl.apps.googleusercontent.com',
     scopes: [
       'email',
-      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.modify',
     ],
   );
 

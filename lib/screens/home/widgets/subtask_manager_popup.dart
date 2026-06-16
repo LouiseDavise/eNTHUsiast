@@ -4,6 +4,8 @@ import '../utilities/models.dart';
 import 'tutorial.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'priority_detail.dart';
+import 'package:intl/intl.dart';
 
 class SubtaskManagerPopup extends StatefulWidget {
   final AppEvent event;
@@ -84,7 +86,7 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
     int total = widget.subtasks.length;
     int progress = total > 0
         ? ((completed / total) * 100).round()
-        : widget.event.progress;
+        : 0; // Kemajuan default 0 jika belum ada subtask (bukan priorityScore)
 
     return BackdropFilter(
       filter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0),
@@ -124,23 +126,23 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                       children: [
                         Text(
                           widget.event.title,
-                          maxLines: 2,
+                          maxLines: 3, // Allow an extra line just in case
                           style: const TextStyle(
-                            fontSize: 24,
+                            fontSize: 28, // ⬆️ INCREASED from 24
                             fontWeight: FontWeight.w900,
                             fontStyle: FontStyle.italic,
                             color: Colors.black,
                             height: 1.1,
                           ),
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 8),
                         Text(
-                          "CHECKLIST & PROGRESS",
+                          DateFormat('dd MMMM yyyy').format(widget.event.dueDate).toUpperCase(),
                           style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.grey.shade400,
-                            letterSpacing: 1.5,
+                            fontSize: 12, // ⬆️ INCREASED from 10
+                            fontWeight: FontWeight.w800,
+                            color: Colors.grey.shade500,
+                            letterSpacing: 2.0, // Wider tracking
                           ),
                         ),
                       ],
@@ -216,47 +218,73 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
               if (widget.event.summary != null &&
                   widget.event.summary!.trim().isNotEmpty) ...[
                 const SizedBox(height: 20),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.grey.shade100),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+                Builder(
+                  builder: (context) {
+                    // SMART EXTRACTION: Grabs the very last number in the summary string!
+                    final matches = RegExp(r'\d+').allMatches(widget.event.summary!);
+                    final scoreNumber = matches.isNotEmpty ? matches.last.group(0)! : "N/A";
+                    
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), // ⬇️ REDUCED padding
+                      decoration: BoxDecoration(
+                        color: Colors.purple.shade50,
+                        borderRadius: BorderRadius.circular(16), // Slightly tighter radius
+                        border: Border.all(color: Colors.purple.shade100),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Icon(
-                            Icons.auto_awesome_rounded,
-                            size: 14,
-                            color: Colors.grey.shade400,
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "PRIORITY SCORE",
+                                style: TextStyle(
+                                  fontSize: 9, // ⬇️ REDUCED
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.purple.shade400,
+                                  letterSpacing: 1.5,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                scoreNumber,
+                                style: const TextStyle(
+                                  fontSize: 24, // ⬇️ REDUCED from 28
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF7E22CE),
+                                  height: 1.1,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            "SUMMARY",
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.grey.shade400,
-                              letterSpacing: 1.5,
+                          Container(
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                            child: IconButton(
+                              icon: Icon(
+                                Icons.info_outline_rounded,
+                                color: Colors.purple.shade300,
+                                size: 20, // ⬇️ Slightly smaller icon
+                              ),
+                              tooltip: "",
+                              onPressed: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (context) => PriorityDetailPopup(
+                                    summary: widget.event.summary!,
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        widget.event.summary!,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.black87,
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
-                  ),
+                    );
+                  }
                 ),
               ],
               const SizedBox(height: 24),
@@ -265,7 +293,7 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                 children: [
                   Expanded(
                     child: SizedBox(
-                      height: 56,
+                      height: 48,
                       child: TextField(
                         controller: _subtaskCtrl,
                         style: const TextStyle(
@@ -307,8 +335,8 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                       duration: const Duration(milliseconds: 150),
                       curve: Curves.easeOutBack,
                       child: SizedBox(
-                        height: 56,
-                        width: 64,
+                        height: 48,
+                        width: 56,
                         child: ElevatedButton(
                           onPressed: () {
                             if (_subtaskCtrl.text.trim().isNotEmpty) {
@@ -373,7 +401,7 @@ class _SubtaskManagerPopupState extends State<SubtaskManagerPopup> {
                 child: SizedBox(
                   key: TutorialTargetRegistry.get('subtask-update-btn'),
                   width: double.infinity,
-                  height: 56,
+                  height: 52,
                   child: AnimatedScale(
                     scale: _isUpdateHovered ? 1.02 : 1.0,
                     duration: const Duration(milliseconds: 150),

@@ -2,3 +2,4 @@ node_modules/
 *.local
 token.json
 serviceAccountKey.json
+.env

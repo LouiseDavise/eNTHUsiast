@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../utilities/models.dart';
 import 'tutorial.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../services/event_prioritization_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class UpcomingTasksWidget extends StatefulWidget {
@@ -17,13 +18,11 @@ class UpcomingTasksWidget extends StatefulWidget {
 
   static Color getColorForType(String type) {
     switch (type.toLowerCase()) {
-      case 'quiz':
-      case 'midterm':
-      case 'final':
+      case 'critical':
         return const Color(0xFFFA3B4E);
-      case 'homework':
-      case 'project':
+      case 'coursework':
         return const Color(0xFF02BCA4);
+      case 'todo':
       default:
         return const Color(0xFF752481);
     }
@@ -33,26 +32,49 @@ class UpcomingTasksWidget extends StatefulWidget {
   State<UpcomingTasksWidget> createState() => _UpcomingTasksWidgetState();
 }
 
-class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
+class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget>
+    with SingleTickerProviderStateMixin {
   List<AppEvent> _tasks = [];
   Set<String> _completedTaskIds = {};
   bool _isLoading = true;
-  bool _isAgentMode = true; // Default to "AI Autopilot" mode!
+  bool _isAgentMode = true;
+  bool _isSyncing = false;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _tasksSubscription;
 
   final Set<String> _selectedFilters = {};
   String _selectedSort = 'DEADLINE';
   bool _isSortHovered = false;
 
+  // Spin animation for the sync button
+  late final AnimationController _syncSpinCtrl;
+
+  // Auto-sync every 10 seconds; only fires if no sync is already running
+  Timer? _autoSyncTimer;
+
   @override
   void initState() {
     super.initState();
+
+    // Continuous rotation — we start/stop it based on _isSyncing
+    _syncSpinCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+
     UpcomingTasksWidget.tasksNotifier.addListener(_onGlobalTasksChanged);
     _fetchTasksFromFirestore();
+    _triggerAgentSync(); // initial sync on load
+
+    // Auto-sync every 10 s; _triggerAgentSync() is a no-op while already syncing
+    _autoSyncTimer = Timer.periodic(const Duration(seconds: 100000), (_) {
+      _triggerAgentSync();
+    });
   }
 
   @override
   void dispose() {
+    _syncSpinCtrl.dispose();
+    _autoSyncTimer?.cancel();
     UpcomingTasksWidget.tasksNotifier.removeListener(_onGlobalTasksChanged);
     _tasksSubscription?.cancel();
     super.dispose();
@@ -66,15 +88,41 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
     }
   }
 
+  void _triggerAgentSync() async {
+    // Guard set SYNCHRONOUSLY before any await — this is the real mutex.
+    // _isSyncing inside setState() is only for UI rebuilds; it cannot block
+    // a second timer-fired call that arrives before the first setState flushes.
+    if (_isSyncing) {
+      print("⏳ Sync already in progress. Ignoring.");
+      return;
+    }
+    _isSyncing = true; // lock immediately, synchronously, before any await
+
+    _syncSpinCtrl.repeat();
+    if (mounted) setState(() {}); // trigger UI rebuild to show spinner
+    print("🔄 Sync Triggered! Waking up Agent...");
+
+    try {
+      final agentService = EventPrioritizationService();
+      await agentService.connectAndAnalyze();
+    } finally {
+      // Always unlock — even if connectAndAnalyze() throws
+      _isSyncing = false;
+      if (mounted) {
+        _syncSpinCtrl.stop();
+        _syncSpinCtrl.reset();
+        setState(() {});
+      }
+    }
+  }
+
   int _getPriorityRank(String type) {
     switch (type.toLowerCase()) {
-      case 'quiz':
-      case 'midterm':
-      case 'final':
+      case 'critical':
         return 1;
-      case 'homework':
-      case 'project':
+      case 'coursework':
         return 2;
+      case 'todo':
       default:
         return 3;
     }
@@ -110,53 +158,58 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
         .snapshots()
         .listen((snapshot) {
           List<AppEvent> fetchedTasks = snapshot.docs.map((doc) {
-            final data = doc.data();
-            List<Subtask> parsedSubtasks = [];
-            if (data['subtasks'] != null) {
-              parsedSubtasks = (data['subtasks'] as List<dynamic>).map((st) {
-                if (st is Map<String, dynamic>) {
-                  return Subtask(
-                    id: st['id']?.toString() ?? UniqueKey().toString(),
-                    text: st['text']?.toString() ?? '',
-                    completed: st['completed'] ?? false,
-                  );
-                } else if (st is String) {
+            try {
+              final data = doc.data();
+              List<Subtask> parsedSubtasks = [];
+              if (data['subtasks'] != null) {
+                parsedSubtasks = (data['subtasks'] as List<dynamic>).map((st) {
+                  if (st is Map<String, dynamic>) {
+                    return Subtask(
+                      id: st['id']?.toString() ?? UniqueKey().toString(),
+                      text: st['text']?.toString() ?? '',
+                      completed: st['completed'] ?? false,
+                    );
+                  } else if (st is String) {
+                    return Subtask(
+                      id: UniqueKey().toString(),
+                      text: st,
+                      completed: false,
+                    );
+                  }
                   return Subtask(
                     id: UniqueKey().toString(),
-                    text: st,
+                    text: 'Unknown task',
                     completed: false,
                   );
-                }
-                return Subtask(
-                  id: UniqueKey().toString(),
-                  text: 'Unknown task',
-                  completed: false,
-                );
-              }).toList();
-            }
-            DateTime parsedDate = DateTime.now();
-            if (data['dueDate'] is Timestamp) {
-              parsedDate = (data['dueDate'] as Timestamp).toDate();
-            } else if (data['dueDate'] != null) {
-              parsedDate = DateTime.parse(data['dueDate'].toString());
-            }
+                }).toList();
+              }
+              DateTime parsedDate = DateTime.now();
+              if (data['dueDate'] is Timestamp) {
+                parsedDate = (data['dueDate'] as Timestamp).toDate();
+              } else if (data['dueDate'] != null) {
+                parsedDate = DateTime.parse(data['dueDate'].toString());
+              }
 
-            return AppEvent(
-              id: doc.id,
-              title: data['title'] ?? 'Untitled Task',
-              code: data['code'] ?? 'N/A',
-              time: data['time'] ?? '23:59',
-              type: data['type'] ?? 'todo',
-              color: UpcomingTasksWidget.getColorForType(
-                data['type'] ?? 'todo',
-              ),
-              location: data['location'] ?? 'Online',
-              progress: data['progress'] ?? 0,
-              dueDate: parsedDate,
-              subtasks: parsedSubtasks,
-              summary: data['summary'] as String?
-            );
-          }).toList();
+              return AppEvent(
+                id: doc.id,
+                title: data['title'] ?? 'Untitled Task',
+                code: data['code'] ?? 'N/A',
+                time: data['time'] ?? '23:59',
+                type: data['type'] ?? 'todo',
+                color: UpcomingTasksWidget.getColorForType(
+                  data['type'] ?? 'todo',
+                ),
+                priorityScore: (data['priorityScore'] as num?)?.toInt() ?? 0,
+                location: data['location'] ?? 'Online',
+                progress: data['progress'] ?? 0,
+                dueDate: parsedDate,
+                subtasks: parsedSubtasks,
+                summary: data['summary']?.toString(),   // ← fixed cast
+              );
+            } catch (e) {
+              return null;                               // ← skip bad doc
+            }
+          }).whereType<AppEvent>().toList();        
 
           if (mounted) {
             // 从 Firebase 恢复已持久化的完成状态。
@@ -179,14 +232,18 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
         });
   }
 
-  String _formatCountdown(DateTime dueDate) {
+  String _formatCountdown(AppEvent task) {
     final now = DateTime.now();
+
+    final timeParts = task.time.split(':');
+    final int hour = timeParts.isNotEmpty ? int.tryParse(timeParts[0]) ?? 23 : 23;
+    final int minute = timeParts.length > 1 ? int.tryParse(timeParts[1]) ?? 59 : 59;
     final deadline = DateTime(
-      dueDate.year,
-      dueDate.month,
-      dueDate.day,
-      23,
-      59,
+      task.dueDate.year,
+      task.dueDate.month,
+      task.dueDate.day,
+      hour,
+      minute,
       59,
     );
     final diff = deadline.difference(now);
@@ -211,13 +268,17 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
       orElse: () => throw StateError('not found'),
     );
     final bool nowCompleting = !_completedTaskIds.contains(taskId);
+    final timeParts = task.time.split(':');
+    final int hour = timeParts.isNotEmpty ? int.tryParse(timeParts[0]) ?? 23 : 23;
+    final int minute = timeParts.length > 1 ? int.tryParse(timeParts[1]) ?? 59 : 59;
+
     final bool isOverdue = DateTime.now().isAfter(
       DateTime(
         task.dueDate.year,
         task.dueDate.month,
         task.dueDate.day,
-        23,
-        59,
+        hour,
+        minute,
         59,
       ),
     );
@@ -282,12 +343,16 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
   void _purgeOverdueTasks(List<AppEvent> tasks) async {
     final now = DateTime.now();
     for (final task in tasks) {
+      final timeParts = task.time.split(':');
+      final int hour = timeParts.isNotEmpty ? int.tryParse(timeParts[0]) ?? 23 : 23;
+      final int minute = timeParts.length > 1 ? int.tryParse(timeParts[1]) ?? 59 : 59;
+
       final deadline = DateTime(
         task.dueDate.year,
         task.dueDate.month,
         task.dueDate.day,
-        23,
-        59,
+        hour,
+        minute,
         59,
       );
       if (now.isAfter(deadline)) {
@@ -310,7 +375,7 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
       // ---- MODE A: AI AUTOPILOT ----
       // For now, we temporarily sort by task progress as a fallback placeholder.
       // We also bypass the tags entirely so everything shows up sorted by the AI.
-      activeTasks.sort((a, b) => b.progress.compareTo(a.progress));
+      activeTasks.sort((a, b) => b.priorityScore.compareTo(a.priorityScore));
       filteredActiveTasks = activeTasks;
     } else {
       // ---- MODE B: USER CUSTOM SORT & FILTER (Your Original Logic) ----
@@ -319,8 +384,8 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
       bool _matchesFilter(AppEvent task) {
         if (_selectedFilters.isEmpty) return true;
         final type = task.type.toLowerCase();
-        bool matchesCritical = ['quiz', 'midterm', 'final'].contains(type);
-        bool matchesCoursework = ['homework', 'project'].contains(type);
+        bool matchesCritical = ['critical'].contains(type);
+        bool matchesCoursework = ['coursework'].contains(type);
         bool matchesTodo = !matchesCritical && !matchesCoursework;
         if (_selectedFilters.contains('CRITICAL') && matchesCritical) return true;
         if (_selectedFilters.contains('COURSEWORK') && matchesCoursework) return true;
@@ -381,67 +446,58 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
                   color: Colors.black,
                 ),
               ),
+              
+              // Spacer pushes the button to the far right
               const Spacer(),
 
-              MouseRegion(
-                onEnter: (_) => setState(() => _isSortHovered = true),
-                onExit: (_) => setState(() => _isSortHovered = false),
-                child: AnimatedScale(
-                  scale: _isSortHovered ? 1.1 : 1.0,
-                  duration: const Duration(milliseconds: 150),
-                  curve: Curves.easeOutBack,
-                  child: Container(
-                    height: 36,
+              // Animated sync button — spins while any sync is in progress
+              Tooltip(
+                message: "",
+                child: GestureDetector(
+                  onTap: _isSyncing ? null : _triggerAgentSync,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
                     width: 36,
+                    height: 36,
                     decoration: BoxDecoration(
-                      border: Border.all(
-                        color: _isSortHovered
-                            ? Colors.grey.shade300
-                            : Colors.grey.shade100,
-                        width: 1.5,
-                      ),
+                      color: _isSyncing
+                          ? Colors.orange.shade50
+                          : Colors.transparent,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: PopupMenuButton<String>(
-                      padding: EdgeInsets.zero,
-                      tooltip: "",
-                      icon: Icon(
-                        Icons.swap_vert_rounded,
-                        size: 18,
-                        color: _isSortHovered ? Colors.black87 : Colors.grey,
+                    child: RotationTransition(
+                      turns: _syncSpinCtrl,
+                      child: Icon(
+                        Icons.sync_rounded,
+                        size: 20,
+                        color: _isSyncing
+                            ? Colors.orange.shade400
+                            : Colors.grey.shade400,
                       ),
-                      onSelected: (String value) {
-                        setState(() {
-                          _selectedSort = value;
-                        });
-                      },
-                      color: Colors.white,
-                      surfaceTintColor: Colors.transparent,
-                      elevation: 8,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      offset: const Offset(0, 42),
-                      itemBuilder: (BuildContext context) =>
-                          <PopupMenuEntry<String>>[
-                            PopupMenuItem<String>(
-                              value: 'PRIORITY',
-                              padding: EdgeInsets.zero,
-                              child: _HoverMenuItem(
-                                text: "PRIORITY",
-                                isSelected: _selectedSort == 'PRIORITY',
-                              ),
-                            ),
-                            PopupMenuItem<String>(
-                              value: 'DEADLINE',
-                              padding: EdgeInsets.zero,
-                              child: _HoverMenuItem(
-                                text: "DEADLINE",
-                                isSelected: _selectedSort == 'DEADLINE',
-                              ),
-                            ),
-                          ],
                     ),
+                  ),
+                ),
+              ),
+              
+              const SizedBox(width: 8),
+
+              // ---- THE DUAL MODE TOGGLE BUTTON (ICON ONLY, TOP RIGHT) ----
+              GestureDetector(
+                onTap: () => setState(() => _isAgentMode = !_isAgentMode),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.all(8), // Uniform padding for a square/circle button
+                  decoration: BoxDecoration(
+                    color: _isAgentMode ? Colors.purple.shade50 : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _isAgentMode ? Colors.purple.shade200 : Colors.grey.shade300,
+                    ),
+                  ),
+                  child: Icon(
+                    _isAgentMode ? Icons.auto_awesome_rounded : Icons.tune_rounded,
+                    size: 20,
+                    color: _isAgentMode ? Colors.purple : Colors.grey.shade700,
                   ),
                 ),
               ),
@@ -449,43 +505,112 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
           ),
           const SizedBox(height: 16),
 
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _InteractiveFilterTag(
-                label: 'CRITICAL',
-                baseColor: const Color(0xFFFA3B4E),
-                isActive: _selectedFilters.contains('CRITICAL'),
-                onTap: () => setState(
-                  () => _selectedFilters.contains('CRITICAL')
-                      ? _selectedFilters.remove('CRITICAL')
-                      : _selectedFilters.add('CRITICAL'),
+          // Show tag configuration selectors AND sort dropdown only in manual sort mode
+          if (!_isAgentMode) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center, // Vertically aligns the dropdown with the tags
+              children: [
+                // ---- MANUAL SORT BUTTON (MOVED HERE, LEFT-MOST) ----
+                MouseRegion(
+                  onEnter: (_) => setState(() => _isSortHovered = true),
+                  onExit: (_) => setState(() => _isSortHovered = false),
+                  child: AnimatedScale(
+                    scale: _isSortHovered ? 1.1 : 1.0,
+                    duration: const Duration(milliseconds: 150),
+                    curve: Curves.easeOutBack,
+                    child: Container(
+                      height: 34,
+                      width: 34, // Matches the height of your tags roughly
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: _isSortHovered
+                              ? Colors.grey.shade300
+                              : Colors.grey.shade100,
+                          width: 1.5,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: PopupMenuButton<String>(
+                        padding: EdgeInsets.zero,
+                        tooltip: "",
+                        icon: Icon(
+                          Icons.swap_vert_rounded,
+                          size: 18,
+                          color: _isSortHovered ? Colors.black87 : Colors.grey,
+                        ),
+                        onSelected: (String value) {
+                          setState(() {
+                            _selectedSort = value;
+                          });
+                        },
+                        color: Colors.white,
+                        surfaceTintColor: Colors.transparent,
+                        elevation: 8,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        offset: const Offset(0, 42),
+                        itemBuilder: (BuildContext context) =>
+                            <PopupMenuEntry<String>>[
+                              PopupMenuItem<String>(
+                                value: 'PRIORITY',
+                                padding: EdgeInsets.zero,
+                                child: _HoverMenuItem(
+                                  text: "PRIORITY",
+                                  isSelected: _selectedSort == 'PRIORITY',
+                                ),
+                              ),
+                              PopupMenuItem<String>(
+                                value: 'DEADLINE',
+                                padding: EdgeInsets.zero,
+                                child: _HoverMenuItem(
+                                  text: "DEADLINE",
+                                  isSelected: _selectedSort == 'DEADLINE',
+                                ),
+                              ),
+                            ],
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-              _InteractiveFilterTag(
-                label: 'COURSEWORK',
-                baseColor: const Color(0xFF02BCA4),
-                isActive: _selectedFilters.contains('COURSEWORK'),
-                onTap: () => setState(
-                  () => _selectedFilters.contains('COURSEWORK')
-                      ? _selectedFilters.remove('COURSEWORK')
-                      : _selectedFilters.add('COURSEWORK'),
+
+                // ---- FILTER TAGS ----
+                _InteractiveFilterTag(
+                  label: 'CRITICAL',
+                  baseColor: const Color(0xFFFA3B4E),
+                  isActive: _selectedFilters.contains('CRITICAL'),
+                  onTap: () => setState(
+                    () => _selectedFilters.contains('CRITICAL')
+                        ? _selectedFilters.remove('CRITICAL')
+                        : _selectedFilters.add('CRITICAL'),
+                  ),
                 ),
-              ),
-              _InteractiveFilterTag(
-                label: 'TODO',
-                baseColor: const Color(0xFF752481),
-                isActive: _selectedFilters.contains('TODO'),
-                onTap: () => setState(
-                  () => _selectedFilters.contains('TODO')
-                      ? _selectedFilters.remove('TODO')
-                      : _selectedFilters.add('TODO'),
+                _InteractiveFilterTag(
+                  label: 'COURSEWORK',
+                  baseColor: const Color(0xFF02BCA4),
+                  isActive: _selectedFilters.contains('COURSEWORK'),
+                  onTap: () => setState(
+                    () => _selectedFilters.contains('COURSEWORK')
+                        ? _selectedFilters.remove('COURSEWORK')
+                        : _selectedFilters.add('COURSEWORK'),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
+                _InteractiveFilterTag(
+                  label: 'TODO',
+                  baseColor: const Color(0xFF752481),
+                  isActive: _selectedFilters.contains('TODO'),
+                  onTap: () => setState(
+                    () => _selectedFilters.contains('TODO')
+                        ? _selectedFilters.remove('TODO')
+                        : _selectedFilters.add('TODO'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+          ],
 
           if (_isLoading)
             const Center(
@@ -537,7 +662,7 @@ class _UpcomingTasksWidgetState extends State<UpcomingTasksWidget> {
                       : null,
                   task: task,
                   isCompleted: isCompleted,
-                  countdownStr: _formatCountdown(task.dueDate),
+                  countdownStr: _formatCountdown(task),
                   onToggleComplete: _toggleTaskCompletion,
                   onTaskTap: widget.onTaskTap,
                 );

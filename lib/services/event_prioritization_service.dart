@@ -1,74 +1,149 @@
-// lib/services/event_prioritization_service.dart
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-
-/// Structured data class representing the prioritized event outputted by the AI
-class PrioritizedEvent {
-  final int priorityScore;
-  final String title;
-  final String summary;
-  final String deadlineStatus;
-
-  PrioritizedEvent({
-    required this.priorityScore,
-    required this.title,
-    required this.summary,
-    required this.deadlineStatus,
-  });
-}
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class EventPrioritizationService {
   WebSocketChannel? _channel;
-  final Function(String) onDebugLog;
-  final Function(PrioritizedEvent) onEventProcessed;
 
-  EventPrioritizationService({
-    required this.onDebugLog,
-    required this.onEventProcessed,
-  });
+  Future<void> connectAndAnalyze() async {
+    // Create a Completer to manually control when this Future is done
+    final completer = Completer<void>();
+    // 1. Handle platform routing for the WebSocket
+    String url;
+    if (kIsWeb) {
+      url = 'ws://127.0.0.1:18789';
+    } else if (Platform.isAndroid) {
+      url = 'ws://10.0.2.2:18789';
+    } else {
+      url = 'ws://localhost:18789';
+    }
 
-  void connect() {
-    final String url = kIsWeb ? 'ws://127.0.0.1:18789' : 'ws://10.0.2.2:18789';
     _channel = WebSocketChannel.connect(Uri.parse(url));
 
-    // Send a handshake telling the backend who we are
-    _sendJson({'type': 'init_flow', 'flow': 'gmail_prioritization'});
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      print("Error: User not logged in.");
+      return;
+    }
 
+    // 2. Send the handshake to kick off the agent's flow
+    _channel!.sink.add(jsonEncode({
+      'type': 'init_flow',
+      'uid': uid
+    }));
+
+    // 3. Listen to the Agent's thoughts and final response
     _channel!.stream.listen((message) {
-      final payload = jsonDecode(message);
-      
-      if (payload['type'] == 'debug_log') {
-        onDebugLog(payload['text']);
-      } else if (payload['type'] == 'final_response') {
-        _parseResponseToPayload(payload['text']);
+      final data = jsonDecode(message);
+
+      if (data['type'] == 'debug_log') {
+        print("🤖 Agent Thought: ${data['text']}");
+      } 
+      else if (data['type'] == 'status') {
+        print("⚙️ Agent Status: ${data['text']}");
       }
+      else if (data['type'] == 'final_response') {
+        // When the agent finishes, pass the raw JSON to Firebase
+        _saveToFirestore(data['text'], uid);
+        
+        // Optionally close the connection once done
+        _channel!.sink.close(); 
+
+        if (!completer.isCompleted) completer.complete();
+      }
+    }, onDone: () {
+      if (!completer.isCompleted) completer.complete();
+    }, onError: (error) {
+      print("WebSocket Error: $error");
+      if (!completer.isCompleted) completer.complete();
     });
+    
+    return completer.future;
   }
 
-  void _parseResponseToPayload(String aiText) {
+  // 4. Parse the LLM's JSON and write it to Firestore
+  Future<void> _saveToFirestore(String rawJson, String uid) async {
     try {
-      // Extract Priority (e.g., "Resolution: Priority 100")
-      final scoreMatch = RegExp(r'Priority\s*(\d+)').firstMatch(aiText);
-      int score = scoreMatch != null ? int.parse(scoreMatch.group(1)!) : 50;
+      final dynamic decodedData = jsonDecode(rawJson);
+      
+      final List<dynamic> llmResults = decodedData is List ? decodedData : [decodedData];
 
-      // Extract subject/title line
-      final titleMatch = RegExp(r'Resolution:\s*Priority\s*\d+\.\s*([^.]+)\.').firstMatch(aiText);
-      String title = titleMatch != null ? titleMatch.group(1)!.trim() : "New Academic Event";
+      int savedCount = 0;
 
-      final processedEvent = PrioritizedEvent(
-        priorityScore: score,
-        title: title,
-        summary: aiText.replaceAll(RegExp(r'Resolution:\s*'), ''),
-        deadlineStatus: aiText.contains('tomorrow') ? 'Urgent' : 'Normal',
-      );
+      for (var llmResult in llmResults) {
+        // Only skip explicit sentinel/error entries — never skip by score alone,
+        // because valid Todos are intentionally saved with priorityScore = 0.
+        final String title = llmResult['title']?.toString() ?? '';
+        if (title == 'System Error' || title == 'No New Tasks' || title.isEmpty) {
+          print("ℹ️ Ignoring fallback JSON: $title");
+          continue; 
+        }
 
-      onEventProcessed(processedEvent);
+        final String taskType = llmResult['type']?.toString().toLowerCase() ?? 'todo';
+        // Todos always get 0; everything else uses the LLM score.
+        // .toInt() is a safety net: if the LLM returns a double (e.g. 49.5) despite
+        // our prompt instructions, we ceil it here so Firestore gets a clean int.
+        final num rawScore = taskType == 'todo' ? 0 : (llmResult['priorityScore'] ?? 0);
+        final int priorityScore = rawScore.ceil();
+
+        // --- DYNAMIC DEADLINE + TIME PARSING ---
+        DateTime parsedDueDate;
+        String parsedTime = '23:59'; // fallback if no time in deadline
+        try {
+          if (llmResult['deadline'] != null) {
+            parsedDueDate = DateTime.parse(llmResult['deadline']);
+            // Only use the extracted time if it's not midnight (i.e. the LLM
+            // actually specified a time rather than defaulting to T00:00:00).
+            final bool hasExplicitTime =
+                parsedDueDate.hour != 0 || parsedDueDate.minute != 0;
+            if (hasExplicitTime) {
+              parsedTime =
+                  '${parsedDueDate.hour.toString().padLeft(2, '0')}:${parsedDueDate.minute.toString().padLeft(2, '0')}';
+            }
+          } else {
+            parsedDueDate = DateTime.now().add(const Duration(days: 3));
+          }
+        } catch (e) {
+          print("⚠️ Warning: Could not parse LLM deadline string, using fallback.");
+          parsedDueDate = DateTime.now().add(const Duration(days: 3));
+        }
+        // ----------------------------------------
+
+        final String taskId = DateTime.now().microsecondsSinceEpoch.toString();
+
+        await FirebaseFirestore.instance
+            .collection('ccxpUsers')
+            .doc(uid)
+            .collection('upcoming')
+            .doc(taskId)
+            .set({
+              'id': taskId,
+              'title': title,
+              'summary': llmResult['summary'] ?? '',
+              'progress': 0,
+              'priorityScore': priorityScore,
+              
+              'type': taskType,
+              'code': llmResult['courseCode'] ?? 'AI_GEN',
+              
+              'dueDate': Timestamp.fromDate(parsedDueDate),
+              'time': parsedTime,
+              'location': 'Online',
+              'subtasks': <String>[],
+              'status': 'Incomplete',
+              'markCompleted': false,
+              'createdAt': FieldValue.serverTimestamp(),
+            });
+            
+        savedCount++;
+      }
+      print("✅ Successfully saved $savedCount real LLM tasks to Firestore!");
     } catch (e) {
-      print("⚠️ Error parsing LLM text string into concrete Dart Payload: $e");
+      print("❌ Failed to parse or save JSON: $e");
     }
   }
-
-  void _sendJson(Map<String, dynamic> data) => _channel?.sink.add(jsonEncode(data));
-  void disconnect() => _channel?.sink.close();
 }
